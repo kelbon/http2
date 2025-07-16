@@ -1,20 +1,18 @@
 
 
-#include "http2v2/http2_send_frames.hpp"
+#include "http2/http2_send_frames.hpp"
 
-#include "http2v2/http2_connection.hpp"
+#include "http2/http2_connection.hpp"
+#undef NO_ERROR
+namespace http2 {
 
-namespace http2v2 {
-
-dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid,
-                           errc_e errc, std::string dbginfo) {
+dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid, errc_e errc,
+                           std::string dbginfo) {
   if (!con || con->isDropped()) {
     co_return false;
   }
-  HTTP2_LOG(
-      TRACE,
-      "sending goaway frame, con: {}, errc: {}, laststreamid: {}, dbginfo: {}",
-      (void *)con.get(), (int)errc, streamid, dbginfo);
+  HTTP2_LOG(TRACE, "sending goaway frame, con: {}, errc: {}, laststreamid: {}, dbginfo: {}", (void*)con.get(),
+            (int)errc, streamid, dbginfo);
   if (errc == errc_e::NO_ERROR) {
     if (con->gracefulshutdownGoawaySended) {
       co_return true;
@@ -22,32 +20,27 @@ dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid,
     con->gracefulshutdownGoawaySended = true;
   }
   bytes_t bytes;
-  goaway_frame::form(streamid, errc, std::move(dbginfo),
-                     std::back_inserter(bytes));
+  goaway_frame::form(streamid, errc, std::move(dbginfo), std::back_inserter(bytes));
   io_error_code ec;
   co_await con->write(bytes, ec);
   if (ec) {
-    HTTP2_LOG(DEBUG, "err while sending GOAWAY, con: {}, err: {}",
-              (void *)con.get(), ec.what());
+    HTTP2_LOG(DEBUG, "err while sending GOAWAY, con: {}, err: {}", (void*)con.get(), ec.what());
     co_return false;
   }
   co_return true;
 }
 
-dd::task<void> send_rst_stream(http2_connection_ptr_t con, stream_id_t streamid,
-                               errc_e errc) {
+dd::task<void> send_rst_stream(http2_connection_ptr_t con, stream_id_t streamid, errc_e errc) {
   if (!con || con->isDropped()) {
     co_return;
   }
-  HTTP2_LOG(TRACE, "sending rst stream, con: {}. id: {}, errc: {}",
-            (void *)con.get(), streamid, (int)errc);
+  HTTP2_LOG(TRACE, "sending rst stream, con: {}. id: {}, errc: {}", (void*)con.get(), streamid, (int)errc);
   byte_t bytes[rst_stream::LEN];
   rst_stream::form(streamid, errc, bytes);
   io_error_code ec;
   (void)co_await con->write(bytes, ec);
   if (ec) {
-    HTTP2_LOG(ERROR, "cannot rst stream, con: {}, ec: {}", (void *)con.get(),
-              ec.what());
+    HTTP2_LOG(ERROR, "cannot rst stream, con: {}, ec: {}", (void*)con.get(), ec.what());
   }
 }
 
@@ -55,7 +48,7 @@ dd::task<void> send_settings_ack(http2_connection_ptr_t con) {
   if (!con || con->isDropped()) {
     co_return;
   }
-  HTTP2_LOG(TRACE, "sending settings ack for {}", (void *)con.get());
+  HTTP2_LOG(TRACE, "sending settings ack for {}", (void*)con.get());
   bytes_t bytes;
   accepted_settings_frame().form(std::back_inserter(bytes));
   io_error_code ec;
@@ -65,12 +58,11 @@ dd::task<void> send_settings_ack(http2_connection_ptr_t con) {
   }
 }
 
-dd::task<bool> send_ping(http2_connection_ptr_t con, uint64_t data,
-                         bool requestPong) {
+dd::task<bool> send_ping(http2_connection_ptr_t con, uint64_t data, bool requestPong) {
   if (!con || con->isDropped()) {
     co_return false;
   }
-  HTTP2_LOG(TRACE, "sending ping for {}", (void *)con.get());
+  HTTP2_LOG(TRACE, "sending ping for {}", (void*)con.get());
   io_error_code ec;
   byte_t buf[ping_frame::LEN];
   ping_frame::form(data, requestPong, buf);
@@ -93,27 +85,24 @@ dd::task<void> handle_ping(ping_frame ping, http2_connection_ptr_t con) {
   }
 }
 
-dd::task<bool> send_window_update(http2_connection_ptr_t con, stream_id_t id,
-                                  uint32_t inc) {
+dd::task<bool> send_window_update(http2_connection_ptr_t con, stream_id_t id, uint32_t inc) {
   if (!con || con->isDropped()) {
     co_return false;
   }
   byte_t buf[window_update_frame::LEN];
   window_update_frame::form(id, inc, buf);
-  HTTP2_LOG(TRACE, "sending update window, con: {}, stream: {}, inc: {}",
-            (void *)con.get(), id, inc);
+  HTTP2_LOG(TRACE, "sending update window, con: {}, stream: {}, inc: {}", (void*)con.get(), id, inc);
   io_error_code ec;
   (void)co_await con->write(std::span(buf), ec);
   co_return !ec;
 }
 
 // sends WINDOW_UPDATE correctly to set window size to max
-dd::task<void> update_window_to_max(cfint_t &size, stream_id_t streamid,
-                                    http2_connection_ptr_t con) try {
+dd::task<void> update_window_to_max(cfint_t& size, stream_id_t streamid, http2_connection_ptr_t con) try {
   assert(con);
   // its possible to have < 0 in such cases like
   // * sending DATA before settings exchange
-  // * updating settings value SETTINGS_INITIAL_WINDOW_SIZE (TODE support
+  // * updating settings value SETTINGS_INITIAL_WINDOW_SIZE (TODO support
   // decrement for all streams after new settings frame)
   while (size < 0) {
     // avoid too big window size increment
@@ -133,10 +122,10 @@ dd::task<void> update_window_to_max(cfint_t &size, stream_id_t streamid,
       increment_window_size_trusted(size, int32_t(inc));
     }
   }
-} catch (std::exception &e) {
+} catch (std::exception& e) {
   // do not finish streams / send goaway. Will repeat try to update window later
   // anyway
   HTTP2_LOG(ERROR, "sending window_update ended with error: {}", e.what());
 }
 
-} // namespace http2v2
+}  // namespace http2

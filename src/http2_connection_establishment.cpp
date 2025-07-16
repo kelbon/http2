@@ -1,17 +1,16 @@
 
 
-#include "http2v2/http2_connection_establishment.hpp"
+#include "http2/http2_connection_establishment.hpp"
 
-#include "http2v2/http2_connection.hpp"
-#include "http2v2/http2_send_frames.hpp"
-#include "http2v2/utils/reusable_buffer.hpp"
+#include "http2/http2_connection.hpp"
+#include "http2/http2_send_frames.hpp"
+#include "http2/utils/reusable_buffer.hpp"
 
-namespace http2v2 {
+namespace http2 {
 
-// TODE nullptr and no throw
-dd::task<http2_connection_ptr_t>
-establish_http2_session_client(http2_connection_ptr_t con,
-                               http2_client_options options) {
+// TODO nullptr and no throw
+dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection_ptr_t con,
+                                                                http2_client_options options) {
   using enum frame_e;
 
   constexpr auto H2FHL = FRAME_HEADER_LEN;
@@ -19,8 +18,7 @@ establish_http2_session_client(http2_connection_ptr_t con,
   assert(con);
   assert(options.maxReceiveFrameSize <= FRAME_LEN_MAX);
   con->localSettings = settings_t{
-      .headerTableSize =
-          options.forceDisableHpack ? 0 : options.hpackDyntabSize,
+      .headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize,
       .enablePush = false,
       // means nothing, since server do not start streams
       .maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS,
@@ -29,7 +27,7 @@ establish_http2_session_client(http2_connection_ptr_t con,
       .deprecatedPriorityDisabled = true,
   };
   con->decoder = hpack::decoder(con->localSettings.headerTableSize);
-  con->streamid = 1; // client
+  con->streamid = 1;  // client
 
   io_error_code ec;
 
@@ -39,15 +37,12 @@ establish_http2_session_client(http2_connection_ptr_t con,
     // data octets of a connection"
 
     bytes_t connectionRequest;
-    form_connection_initiation(con->localSettings,
-                               std::back_inserter(connectionRequest));
-    HTTP2_LOG(TRACE, "sending client preface for {}", (void *)con.get());
+    form_connection_initiation(con->localSettings, std::back_inserter(connectionRequest));
+    HTTP2_LOG(TRACE, "sending client preface for {}", (void*)con.get());
     (void)co_await con->write(connectionRequest, ec);
     if (ec) {
-      HTTP2_LOG(ERROR, "cannot write HTTP/2 client connection preface, err: {}",
-                ec.what());
-      throw network_exception(
-          "cannot write HTTP/2 client connection preface, err: {}", ec.what());
+      HTTP2_LOG(ERROR, "cannot write HTTP/2 client connection preface, err: {}", ec.what());
+      throw network_exception("cannot write HTTP/2 client connection preface, err: {}", ec.what());
     }
   }
 
@@ -74,8 +69,8 @@ establish_http2_session_client(http2_connection_ptr_t con,
   frame_header header = frame_header::parse(buf);
 
   if (header.type != SETTINGS || header.length > FRAME_LEN_MAX) {
-    HTTP2_LOG(ERROR, "first server frame is not settings, its {} with len {}",
-              (int)header.type, header.length);
+    HTTP2_LOG(ERROR, "first server frame is not settings, its {} with len {}", (int)header.type,
+              header.length);
     throw connection_error{};
   }
   if (header.flags & flags::ACK) {
@@ -89,24 +84,20 @@ establish_http2_session_client(http2_connection_ptr_t con,
     HTTP2_LOG(ERROR, "cannot read accepted settings frame from server");
     throw network_exception(ec);
   }
-  settings_frame::parse(
-      header, bytes,
-      server_settings_visitor(con->remoteSettings, /*first frame*/ true));
+  settings_frame::parse(header, bytes, server_settings_visitor(con->remoteSettings, /*first frame*/ true));
 
   // initialize remote settings-based things
 
   con->encoder = hpack::encoder(con->remoteSettings.headerTableSize);
-  con->remoteSettings.maxFrameSize =
-      std::min(con->remoteSettings.maxFrameSize, options.maxSendFrameSize);
+  con->remoteSettings.maxFrameSize = std::min(con->remoteSettings.maxFrameSize, options.maxSendFrameSize);
 
   // answer settings ACK "as soon as possible"
 
   accepted_settings_frame().form(buf);
-  HTTP2_LOG(TRACE, "sending settings ACK for {}", (void *)con.get());
+  HTTP2_LOG(TRACE, "sending settings ACK for {}", (void*)con.get());
   (void)co_await con->write(std::span(buf, H2FHL), ec);
   if (ec) {
-    throw network_exception("cannot send accepted settings frame to server, {}",
-                            ec.what());
+    throw network_exception("cannot send accepted settings frame to server, {}", ec.what());
   }
 
   // SETTINGS frame with ACK flag will be handled later in
@@ -118,10 +109,9 @@ establish_http2_session_client(http2_connection_ptr_t con,
   co_return con;
 }
 
-// TODE nullptr and no throw
-dd::task<http2_connection_ptr_t>
-establish_http2_session_server(http2_connection_ptr_t con,
-                               http2_server_options options) {
+// TODO nullptr and no throw
+dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection_ptr_t con,
+                                                                http2_server_options options) {
   assert(con);
   io_error_code ec;
   constexpr size_t PREFACE_SZ = std::size(CONNECTION_PREFACE);
@@ -133,7 +123,7 @@ establish_http2_session_server(http2_connection_ptr_t con,
   // settings, then send its own settings and settings ACK
 
   reusable_buffer buf;
-  { // read preface
+  {  // read preface
     std::span preface = buf.getExactly(PREFACE_SZ);
     co_await con->read(preface, ec);
     if (ec) {
@@ -144,13 +134,14 @@ establish_http2_session_server(http2_connection_ptr_t con,
       throw network_exception(ec);
     }
     if (!std::ranges::equal(preface, std::span(CONNECTION_PREFACE))) {
-      HTTP2_LOG(ERROR, "[SERVER] client session establishment failed: "
-                       "incorrect client preface");
+      HTTP2_LOG(ERROR,
+                "[SERVER] client session establishment failed: "
+                "incorrect client preface");
       throw protocol_error{};
     }
   }
   frame_header settingsheader;
-  { // read settings frame
+  {  // read settings frame
     std::span settingsframe = buf.getExactly(FRAME_HEADER_LEN);
     co_await con->read(settingsframe, ec);
     if (ec) {
@@ -170,7 +161,7 @@ establish_http2_session_server(http2_connection_ptr_t con,
     throw protocol_error{};
   }
 
-  { // read settings data
+  {  // read settings data
     std::span settingsdata = buf.getExactly(settingsheader.length);
     co_await con->read(settingsdata, ec);
     if (ec) {
@@ -180,17 +171,14 @@ establish_http2_session_server(http2_connection_ptr_t con,
                 ec.what());
       throw network_exception(ec);
     }
-    settings_frame::parse(
-        settingsheader, settingsdata,
-        client_settings_visitor(con->remoteSettings, /*first frame*/ true));
+    settings_frame::parse(settingsheader, settingsdata,
+                          client_settings_visitor(con->remoteSettings, /*first frame*/ true));
   }
 
   // write ACK and my settiings
 
-  con->localSettings.headerTableSize =
-      options.forceDisableHpack ? 0 : options.hpackDyntabSize;
-  con->localSettings.maxConcurrentStreams =
-      settings_t::MAX_MAX_CONCURRENT_STREAMS;
+  con->localSettings.headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize;
+  con->localSettings.maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS;
   con->localSettings.initialStreamWindowSize = MAX_WINDOW_SIZE;
   con->localSettings.maxFrameSize = FRAME_LEN_MAX;
   con->localSettings.deprecatedPriorityDisabled = true;
@@ -215,9 +203,8 @@ establish_http2_session_server(http2_connection_ptr_t con,
   con->encoder = hpack::encoder(con->remoteSettings.headerTableSize);
   // client settings ACK will be handled by server reader
 
-  HTTP2_LOG(TRACE, "[SERVER] client session {} successfully established",
-            (void *)con.get());
+  HTTP2_LOG(TRACE, "[SERVER] client session {} successfully established", (void*)con.get());
   co_return con;
 }
 
-} // namespace http2v2
+}  // namespace http2
