@@ -14,3 +14,12 @@ set_target_properties(tgbm_http2_notls_client PROPERTIES
   CXX_STANDARD 20)
 
 add_test(tgbm_http2_notls_client tgbm_http2_notls_client)
+
+add_executable(http2_bench_server ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_http2_server.cpp)
+target_link_libraries(http2_bench_server PUBLIC http2lib)
+
+set_target_properties(http2_bench_server PROPERTIES
+  CMAKE_CXX_EXTENSIONS OFF
+  LINKER_LANGUAGE CXX
+  CMAKE_CXX_STANDARD_REQUIRED ON
+  CXX_STANDARD 20)

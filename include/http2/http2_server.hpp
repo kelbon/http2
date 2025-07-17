@@ -4,7 +4,6 @@
 #include "http2/http2_connection_establishment.hpp"
 #include "http2/http_base.hpp"
 #include "http2/transport_factory.hpp"
-#include "http2/utils/fn_ref.hpp"
 
 #include <kelcoro/task.hpp>
 
@@ -21,6 +20,10 @@ struct http2_server {
   std::unique_ptr<impl> m_impl;
 
  public:
+  // creates non-tls server
+  explicit http2_server(http2_server_options options = {}) : http2_server(nullptr, std::move(options)) {
+  }
+
   // if ssl context ptr is nullptr, then its http server (not https)
   explicit http2_server(ssl_context_ptr, http2_server_options = {});
 
@@ -36,7 +39,7 @@ struct http2_server {
   virtual ~http2_server();
 
   // precondition: 'handle_request' must not wait for sever shutdown / terminate (deadlock)
-  virtual dd::task<http_response> handle_request(http_request) = 0;
+  virtual dd::task<http_response> handle_request(http_request&&) = 0;
 
   [[nodiscard]] size_t sessionsCount() const noexcept;
 

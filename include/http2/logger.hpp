@@ -17,8 +17,7 @@
 #else
   #define HTTP2_LOG_DEBUG(FMT_STR, ...) (void)0
 #endif
-// TODO rm
-#define HTTP2_ENABLE_TRACE
+
 #ifdef HTTP2_ENABLE_TRACE
   #define HTTP2_LOG_TRACE(FMT_STR, ...) HTTP2_DO_LOG(DEBUG, FMT_STR __VA_OPT__(, ) __VA_ARGS__)
 #else
