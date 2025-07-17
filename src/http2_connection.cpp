@@ -161,7 +161,7 @@ void request_node::receiveRequestData(http2_frame_t frame) {
 
 http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context& ctx)
     : tcpCon(std::move(c)),
-      responses({buckets, 128}),
+      responses({buckets, buckets_count}),
       pingtimer(ctx),
       pingdeadlinetimer(ctx),
       timeoutWardenTimer(ctx) {

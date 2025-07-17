@@ -194,9 +194,9 @@ struct http2_connection {
   // setted only when writer is suspended and nullptr when works
   dd::job writer;
   requests_t requests;
-  // 128 must be enough
   // Note: must be before 'responses' because of destroy ordering
-  responses_t::bucket_type buckets[128];
+  static constexpr inline size_t buckets_count = 256;
+  responses_t::bucket_type buckets[buckets_count];
   responses_t responses;
   timers_t timers;
   bool dropped = false;  // setted ONLY in dropConnection
