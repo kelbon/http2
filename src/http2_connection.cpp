@@ -187,7 +187,7 @@ void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
     }
     return;
   }
-  // sohuld be called from client, so remote settings is server settings
+  // should be called from client, so remote settings is server settings
   settings_t before = remoteSettings;
   server_settings_visitor vtor(remoteSettings);
   settings_frame::parse(newsettings.header, newsettings.data, vtor);
@@ -198,6 +198,7 @@ void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
   }
   // TODO other value changes, e.g. if initial stream size changed,
   // then change all active streams window size
+  send_settings_ack(this).start_and_detach();
 }
 
 void http2_connection::serverRequestsGracefulShutdown(goaway_frame f) {

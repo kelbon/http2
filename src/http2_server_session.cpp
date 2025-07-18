@@ -266,6 +266,7 @@ void server_session::clientSettingsChanged(http2_frame_t newsettings) {
   }
   // TODO other value changes, e.g. if initial stream size changed,
   // then change all active streams window size
+  send_settings_ack(connection).start_and_detach();
 }
 
 void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
