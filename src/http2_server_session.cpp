@@ -253,6 +253,9 @@ void server_session::clientSettingsChanged(http2_frame_t newsettings) {
                 newsettings.header.length, (void*)connection.get());
       throw protocol_error{errc_e::PROTOCOL_ERROR};
     }
+    // только после подтверждения настроек я действительно могу перейти на свои настройки
+    // ведь до этого клиент мог посылать запросы по старому размеру динамической таблицы
+    connection->decoder.dyntab.update_size(connection->localSettings.headerTableSize);
     return;
   }
   // should be called from server, so remote settings is client settings

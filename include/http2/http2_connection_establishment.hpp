@@ -23,7 +23,7 @@ constexpr inline duration_t SERVER_DEFAULT_CONNECTION_TIMEOUT = std::chrono::sec
 struct http2_server_options {
   uint32_t hpackDyntabSize = 4096;
   // Note: disabling hpack from global config has higher priority
-  bool forceDisableHpack = true;  // TODO rm
+  bool forceDisableHpack = false;
   duration_t connectionTimeout = SERVER_DEFAULT_CONNECTION_TIMEOUT;
   // when drop client if it does not send anything
   duration_t idleTimeout = SERVER_DEFAULT_IDLE_TIMEOUT;

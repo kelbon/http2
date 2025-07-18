@@ -199,7 +199,9 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
       throw network_exception(ec);
     }
   }
-  con->decoder = hpack::decoder(con->localSettings.headerTableSize);
+  // до момента ACK настроек от клиента нельзя создавать декодер с локально известными настройками, потому что
+  // клиент может начать слать запросы с размером таблицы по умолчанию, что приведёт к ошибке
+  // con->decoder = hpack::decoder(con->localSettings.headerTableSize);
   con->encoder = hpack::encoder(con->remoteSettings.headerTableSize);
   // client settings ACK will be handled by server reader
 
