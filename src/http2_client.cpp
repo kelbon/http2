@@ -153,8 +153,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     assert(newConnection);
     self->m_connection = newConnection;  //-V779 //-V2535
 
-    // this gate closed only in coStop and only after all startConnecting
-    // already done
+    // this gate closed only in coStop and only after all startConnecting already done
     assert(!self->m_connectionPartsGate.is_closed());
 
     startReaderFor(self, newConnection);
@@ -171,8 +170,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       // armed when ping sended, canceled when ping received
       newConnection->pingdeadlinetimer.set_callback([self] { self->dropConnection(reqerr_e::TIMEOUT); });
     }
-    // newConnection->timeoutWardenTimer will be armed when requests will be
-    // added
+    // newConnection->timeoutWardenTimer will be armed when requests will be added
     newConnection->timeoutWardenTimer.set_callback([newConnection] {
       newConnection->dropTimeouted();
       if (!newConnection->timers.empty()) {
@@ -596,7 +594,10 @@ dd::task<bool> http2_client::tryConnect(deadline_t deadline) {
 void http2_client::stop() {
   ioctx().stop();  // cancel all
   ioctx().restart();
-  std::coroutine_handle h = coStop().start_and_detach();
+  std::coroutine_handle h = coStop().start_and_detach(/*stop_at_end=*/true);
+  on_scope_exit {
+    h.destroy();
+  };
   while (!h.done() && ioctx().run_one() != 0)
     ;
 }

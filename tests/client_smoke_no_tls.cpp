@@ -74,17 +74,14 @@ dd::task<void> main_coro(http2::http2_client& client) {
 
 int main() try {
   std::thread([] {
-    std::this_thread::sleep_for(std::chrono::seconds(5000));
+    std::this_thread::sleep_for(std::chrono::seconds(5));
     HTTP2_LOG_ERROR("timeout!");
     fail(4);
   }).detach();
 
   namespace asio = boost::asio;
 
-  http2::http2_client_options opts{
-      // TODO чет с этим сделать, это же больше не так работает
-      .timeoutCheckInterval = http2::duration_t::max(),  // disable timeouts
-  };
+  http2::http2_client_options opts{};
   // TODO нужно чёт сделать с тем что клиент по дефолту https, а сервер http
   // TODO http клиент (дефолт заменить)
   http2::http2_client client(http2::endpoint_t(asio::ip::address_v6::loopback(), 80), std::move(opts));
@@ -97,11 +94,8 @@ int main() try {
   main_coro(client).start_and_detach();
 
   while (!all_good) {
-    std::cout << "DBG!" << std::endl;
     client.ioctx().poll();
-    std::cout << "DBG!1" << std::endl;
     server.ioctx().poll();
-    std::cout << "DBG!2" << std::endl;
   }
 
   if (!all_good)

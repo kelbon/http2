@@ -76,6 +76,8 @@ struct http2_client {
  protected:
   friend noexport::waiter_of_connection;
 
+  // on top bcs of destroy order
+  asio::io_context m_ioctx;
   endpoint_t m_host;
   http2_client_options m_options;
   http2_connection_ptr_t m_connection;
@@ -94,7 +96,6 @@ struct http2_client {
   dd::gate m_connectionGate;
   // for connection reader/writer
   dd::gate m_connectionPartsGate;
-  boost::asio::io_context m_ioctx;
 
   // fills requests from raw http2 frames
   static dd::job startReaderFor(http2_client*, http2_connection_ptr_t);

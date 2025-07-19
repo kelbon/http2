@@ -15,8 +15,6 @@ struct http2_client_options {
   // sends ping when there are no requests(for keeping alive). disabled by
   // default
   duration_t pingInterval = duration_t::max();
-  // duration_t::max() disables timeouts
-  duration_t timeoutCheckInterval = std::chrono::milliseconds(100);  // TODO rm as unused
   duration_t connectionTimeout = std::chrono::seconds(1);
   // If the server does not respond to ping within this time, drops connection
   duration_t pingTimeout = std::chrono::seconds(10);

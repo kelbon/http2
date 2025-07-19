@@ -56,6 +56,8 @@ namespace http2 {
 using acceptor_t = boost::asio::ip::tcp::acceptor;
 
 struct http2_server::impl {
+  // on top bcs of destroy order
+  asio::io_context io;
   bi::list<server_session> sessions;
   ssl_context_ptr sslctx = nullptr;  // if nullptr, then server is http (not https)
   std::list<acceptor_t> listeners;
@@ -63,7 +65,6 @@ struct http2_server::impl {
   dd::gate gate;
   http2_server_options options;
   http2_server* creator = nullptr;
-  asio::io_context io;
 
   asio::io_context& ioctx() {
     return io;
@@ -255,20 +256,21 @@ http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options)
   m_impl->creator = this;
 }
 
-// TODO! вызвать.terminate + крутить run пока не кончится
 http2_server::~http2_server() {
   assert(m_impl);
 
   if (m_impl->gate.active_count() == 0) {
     return;
   }
-
   m_impl->creator = nullptr;
-  std::coroutine_handle h = m_impl->terminate().start_and_detach();
+  std::coroutine_handle h = m_impl->terminate().start_and_detach(/*stop_at_end=*/true);
+
+  on_scope_exit {
+    h.destroy();
+  };
   // assume 'h' is suspended here every time when we check h.done()
   while (!h.done() && ioctx().run_one() != 0)
     ;
-  ioctx().stop();
 }
 
 size_t http2_server::sessionsCount() const noexcept {

@@ -233,8 +233,8 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
         if (con->remoteSettings.headerTableSize < con->encoder.dyntab.max_size()) {
           con->encoder.encode_dynamic_table_size_update(con->remoteSettings.headerTableSize,
                                                         std::back_inserter(headers));
-          con->encoder.dyntab.update_size(con->remoteSettings.headerTableSize);
         }
+        con->encoder.dyntab.set_user_protocol_max_size(con->remoteSettings.headerTableSize);
       }
       if (node->streamid == 1 && forcedisablehpack) [[unlikely]] {
         con->encoder.encode_dynamic_table_size_update(0, std::back_inserter(headers));

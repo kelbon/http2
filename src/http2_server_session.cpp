@@ -255,7 +255,7 @@ void server_session::clientSettingsChanged(http2_frame_t newsettings) {
     }
     // только после подтверждения настроек я действительно могу перейти на свои настройки
     // ведь до этого клиент мог посылать запросы по старому размеру динамической таблицы
-    connection->decoder.dyntab.update_size(connection->localSettings.headerTableSize);
+    connection->decoder.dyntab.set_user_protocol_max_size(connection->localSettings.headerTableSize);
     return;
   }
   // should be called from server, so remote settings is client settings
