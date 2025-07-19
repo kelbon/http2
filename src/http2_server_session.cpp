@@ -149,11 +149,13 @@ void server_session::onRequestReady(request_node& n) noexcept {
   }
 }
 
-bool server_session::rstStreamServer(stream_id_t streamid) noexcept {
-  request_node* n = connection->findResponseByStreamid(streamid);
+bool server_session::rstStreamServer(rst_stream rstframe) {
+  connection->validateFrame(rstframe);
+  request_node* n = connection->findResponseByStreamid(rstframe.header.streamId);
   if (!n) {
-    auto it = std::find_if(connection->requests.begin(), connection->requests.end(),
-                           [streamid](request_node& rn) { return rn.streamid == streamid; });
+    auto it = std::find_if(
+        connection->requests.begin(), connection->requests.end(),
+        [streamid = rstframe.header.streamId](request_node& rn) { return rn.streamid == streamid; });
     if (it != connection->requests.end()) {
       n = &*it;
     } else {

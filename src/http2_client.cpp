@@ -282,6 +282,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
     return false;
   } catch (protocol_error& e) {
     HTTP2_LOG(ERROR, "exception while handling frame for stream {}, err: {}", node->streamid, e.what());
+    send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     return false;
   } catch (...) {
     // user-handling exception, do not drop connection

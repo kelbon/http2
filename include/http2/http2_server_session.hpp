@@ -64,7 +64,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   void onResponseDone() noexcept;
 
   // returns false if no such stream
-  bool rstStreamServer(stream_id_t streamid) noexcept;
+  bool rstStreamServer(rst_stream);
 
   // invoked when session completely done
   void onSessionDone() noexcept;

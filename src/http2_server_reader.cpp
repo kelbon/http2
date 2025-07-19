@@ -31,7 +31,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       handle_ping(ping_frame::parse(frame.header, frame.data), &con).start_and_detach();
       return true;
     case RST_STREAM:
-      if (!session.rstStreamServer(rst_stream::parse(frame.header, frame.data).header.streamId)) {
+      if (!session.rstStreamServer(rst_stream::parse(frame.header, frame.data))) {
         HTTP2_LOG(INFO, "[SERVER] client finished stream (id: {}) which is not exists",
                   frame.header.streamId);
       }
@@ -204,6 +204,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     goto hpack_error;
   } catch (protocol_error& e) {
     HTTP2_LOG(ERROR, "[SERVER] protocol error happen in reader. err: {}", e.msg());
+    send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     co_return reqerr_e::PROTOCOL_ERR;
   } catch (goaway_exception& gae) {
     HTTP2_LOG(ERROR, "[SERVER] goaway received, info: {}, errc: {}", gae.debugInfo, e2str(gae.errorCode));

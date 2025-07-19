@@ -282,7 +282,7 @@ struct http2_connection {
 
   // client side
   // returns false if no such stream
-  [[nodiscard]] bool finishStreamWithError(rst_stream rstframe) noexcept;
+  [[nodiscard]] bool finishStreamWithError(rst_stream rstframe);
 
   void finishRequestByTimeout(request_node& node) noexcept {
     finishRequest(node, reqerr_e::TIMEOUT);
@@ -367,6 +367,13 @@ struct http2_connection {
   // Waits until response received (or request_node finished somehow else)
   // and returns response status
   KELCORO_CO_AWAIT_REQUIRED response_awaiter responseReceived(request_node& node) noexcept;
+
+  void validateFrame(const rst_stream& r) {
+    if (r.header.streamId > this->streamid) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("RST_STREAM frame on a idle stream {}", streamid));
+    }
+  }
 };
 
 #ifdef HTTP2_ENABLE_TRACE
