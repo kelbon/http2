@@ -234,7 +234,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
 }
 
 // handles DATA or HEADERS, returns false on protocol error
-[[nodiscard]] static bool handle_headers_or_data(http2_frame_t frame, http2_connection& con) noexcept {
+[[nodiscard]] static bool handle_headers_or_data(http2_frame_t frame, http2_connection& con) {
   using enum frame_e;
 
   assert(con.localSettings.deprecatedPriorityDisabled);
@@ -244,7 +244,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
   if (!frame.removePadding()) {
     return false;
   }
-
+  con.validateDataOrHeadersFrameSize(frame.header);
   request_node* node = con.findResponseByStreamid(frame.header.streamId);
   if (!node) {
     con.ignoreFrame(frame);
@@ -282,7 +282,6 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
     return false;
   } catch (protocol_error& e) {
     HTTP2_LOG(ERROR, "exception while handling frame for stream {}, err: {}", node->streamid, e.what());
-    send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     return false;
   } catch (...) {
     // user-handling exception, do not drop connection
@@ -375,9 +374,10 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
         co_await update_window_to_max(con.myWindowSize, 0, c);
       }
     }
-  } catch (protocol_error&) {
-    HTTP2_LOG(INFO, "protocol error happens");
+  } catch (protocol_error& e) {
+    HTTP2_LOG(INFO, "exception: {}", e.msg());
     reason = reqerr_e::PROTOCOL_ERR;
+    send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     goto dropConnection;
   } catch (goaway_exception& gae) {
     HTTP2_LOG(ERROR, "goaway received, info: {}, errc: {}", gae.debugInfo, e2str(gae.errorCode));
@@ -394,13 +394,10 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
   }
 
   assert(con.isDoneCompletely());
-  // must not resume anyone with 'done', because no pending requests (completely
-  // done)
+  // must not resume anyone with 'done', because no pending requests (completely done)
   reason = reqerr_e::DONE;
   goto dropConnection;
 protocol_error:
-  // give some time for sending goaway
-  co_await self->sleep(std::chrono::milliseconds(3), ec);
   reason = reqerr_e::PROTOCOL_ERR;
   goto dropConnection;
 network_error:

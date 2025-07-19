@@ -42,6 +42,8 @@ enum struct frame_e : uint8_t {
   PRIORITY_UPDATE = 0x10,
 };
 
+std::string_view e2str(frame_e) noexcept;
+
 // control flow size int type
 // signed, because its possible to get negative control flow window size
 // (e.g. sending DATA before settings exchange + receiving smaller connection
@@ -52,6 +54,12 @@ constexpr inline cfint_t INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL = uint32_t(6
 constexpr inline cfint_t MAX_WINDOW_SIZE = (uint32_t(1) << 31) - 1;  // 2'147'483'647
 constexpr inline uint32_t FRAME_HEADER_LEN = uint32_t(9);
 constexpr inline uint32_t FRAME_LEN_MAX = (uint32_t(1) << 24) - 1;
+// https://www.rfc-editor.org/rfc/rfc9113.html#section-4.1-4.2.1
+// "Values greater than 16,384 MUST NOT be sent unless the receiver
+// has set a larger value for SETTINGS_MAX_FRAME_SIZE"
+//
+// this means value less than 16'384 makes no sense
+constexpr inline uint32_t MIN_MAX_FRAME_LEN = 16'384;
 
 using flags_t = uint8_t;
 
@@ -202,7 +210,7 @@ struct settings_t {
   uint32_t maxConcurrentStreams = MAX_MAX_CONCURRENT_STREAMS;
   // only for stream-level size!
   uint32_t initialStreamWindowSize = 65'535;
-  uint32_t maxFrameSize = 16'384;
+  uint32_t maxFrameSize = MIN_MAX_FRAME_LEN;
   uint32_t maxHeaderListSize = uint32_t(-1);
   // https://datatracker.ietf.org/doc/html/rfc9218
   bool deprecatedPriorityDisabled = false;

@@ -351,6 +351,13 @@ struct net_t {
     return asio_awaiter<void, sleep_operation<Timer>>(ec, timer, duration);
   }
 
+  static dd::task<void> sleep(asio::io_context& io, std::chrono::nanoseconds duration) {
+    asio::steady_timer timer(io);
+    io_error_code ec;
+    co_await sleep(timer, duration, ec);
+    (void)ec;  // ignore error
+  }
+
   template <typename Stream>
   KELCORO_CO_AWAIT_REQUIRED static auto shutdown(Stream& stream, io_error_code& ec) {
     return asio_awaiter<void, shutdown_operation<Stream>>(ec, stream);

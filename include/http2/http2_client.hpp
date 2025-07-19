@@ -205,7 +205,7 @@ struct http2_client {
     return m_notYetReadyConnection != nullptr;
   }
 
-  boost::asio::io_context& ioctx() {
+  asio::io_context& ioctx() {
     return m_ioctx;
   }
 };

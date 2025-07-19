@@ -8,6 +8,34 @@
 
 namespace http2 {
 
+std::string_view e2str(frame_e e) noexcept {
+  switch (e) {
+    case frame_e::DATA:
+      return "DATA";
+    case frame_e::HEADERS:
+      return "HEADERS";
+    case frame_e::PRIORITY:
+      return "PRIORITY";
+    case frame_e::RST_STREAM:
+      return "RST_STREAM";
+    case frame_e::SETTINGS:
+      return "SETTINGS";
+    case frame_e::PUSH_PROMISE:
+      return "PUSH_PROMISE";
+    case frame_e::PING:
+      return "PING";
+    case frame_e::GOAWAY:
+      return "GOAWAY";
+    case frame_e::WINDOW_UPDATE:
+      return "WINDOW_UPDATE";
+    case frame_e::CONTINUATION:
+      return "CONTINUATION";
+    case frame_e::PRIORITY_UPDATE:
+      return "PRIORITY_UPDATE";
+  }
+  return "UNKNOWN_FRAME";
+}
+
 void server_settings_visitor::operator()(setting_t s) {
   switch (s.identifier) {
     case SETTINGS_HEADER_TABLE_SIZE:

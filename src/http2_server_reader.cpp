@@ -64,7 +64,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
   }
 }
 
-// TOOD избавиться от этих функкций мб и просто handle frame сделать
+// TODO избавиться от этих функкций мб и просто handle frame сделать
 // handles DATA or HEADERS, returns false on protocol error
 [[nodiscard]] static bool server_handle_headers_or_data(http2_frame_t frame, server_session& session) {
   using enum frame_e;
@@ -77,6 +77,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
   if (!frame.removePadding()) {
     return false;
   }
+  session.connection->validateDataOrHeadersFrameSize(frame.header);
   if ((frame.header.streamId % 2) == 0) {
     // TODO check if tries to create already closed stream
     HTTP2_LOG(ERROR, "[SERVER] client tries to initiate stream with even stream id");
@@ -203,7 +204,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     send_goaway(&con, con.streamid, errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
     goto hpack_error;
   } catch (protocol_error& e) {
-    HTTP2_LOG(ERROR, "[SERVER] protocol error happen in reader. err: {}", e.msg());
+    HTTP2_LOG(ERROR, "[SERVER] exception in reader. err: {}", e.msg());
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     co_return reqerr_e::PROTOCOL_ERR;
   } catch (goaway_exception& gae) {

@@ -3,6 +3,7 @@
 
 #include "http2/http2_client_options.hpp"
 #include "http2/http2_connection_fwd.hpp"
+#include "http2/http2_protocol.hpp"
 #include "http2/utils/deadline.hpp"
 
 #include <kelcoro/task.hpp>
@@ -24,6 +25,7 @@ struct http2_server_options {
   uint32_t hpackDyntabSize = 4096;
   // Note: disabling hpack from global config has higher priority
   bool forceDisableHpack = false;
+  uint32_t maxReceiveFrameSize = FRAME_LEN_MAX;
   duration_t connectionTimeout = SERVER_DEFAULT_CONNECTION_TIMEOUT;
   // when drop client if it does not send anything
   duration_t idleTimeout = SERVER_DEFAULT_IDLE_TIMEOUT;

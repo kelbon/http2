@@ -374,6 +374,17 @@ struct http2_connection {
                            std::format("RST_STREAM frame on a idle stream {}", streamid));
     }
   }
+  // precondition: h.type is DATA / HEADERS / CONTINUATION
+  void validateDataOrHeadersFrameSize(const frame_header& h) {
+    using enum frame_e;
+    assert(localSettings.maxFrameSize >= MIN_MAX_FRAME_LEN);
+    assert(h.type == DATA || h.type == HEADERS || h.type == CONTINUATION);
+    if (h.length > localSettings.maxFrameSize) {
+      throw protocol_error(errc_e::FRAME_SIZE_ERROR,
+                           std::format("{} frame too big, max size: {}, frame size: {}", e2str(h.type),
+                                       localSettings.maxFrameSize, h.length));
+    }
+  }
 };
 
 #ifdef HTTP2_ENABLE_TRACE

@@ -180,7 +180,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   con->localSettings.headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize;
   con->localSettings.maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS;
   con->localSettings.initialStreamWindowSize = MAX_WINDOW_SIZE;
-  con->localSettings.maxFrameSize = FRAME_LEN_MAX;
+  con->localSettings.maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN);
   con->localSettings.deprecatedPriorityDisabled = true;
   {
     std::vector<byte_t> bytes;
