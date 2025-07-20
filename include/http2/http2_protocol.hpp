@@ -106,6 +106,9 @@ struct frame_header {
     h.flags = rawheader[4];
     memcpy(&h.streamId, rawheader.data() + 5, 4);
     htonli(h.streamId);
+    // https://datatracker.ietf.org/doc/html/rfc9113#section-4.1-4.8.1
+    // reserved bit must be ignored
+    h.streamId &= stream_id_t(0x7FFFFFFF);  // (1u << 31) - 1
     return h;
   }
 

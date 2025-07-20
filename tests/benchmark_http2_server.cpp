@@ -7,6 +7,9 @@ struct bench_server : http2_server {
   dd::task<http_response> handle_request(http_request&& r) override {
     http_response& rsp = co_await dd::this_coro::return_place;
     rsp.status = 200;
+    std::string_view answer = "hello world";
+    auto* in = answer.data();
+    rsp.body.assign(in, in + answer.size());
     co_return dd::rvo;
   }
 };
