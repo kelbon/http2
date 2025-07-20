@@ -13,7 +13,7 @@ struct bench_server : http2_server {
 
 int main() {
   // workaround bug in h2spec, several tests require small max frame size
-  http2_server_options options{.maxReceiveFrameSize = 15'000};
+  http2_server_options options{.maxReceiveFrameSize = 15'000, .singlethread = true};
   bench_server server(options);
 
   asio::ip::tcp::endpoint ipv4_endpoint(asio::ip::address_v4::loopback(), 3000);

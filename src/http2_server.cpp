@@ -70,6 +70,9 @@ struct http2_server::impl {
     return io;
   }
 
+  explicit impl(int boost_hint) : io(boost_hint) {
+  }
+
   void listen(server_endpoint a) {
     acceptor_t& acceptor = listeners.emplace_back(ioctx(), a.addr, a.reuse_address);
     acceptor.listen();
@@ -248,7 +251,9 @@ struct http2_server::impl {
 };
 
 http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options)
-    : m_impl(std::make_unique<http2_server::impl>()) {
+    : m_impl(std::make_unique<http2_server::impl>(
+          // https://beta.boost.org/doc/libs/1_74_0/doc/html/boost_asio/overview/core/concurrency_hint.html
+          options.singlethread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT)) {
   if (ctx) {
     m_impl->sslctx = std::move(ctx);
   }

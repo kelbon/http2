@@ -77,7 +77,7 @@ struct http2_client {
   friend noexport::waiter_of_connection;
 
   // on top bcs of destroy order
-  asio::io_context m_ioctx;
+  asio::io_context m_ioctx = asio::io_context(1);
   endpoint_t m_host;
   http2_client_options m_options;
   http2_connection_ptr_t m_connection;
