@@ -8,6 +8,29 @@
 
 namespace http2 {
 
+static void validate_initial_window_size(setting_t s) {
+  assert(s.identifier == SETTINGS_INITIAL_WINDOW_SIZE);
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.8.3
+  if (s.value > MAX_WINDOW_SIZE) {
+    throw protocol_error(
+        errc_e::FLOW_CONTROL_ERROR,
+        std::format("SETTINGS_INITIAL_WINDOW_SIZE > max, max: {}, value: {}", MAX_WINDOW_SIZE, s.value));
+  }
+}
+
+static void validate_max_frame_size(setting_t s) {
+  assert(s.identifier == SETTINGS_MAX_FRAME_SIZE);
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
+
+  // The value advertised by an endpoint MUST be between this initial value and the maximum
+  // allowed frame size (2^24-1 or 16,777,215 octets), inclusive
+  if (s.value < MIN_MAX_FRAME_LEN || s.value > 16'777'215) {
+    throw protocol_error(
+        errc_e::PROTOCOL_ERROR,
+        std::format("invalid MAX_FRAME_SIZE, must be in range [16'384, 16`777`215], value: {}", s.value));
+  }
+}
+
 std::string_view e2str(frame_e e) noexcept {
   switch (e) {
     case frame_e::DATA:
@@ -54,9 +77,11 @@ void server_settings_visitor::operator()(setting_t s) {
       settings.maxConcurrentStreams = s.value;
       return;
     case SETTINGS_INITIAL_WINDOW_SIZE:
+      validate_initial_window_size(s);
       settings.initialStreamWindowSize = s.value;
       return;
     case SETTINGS_MAX_FRAME_SIZE:
+      validate_max_frame_size(s);
       settings.maxFrameSize = s.value;
       return;
     case SETTINGS_MAX_HEADER_LIST_SIZE:
@@ -98,9 +123,11 @@ void client_settings_visitor::operator()(setting_t s) {
       settings.maxConcurrentStreams = s.value;
       return;
     case SETTINGS_INITIAL_WINDOW_SIZE:
+      validate_initial_window_size(s);
       settings.initialStreamWindowSize = s.value;
       return;
     case SETTINGS_MAX_FRAME_SIZE:
+      validate_max_frame_size(s);
       settings.maxFrameSize = s.value;
       return;
     case SETTINGS_MAX_HEADER_LIST_SIZE:

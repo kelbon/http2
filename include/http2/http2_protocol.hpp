@@ -58,7 +58,7 @@ constexpr inline uint32_t FRAME_LEN_MAX = (uint32_t(1) << 24) - 1;
 // "Values greater than 16,384 MUST NOT be sent unless the receiver
 // has set a larger value for SETTINGS_MAX_FRAME_SIZE"
 //
-// this means value less than 16'384 makes no sense
+// values less than 16'384 explicitly forbidden
 constexpr inline uint32_t MIN_MAX_FRAME_LEN = 16'384;
 
 using flags_t = uint8_t;

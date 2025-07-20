@@ -23,7 +23,8 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
       // means nothing, since server do not start streams
       .maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS,
       .initialStreamWindowSize = MAX_WINDOW_SIZE,
-      .maxFrameSize = options.maxReceiveFrameSize,
+      // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
+      .maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN),
       .deprecatedPriorityDisabled = true,
   };
   con->decoder = hpack::decoder(con->localSettings.headerTableSize);
@@ -180,6 +181,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   con->localSettings.headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize;
   con->localSettings.maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS;
   con->localSettings.initialStreamWindowSize = MAX_WINDOW_SIZE;
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
   con->localSettings.maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN);
   con->localSettings.deprecatedPriorityDisabled = true;
   {
