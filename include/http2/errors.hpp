@@ -46,34 +46,4 @@ struct timeout_exception : std::exception {
   }
 };
 
-struct http_exception : std::exception {
-  int status = 0;
-
-  explicit http_exception(int s) noexcept : status(s) {
-  }
-  char const* what() const noexcept override {
-    return "http_exception";
-  }
-};
-
-struct bad_request : http_exception {
-  std::string description;
-
-  explicit bad_request(std::string s) noexcept : http_exception(404), description(std::move(s)) {
-  }
-
-  char const* what() const noexcept override {
-    return description.c_str();
-  }
-};
-
-struct unimplemented : std::exception {
-  char const* msg = nullptr;
-  unimplemented(char const* m) noexcept : msg(m) {
-  }
-  char const* what() const noexcept override {
-    return msg;
-  }
-};
-
 }  // namespace http2

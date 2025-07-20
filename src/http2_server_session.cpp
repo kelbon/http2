@@ -236,7 +236,8 @@ request_node& server_session::startRequestAssemble(stream_id_t id) {
     // TODO check if trying to create already closed stream
     HTTP2_LOG(ERROR, "[SERVER] client initiates stream, which was already open, con: {}",
               (void*)connection.get());
-    throw protocol_error{errc_e::PROTOCOL_ERROR};
+    throw protocol_error{errc_e::PROTOCOL_ERROR,
+                         std::format("client initiates stream, which was already open, streamid: {}", id)};
   }
   http2::node_ptr n = newEmptyStreamNode(id);
   n->status = reqerr_e::REQUEST_CREATED;
@@ -248,13 +249,7 @@ request_node& server_session::startRequestAssemble(stream_id_t id) {
 
 void server_session::clientSettingsChanged(http2_frame_t newsettings) {
   if (newsettings.header.flags & flags::ACK) {
-    if (newsettings.header.length != 0) {
-      HTTP2_LOG(ERROR,
-                "[SERVER] received client settings with ACK and len != 0 ({}), "
-                "con: {}",
-                newsettings.header.length, (void*)connection.get());
-      throw protocol_error{errc_e::PROTOCOL_ERROR};
-    }
+    validate_settings_ack_frame(newsettings.header);
     // только после подтверждения настроек я действительно могу перейти на свои настройки
     // ведь до этого клиент мог посылать запросы по старому размеру динамической таблицы
     connection->decoder.dyntab.set_user_protocol_max_size(connection->localSettings.headerTableSize);

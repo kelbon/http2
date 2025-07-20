@@ -115,6 +115,23 @@ struct frame_header {
   bool operator==(frame_header const&) const = default;
 };
 
+}  // namespace http2
+
+namespace std {
+
+template <>
+struct formatter<::http2::frame_header> : formatter<std::string_view> {
+  auto format(const ::http2::frame_header& h, auto& ctx) const -> decltype(ctx.out()) {
+    auto it = ctx.out();
+    return format_to(it, "{} flags: 0b{:b}, len: {}, streamid: {}", ::http2::e2str(h.type), h.flags, h.length,
+                     h.streamId);
+  }
+};
+
+}  // namespace std
+
+namespace http2 {
+
 // MUST be followed by a SETTINGS frame which MAY be empty
 constexpr inline unsigned char CONNECTION_PREFACE[] = {
     0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32,
@@ -262,6 +279,25 @@ struct client_settings_visitor {
   void operator()(setting_t);
 };
 
+inline void validate_settings_ack_frame(const frame_header& h) {
+  assert(h.type == frame_e::SETTINGS && (h.flags & flags::ACK));
+  if (h.length != 0 || h.streamId != 0) {
+    HTTP2_LOG(ERROR, "[SERVER] received client settings with ACK and len != 0 ({}), ", h.length);
+    throw protocol_error{
+        errc_e::PROTOCOL_ERROR,
+        std::format("invalid SETTINGS ACK frame, len != 0 or stream id != 0, len: {}, streamid: {}", h.length,
+                    h.streamId)};
+  }
+}
+
+inline void validate_settings_not_ack_frame(const frame_header& h) {
+  if (h.type != frame_e::SETTINGS || (h.flags & flags::ACK) || h.streamId != 0 ||
+      (h.length % sizeof(setting_t)) != 0) {
+    HTTP2_LOG(ERROR, "invalid frame: {}, provided data size: {}", h, h.length);
+    throw protocol_error{errc_e::PROTOCOL_ERROR, std::format("invalid frame {}", h)};
+  }
+}
+
 struct settings_frame {
   frame_header header;
 
@@ -319,23 +355,14 @@ struct settings_frame {
   }
 
   // ordering matters, must be handled in order they received
-  static void parse(frame_header header, std::span<byte_t const> bytes,
-                    auto&& settingVisitor)  //-V669 //-V2558
-  {
+  static void parse(frame_header header, std::span<byte_t const> bytes, auto&& settingVisitor) {
     assert(header.type == frame_e::SETTINGS);
     if (header.flags & flags::ACK) {
-      if (header.length != 0) {
-        throw protocol_error{};
-      }
+      validate_settings_ack_frame(header);
       return;
     }
-    if (header.streamId != 0 || (bytes.size() % sizeof(setting_t)) != 0) {
-      HTTP2_LOG(ERROR,
-                "invalid settings frame, streamid: {}, len: {}, provided data "
-                "size: {}",
-                header.streamId, header.length, bytes.size());
-      throw protocol_error{};
-    }
+    validate_settings_not_ack_frame(header);
+    assert(header.length == bytes.size());
     setting_t s;
     for (auto b = bytes.begin(); b != bytes.end(); b += 6) {
       s = setting_t::parse(std::span<byte_t const, 6>{b, b + 6});
@@ -467,7 +494,7 @@ inline void increment_window_size(cfint_t& size, int32_t windowSizeIncrement) {
   assert(windowSizeIncrement >= 0);
   if (windowSizeIncrement == 0) {
     HTTP2_LOG(ERROR, "invalid window size increment: zero");
-    throw protocol_error{};
+    throw protocol_error(errc_e::FLOW_CONTROL_ERROR, "invalid window size increment: zero");
   }
   // avoid overflow
   if (int64_t(size) + int64_t(windowSizeIncrement) > int64_t(MAX_WINDOW_SIZE)) {
@@ -475,7 +502,10 @@ inline void increment_window_size(cfint_t& size, int32_t windowSizeIncrement) {
               "invalid window size increment: overflow, current size: {}, "
               "increment: {}",
               uint64_t(size), uint64_t(windowSizeIncrement));
-    throw protocol_error{};
+    throw protocol_error(
+        errc_e::FLOW_CONTROL_ERROR,
+        std::format("invalid window size increment: overflow, current size: {}, increment: {}",
+                    uint64_t(size), uint64_t(windowSizeIncrement)));
   }
   size += windowSizeIncrement;
 }
@@ -516,6 +546,7 @@ inline bool strip_padding(std::span<byte_t>& bytes) {
 
 // разбирает все пришедшие хедера, обрабатывая некорретные значения :path,
 // дублированные или пропущенные псевдохедеры
-void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t const> bytes, http_request& req);
+void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t const> bytes, http_request& req,
+                                 stream_id_t);
 
 }  // namespace http2

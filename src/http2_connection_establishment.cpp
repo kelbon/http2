@@ -8,6 +8,31 @@
 
 namespace http2 {
 
+static void validate_first_server_frame_header(const frame_header& header) {
+  if (header.type != frame_e::SETTINGS || header.length > FRAME_LEN_MAX) {
+    HTTP2_LOG(ERROR, "first server frame is not settings, its {} with len {}", (int)header.type,
+              header.length);
+    throw protocol_error(errc_e::CONNECT_ERROR,
+                         std::format("first server frame is not settings, frame: {}", header));
+  }
+  if (header.flags & flags::ACK) {
+    HTTP2_LOG(ERROR, "invalid server preface SETTINGS with ACK flag");
+    throw protocol_error(errc_e::CONNECT_ERROR, "invalid server preface SETTINGS with ACK flag");
+  }
+}
+
+static void validate_client_magic(std::span<byte_t> magic) {
+  if (!std::ranges::equal(magic, std::span(CONNECTION_PREFACE))) {
+    HTTP2_LOG(ERROR,
+              "[SERVER] client session establishment failed: "
+              "incorrect client preface");
+    throw protocol_error(errc_e::PROTOCOL_ERROR,
+                         std::format("invalid client magic, expected: {}, received: {}",
+                                     std::string_view((const char*)CONNECTION_PREFACE),
+                                     std::string_view((const char*)magic.data(), magic.size())));
+  }
+}
+
 // TODO nullptr and no throw
 dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection_ptr_t con,
                                                                 http2_client_options options) {
@@ -69,15 +94,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
 
   frame_header header = frame_header::parse(buf);
 
-  if (header.type != SETTINGS || header.length > FRAME_LEN_MAX) {
-    HTTP2_LOG(ERROR, "first server frame is not settings, its {} with len {}", (int)header.type,
-              header.length);
-    throw connection_error{};
-  }
-  if (header.flags & flags::ACK) {
-    HTTP2_LOG(ERROR, "invalid server preface with ACK flag");
-    throw connection_error{};
-  }
+  validate_first_server_frame_header(header);
 
   bytes_t bytes(header.length);
   co_await con->read(bytes, ec);
@@ -115,7 +132,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
                                                                 http2_server_options options) {
   assert(con);
   io_error_code ec;
-  constexpr size_t PREFACE_SZ = std::size(CONNECTION_PREFACE);
+  constexpr size_t MAGIC_SZ = std::size(CONNECTION_PREFACE);
 
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-3.4-4
   // client MUST start its connection with a connection preface
@@ -124,9 +141,9 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   // settings, then send its own settings and settings ACK
 
   reusable_buffer buf;
-  {  // read preface
-    std::span preface = buf.getExactly(PREFACE_SZ);
-    co_await con->read(preface, ec);
+  {  // read client magic
+    std::span magic = buf.getExactly(MAGIC_SZ);
+    co_await con->read(magic, ec);
     if (ec) {
       HTTP2_LOG(ERROR,
                 "[SERVER] client session establishment failed: reading "
@@ -134,12 +151,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
                 ec.what());
       throw network_exception(ec);
     }
-    if (!std::ranges::equal(preface, std::span(CONNECTION_PREFACE))) {
-      HTTP2_LOG(ERROR,
-                "[SERVER] client session establishment failed: "
-                "incorrect client preface");
-      throw protocol_error{};
-    }
+    validate_client_magic(magic);
   }
   frame_header settingsheader;
   {  // read settings frame
@@ -154,13 +166,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
     }
     settingsheader = frame_header::parse(settingsframe);
   }
-  if (settingsheader.type != frame_e::SETTINGS) {
-    HTTP2_LOG(ERROR,
-              "[SERVER] client session establishment failed: expected SETTINGS "
-              "frame, got {}",
-              (int)settingsheader.type);
-    throw protocol_error{};
-  }
+  validate_settings_not_ack_frame(settingsheader);
 
   {  // read settings data
     std::span settingsdata = buf.getExactly(settingsheader.length);

@@ -88,7 +88,7 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
     HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame");
-    throw protocol_error{};
+    throw unimplemented_feature("END_HEADERS == 0");
   }
   if (status > 0) [[unlikely]] {
     return receiveTrailersHeaders(decoder, frame);
@@ -125,17 +125,17 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG(TRACE, "[SERVER] received HEADERS, stream: {}, len: {}, con: {}", frame.header.streamId,
             frame.header.length, (void*)connection.get());
-  // weird things like continuations, trailers, many header frames with CONTINUE
+  // weird things like continuations, many header frames with CONTINUE
   // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
     HTTP2_LOG(ERROR,
               "[SERVER] protocol error: unsupported not END_HEADERS headers "
               "frame, con: {}",
               (void*)connection.get());
-    throw protocol_error{};
+    throw unimplemented_feature("END_HEADERS == 0");
   }
   assert(req.headers.empty());
-  parse_http2_request_headers(decoder, frame.data, req);
+  parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
   assert(!req.path.empty());  // parsing should throw on this failure
 #ifdef HTTP2_ENABLE_TRACE
   trace_request_headers(req, /*from client=*/true);

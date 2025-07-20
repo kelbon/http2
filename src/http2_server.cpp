@@ -158,7 +158,7 @@ struct http2_server::impl {
       HTTP2_LOG(TRACE, "[SERVER] drops connection {} due client inactivity", (void*)session.connection.get());
       session.requestTerminate();
     };
-    auto requestTerminate = [&] {  //-V656
+    auto requestTerminate = [&] {
       HTTP2_LOG(TRACE, "[SERVER] writer drops connection {}", (void*)session.connection.get());
       session.requestTerminate();
     };

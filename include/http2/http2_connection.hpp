@@ -51,6 +51,7 @@ struct http2_frame_t {
   // precondition: frame is HEADERS
   // throws on protocol error
   void ignoreDeprecatedPriority() {
+    assert(header.type == frame_e::HEADERS);
     if (!(header.flags & flags::PRIORITY)) [[likely]] {
       return;
     }
@@ -66,7 +67,9 @@ struct http2_frame_t {
                 "incorrect PRIORITY headers frame, len: {}, streamid: {}, "
                 "flags: {}, type: {}. Len after padding rm: {}",
                 header.length, header.streamId, header.flags, (int)header.type, data.size());
-      throw protocol_error{};
+      throw protocol_error{
+          errc_e::PROTOCOL_ERROR,
+          std::format("invalid HEADERS frame with priority, data size < 5 ({})", data.size())};
     }
     remove_prefix(data, 5);
     // set flag to 0, so next 'ignoreDeprecatedPriority' will not break frame

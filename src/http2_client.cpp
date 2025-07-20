@@ -147,11 +147,11 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
         self->m_notYetReadyConnection = nullptr;
       };
       newConnection = co_await establish_http2_session_client(std::move(con), self->m_options);
-      timer.cancel();  //-V779 //-V2535
+      timer.cancel();
     }
     assert(!self->m_connection);
     assert(newConnection);
-    self->m_connection = newConnection;  //-V779 //-V2535
+    self->m_connection = newConnection;
 
     // this gate closed only in coStop and only after all startConnecting already done
     assert(!self->m_connectionPartsGate.is_closed());
@@ -381,7 +381,7 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     goto dropConnection;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "goaway received, info: {}, errc: {}", gae.debugInfo, e2str(gae.errorCode));
+    HTTP2_LOG(ERROR, "goaway received, {}", gae.msg());
     reason = reqerr_e::SERVER_CANCELLED_REQUEST;
     goto dropConnection;
   } catch (std::exception& se) {

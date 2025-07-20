@@ -38,7 +38,7 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
   auto const& request = node.req;
 
   assert(!IS_CLIENT || !request.path.empty());
-  assert(!(request.body.contentType.empty() && !request.body.data.empty()));
+  assert(!IS_CLIENT || !(request.body.contentType.empty() && !request.body.data.empty()));
 
   auto out = std::back_inserter(headers);
 

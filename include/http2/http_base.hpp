@@ -101,7 +101,7 @@ namespace std {
 
 template <>
 struct formatter<::http2::http_header_t> : formatter<std::string_view> {
-  auto format(::http2::http_header_t const& hdr, auto& ctx) const {
+  auto format(::http2::http_header_t const& hdr, auto& ctx) const -> decltype(ctx.out()) {
     return std::format_to(ctx.out(), "{}: {}", hdr.name(), hdr.value());
   }
 };

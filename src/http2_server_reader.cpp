@@ -209,7 +209,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     co_return reqerr_e::PROTOCOL_ERR;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "[SERVER] goaway received, info: {}, errc: {}", gae.debugInfo, e2str(gae.errorCode));
+    HTTP2_LOG(ERROR, "[SERVER] goaway received, {}", gae.msg());
     co_return reqerr_e::CANCELLED;
   } catch (std::exception& se) {
     HTTP2_LOG(INFO, "[SERVER] unexpected exception in reader {}", se.what());

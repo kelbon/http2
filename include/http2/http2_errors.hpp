@@ -89,29 +89,15 @@ struct protocol_error : std::exception {
   }
 };
 
-struct connection_error : protocol_error {
-  explicit connection_error(errc_e e = errc_e::NO_ERROR) noexcept : protocol_error(e) {
-  }
-};
+[[nodiscard]] inline protocol_error unimplemented_feature(std::string_view s) {
+  return protocol_error(errc_e::INTERNAL_ERROR, std::format("UNSUPPORTED {}", s));
+}
 
-struct stream_error : protocol_error {
-  stream_id_t streamid = stream_id_t(-1);
-
-  explicit stream_error(stream_id_t id) noexcept : streamid(id) {
-  }
-};
-
-struct rst_stream_received : std::exception {
-  errc_e err = {};
-
-  explicit rst_stream_received(errc_e e) noexcept : err(e) {
-  }
-
-  char const* what() const noexcept override {
-    // assumes its null terminated
-    return e2str(err).data();
-  }
-};
+// TODO stream errors (causing RST stream, not closing connection)
+[[nodiscard]] inline protocol_error stream_error(errc_e, stream_id_t streamid, std::string msg) {
+  (void)streamid;  // now unused
+  return protocol_error(errc_e::PROTOCOL_ERROR, std::move(msg));
+}
 
 struct goaway_exception : std::exception {
   stream_id_t lastStreamId;
@@ -124,6 +110,11 @@ struct goaway_exception : std::exception {
 
   char const* what() const noexcept override {
     return e2str(errorCode).data();  // assume null terminated
+  }
+
+  std::string msg() {
+    return std::format("errc: {}, debug info: \"{}\", last stream id: {}", e2str(errorCode), debugInfo,
+                       lastStreamId);
   }
 };
 
