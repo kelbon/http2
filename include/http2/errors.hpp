@@ -26,12 +26,9 @@ struct network_exception : std::exception {
 
   template <typename... ARGS>
   explicit network_exception(std::format_string<ARGS...> fmtStr, ARGS&&... args)
-      : data(std::format(fmtStr, std::forward<ARGS>(args)...))  // -V1067
-  {
+      : data(std::format(fmtStr, std::forward<ARGS>(args)...)) {
   }
-  explicit network_exception(io_error_code const& ec)
-      : data(std::format("{}", ec.what()))  // -V1067
-  {
+  explicit network_exception(io_error_code const& ec) : data(std::format("{}", ec.what())) {
   }
   explicit network_exception(std::string s) noexcept : data(std::move(s)) {
   }

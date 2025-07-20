@@ -7,8 +7,14 @@
 #include <vector>
 
 #include <format>
+#include <algorithm>
 
 namespace http2 {
+
+[[nodiscard]] static constexpr bool is_lowercase(std::string_view s) noexcept {
+  auto isuppercasechar = [](char c) { return c >= 'A' && c <= 'Z'; };
+  return std::none_of(s.begin(), s.end(), isuppercasechar);
+}
 
 struct reqerr_e {
   enum values_e : int {

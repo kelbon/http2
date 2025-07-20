@@ -26,12 +26,6 @@ namespace http2 {
 
 constexpr inline auto H2FHL = FRAME_HEADER_LEN;
 
-// TODO replace with utility function from common
-[[nodiscard]] static constexpr bool is_lowercase(std::string_view s) noexcept {
-  auto isuppercasechar = [](char c) { return c >= 'A' && c <= 'Z'; };
-  return std::none_of(s.begin(), s.end(), isuppercasechar);
-}
-
 template <bool IS_CLIENT>
 static void generate_http2_headers_to(request_node const& node, hpack::encoder& encoder, bytes_t& headers) {
   using hdrs = hpack::static_table_t::values;
@@ -99,7 +93,7 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
     return len;
   }
   header.length = len;
-  header.type = DATA;  // -V1048
+  header.type = DATA;
   header.flags = unhandledBytes == header.length ? END_STREAM : EMPTY_FLAGS;
   header.streamId = node.streamid;
   header.form(out);

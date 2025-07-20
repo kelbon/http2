@@ -5,6 +5,7 @@
 #include "http2/http_base.hpp"
 
 #include <hpack/hpack.hpp>
+#include <strswitch/strswitch.hpp>
 
 namespace http2 {
 
@@ -292,6 +293,38 @@ static protocol_error duplicated_pseudoheader(stream_id_t streamid, std::string_
                       std::format("pseudoheader {} appeared on the list twice", name));
 }
 
+static void validate_header_name(const hpack::header_view& h, stream_id_t streamid) {
+  std::string_view str = h.name.str();
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.1-3.1
+  for (char c : str) {
+    switch (c) {
+      default:
+        continue;
+      case 0x00 ... 0x20:
+      case 0x41 ... 0x5a:
+      case 0x7f ... 0xff:
+      case ':':
+        throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
+                           std::format("forbidden character 0x{:x} in header name \"{}\")", int(c), str));
+    }
+  }
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.2-1
+  bool connection_specific =
+      ss::string_switch<bool>(str)
+          .cases("te", "connection", "proxy-connection", "keep-alive", "transfer-encoding", "upgrade", true)
+          .orDefault(false);
+  if (connection_specific) [[unlikely]] {
+    // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.2-2
+    if (str != "te")
+      throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
+                         std::format("connection specific header forbidden in HTTP/2, header name: {}", str));
+    if (h.value.str() != "trailers")
+      throw stream_error(
+          errc_e::PROTOCOL_ERROR, streamid,
+          std::format("TE header with value other than \"trailers\", actual value: {}", h.value.str()));
+  }
+}
+
 void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t const> bytes, http_request& req,
                                  stream_id_t streamid) {
   auto const* in = bytes.data();
@@ -353,13 +386,11 @@ void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t cons
     if (!header) {
       continue;
     }
-    if (header.name.str().starts_with(':')) {
-      throw protocol_error(errc_e::PROTOCOL_ERROR,
-                           std::format("pseudoheader {} after first not pseudoheader", header.name.str()));
-    }
-  push_header:  // -V2529
+  push_header:
+    validate_header_name(header, streamid);
     req.headers.push_back(http_header_t(std::string(header.name.str()), std::string(header.value.str())));
   }
+
   auto checkrequired = [](std::string_view hdrname, bool& parsed) {
     if (!parsed) [[unlikely]] {
       throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("required header {} not present", hdrname));

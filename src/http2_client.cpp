@@ -526,8 +526,7 @@ dd::task<void> http2_client::coStop() {
     con->initiateGracefulShutdown(con->lastInitiatedStreamId());
   }
   // wait all requests done
-  while (m_requestsInProgress != 0)  // -V776
-  {
+  while (m_requestsInProgress != 0) {
     co_await sleep(std::chrono::nanoseconds(10), ec);
   }
   // request stop
