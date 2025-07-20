@@ -42,6 +42,5 @@ int main() {
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 443);
   server.listen({ipv4_endpoint});
 
-  // TODO when done?
   server.ioctx().run();
 }

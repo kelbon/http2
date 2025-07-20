@@ -225,9 +225,10 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
     case CONTINUATION:
       HTTP2_LOG(INFO, "received CONTINUATION, not supported");
       return false;
-    default:
     case PRIORITY:
+      con.validatePriorityFrameHeader(frame.header);
     case PRIORITY_UPDATE:
+    default:
       // ignore
       return true;
   }

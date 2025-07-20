@@ -368,6 +368,12 @@ struct http2_connection {
   // and returns response status
   KELCORO_CO_AWAIT_REQUIRED response_awaiter responseReceived(request_node& node) noexcept;
 
+  void validatePriorityFrameHeader(const frame_header& h) {
+    assert(h.type == frame_e::PRIORITY);
+    if (h.length != 5 || h.streamId == 0)
+      throw protocol_error(errc_e::PROTOCOL_ERROR, "invalid priority frame");
+  }
+
   void validateFrame(const rst_stream& r) {
     if (r.header.streamId > this->streamid) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,

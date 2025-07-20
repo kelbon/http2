@@ -56,9 +56,10 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
     case CONTINUATION:
       HTTP2_LOG(WARN, "[SERVER] received CONTINUATION, not supported");
       return false;
-    default:
     case PRIORITY:
+      con.validatePriorityFrameHeader(frame.header);
     case PRIORITY_UPDATE:
+    default:
       // ignore
       return true;
   }
