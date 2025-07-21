@@ -10,6 +10,8 @@
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
 #include "http2/utils/timer.hpp"
+#include "http2/utils/merged_segments.hpp"
+
 #include <boost/asio/io_context.hpp>
 
 #include <span>
@@ -71,6 +73,15 @@ struct http2_frame_t {
           errc_e::PROTOCOL_ERROR,
           std::format("invalid HEADERS frame with priority, data size < 5 ({})", data.size())};
     }
+    uint32_t dependency;
+    memcpy(&dependency, data.data(), sizeof(dependency));
+    htonli(dependency);
+    dependency &= uint32_t(0x7FFFFFFF);
+    if (dependency == header.streamId) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("HEADER with priority depends on itself", header.streamId));
+    }
+
     remove_prefix(data, 5);
     // set flag to 0, so next 'ignoreDeprecatedPriority' will not break frame
     header.flags &= flags_t(~flags::PRIORITY);
@@ -189,8 +200,8 @@ struct http2_connection {
   // if true, new value in server_settings.header_table_size
   bool encodertablesizechangerequested = false;
   hpack::decoder decoder;
-  // odd for client, even for server
-  stream_id_t streamid = 0;
+  // odd, for client its last started stream, for server last stream started by client
+  stream_id_t laststartedstreamid = 0;
   uint32_t refcount = 0;
   cfint_t myWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   cfint_t receiverWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
@@ -210,6 +221,8 @@ struct http2_connection {
   timer_t pingdeadlinetimer;
   timer_t timeoutWardenTimer;
   bi::slist<request_node, requests_member_hook_t, bi::constant_time_size<true>> freeNodes;
+  // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
+  merged_segments closed_streams;
 
   explicit http2_connection(any_connection_t&& c, boost::asio::io_context&);
 
@@ -218,9 +231,23 @@ struct http2_connection {
 
   ~http2_connection();
 
+  void mark_stream_closed(stream_id_t id) noexcept {
+    closed_streams.add_point(id / 2);
+  }
+
+  bool is_closed_stream(stream_id_t id) const noexcept {
+    return closed_streams.has_point(id / 2);
+  }
+
+  // stream not yet started
+  bool is_idle_stream(stream_id_t id) const noexcept {
+    return id > laststartedstreamid;
+  }
+
   [[nodiscard]] bool isDropped() const noexcept {
     return dropped;
   }
+
   void startDrop() noexcept {
     dropped = true;
   }
@@ -264,7 +291,7 @@ struct http2_connection {
   // interface for reader
 
   [[nodiscard]] bool isOutofStreamids() const noexcept {
-    return streamid > MAX_STREAM_ID;
+    return laststartedstreamid >= MAX_STREAM_ID;
   }
 
   void initiateGracefulShutdown(stream_id_t laststreamid) noexcept;
@@ -311,17 +338,19 @@ struct http2_connection {
   // postcondition: returns correct streamid (<= MAX_STREAM_ID)
   [[nodiscard]] stream_id_t nextStreamid() noexcept {
     // out of stream ids == (2 ^ 31 - 1) + 2
-    assert(streamid <= (MAX_STREAM_ID + 2));
-    assert((streamid % 2) == 1);  // client side
-    auto id = streamid;
-    streamid += 2;
-    return id;
+    if (laststartedstreamid == 0) [[unlikely]] {
+      laststartedstreamid = 1;
+      return laststartedstreamid;
+    }
+    assert(laststartedstreamid <= MAX_STREAM_ID);
+    assert((laststartedstreamid % 2) == 1);  // client side
+    laststartedstreamid += 2;
+    return laststartedstreamid;
   }
 
-  // client side, server should use just stream id
+  // 0 if there are no streams
   [[nodiscard]] stream_id_t lastInitiatedStreamId() const noexcept {
-    // streamid is id which will be setted to next stream, so prev stream is -2
-    return streamid < 2 ? 0 : streamid - 2;
+    return laststartedstreamid;
   }
 
   // client side
@@ -371,18 +400,28 @@ struct http2_connection {
   // and returns response status
   KELCORO_CO_AWAIT_REQUIRED response_awaiter responseReceived(request_node& node) noexcept;
 
-  void validatePriorityFrameHeader(const frame_header& h) {
-    assert(h.type == frame_e::PRIORITY);
-    if (h.length != 5 || h.streamId == 0)
+  void validatePriorityFrameHeader(const http2_frame_t& h) {
+    assert(h.header.type == frame_e::PRIORITY);
+    assert(h.data.size() == h.header.length);
+    if (h.header.length != 5 || h.header.streamId == 0)
       throw protocol_error(errc_e::PROTOCOL_ERROR, "invalid priority frame");
-  }
-
-  void validateFrame(const rst_stream& r) {
-    if (r.header.streamId > this->streamid) {
+    uint32_t dependency;
+    memcpy(&dependency, h.data.data(), sizeof(dependency));
+    htonli(dependency);
+    dependency &= uint32_t(0x7FFFFFFF);
+    if (dependency == h.header.streamId) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,
-                           std::format("RST_STREAM frame on a idle stream {}", streamid));
+                           std::format("PRIORITY frame depends on itself", h.header.streamId));
     }
   }
+
+  void validateRstFrame(const rst_stream& r) {
+    if (is_idle_stream(r.header.streamId)) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("RST_STREAM frame on a idle stream {}", r.header.streamId));
+    }
+  }
+
   // precondition: h.type is DATA / HEADERS / CONTINUATION
   void validateDataOrHeadersFrameSize(const frame_header& h) {
     using enum frame_e;
@@ -394,6 +433,9 @@ struct http2_connection {
                                        localSettings.maxFrameSize, h.length));
     }
   }
+
+  // used when SETTINGS_INITIAL_WINDOW_SIZE changed
+  void adjustWindowForAllStreams(cfint_t old_window_size, cfint_t new_window_size);
 };
 
 #ifdef HTTP2_ENABLE_TRACE

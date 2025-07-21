@@ -21,7 +21,7 @@ namespace http2 {
     case NETWORK_ERR:
       throw network_exception{""};
     case PROTOCOL_ERR:
-      throw protocol_error{};
+      throw protocol_error(errc_e::PROTOCOL_ERROR);
     case CANCELLED:
       throw std::runtime_error("HTTP client: request was canceled");
     case SERVER_CANCELLED_REQUEST:

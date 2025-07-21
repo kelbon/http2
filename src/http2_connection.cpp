@@ -5,6 +5,7 @@
 #include "http2/http2_send_frames.hpp"
 #include "http2/logger.hpp"
 
+#include <unordered_set>
 #include <zal/zal.hpp>
 
 #ifdef HTTP2_ENABLE_TRACE
@@ -54,11 +55,18 @@ void intrusive_ptr_release(request_node* p) noexcept {
   }
 }
 
+static void validate_trailer_header(std::string_view name, stream_id_t streamid) {
+  if (name.starts_with(':'))
+    throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
+                       std::format("trailers section must not include pseudo-headers, name: {}, streamid: {}",
+                                   name, streamid));
+}
+
 void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t frame) {
-  assert(status > 0);
+  // may handle both request trailers and response trailers
   HTTP2_LOG(TRACE, "received HEADERS (trailers), con: {}, stream: {}, len: {}", (void*)connection.get(),
             frame.header.streamId, frame.header.length);
-  auto mask = flags::END_STREAM | flags::END_HEADERS;
+  constexpr auto mask = flags::END_STREAM | flags::END_HEADERS;
   if (((frame.header.flags & mask) != mask)) {
     throw protocol_error(errc_e::STREAM_CLOSED, "trailers header without END_STREAM | END_HEADERS");
   }
@@ -67,6 +75,7 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
   // ( Pseudo-header fields MUST NOT appear in trailers )
   hpack::decode_headers_block(decoder, frame.data, [&](std::string_view name, std::string_view value) {
     HTTP2_LOG(TRACE, "name: {}, value: {}", name, value);
+    validate_trailer_header(name, frame.header.streamId);
     if (onHeader)
       (*onHeader)(name, value);
   });
@@ -196,7 +205,7 @@ void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
               before.headerTableSize, (void*)this);
     encodertablesizechangerequested = true;
   }
-  // TODO other value changes, e.g. if initial stream size changed,
+  adjustWindowForAllStreams(before.initialStreamWindowSize, remoteSettings.initialStreamWindowSize);
   // then change all active streams window size
   send_settings_ack(this).start_and_detach();
 }
@@ -219,7 +228,7 @@ void http2_connection::initiateGracefulShutdown(stream_id_t laststreamid) noexce
   // So, connection will work until all done and create new connection for new
   // streams. we will do all what requested, > last stream id will be ignored, <
   // last stream id will be handled
-  streamid = MAX_STREAM_ID + 2;
+  laststreamid = MAX_STREAM_ID;
   for (auto b = responses.begin(); b != responses.end();) {
     auto n = std::next(b);
     if (b->streamid > laststreamid) {
@@ -272,7 +281,7 @@ void http2_connection::finishRequestWithUserException(request_node& node, std::e
 }
 
 bool http2_connection::finishStreamWithError(rst_stream rstframe) {
-  validateFrame(rstframe);
+  validateRstFrame(rstframe);
   auto* node = findResponseByStreamid(rstframe.header.streamId);
   if (!node) {
     return false;
@@ -318,7 +327,7 @@ void http2_connection::windowUpdate(window_update_frame frame) {
   HTTP2_LOG(TRACE, "received window update, stream: {}, inc: {}, con: {}", frame.header.streamId,
             frame.windowSizeIncrement, (void*)this);
   if (frame.header.streamId == 0) {
-    increment_window_size(receiverWindowSize, int32_t(frame.windowSizeIncrement));
+    increment_window_size(receiverWindowSize, int32_t(frame.windowSizeIncrement), 0);
     return;
   }
   request_node* node = findResponseByStreamid(frame.header.streamId);
@@ -327,9 +336,14 @@ void http2_connection::windowUpdate(window_update_frame frame) {
               "received window update for stream which not exist, streamid: "
               "{}, con: {}",
               frame.header.streamId, (void*)this);
+    if (is_idle_stream(frame.header.streamId)) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("WINDOW_UPDATE for idle frame, streamid: {}", frame.header.streamId));
+    }
     return;
   }
-  increment_window_size(node->lrStreamlevelWindowSize, int32_t(frame.windowSizeIncrement));
+  increment_window_size(node->lrStreamlevelWindowSize, int32_t(frame.windowSizeIncrement),
+                        frame.header.streamId);
 }
 
 bool http2_connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
@@ -402,8 +416,9 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
 }
 
 void http2_connection::returnNode(request_node* ptr) noexcept {
-  assert(ptr);
+  assert(ptr && ptr->connection);
   forget(*ptr);
+  ptr->connection->mark_stream_closed(ptr->streamid);
   ptr->connection = nullptr;
   ptr->req = {};
   if (freeNodes.size() >= std::min<size_t>(1024, remoteSettings.maxConcurrentStreams)) {
@@ -433,14 +448,22 @@ http2_connection::response_awaiter http2_connection::responseReceived(request_no
 void http2_connection::ignoreFrame(http2_frame_t frame) {
   HTTP2_LOG(TRACE, "ignoring frame, type: {}, stream: {}. len: {}, con: {}", (int)frame.header.type,
             frame.header.streamId, frame.header.length, (void*)this);
+  using enum frame_e;
+  // here we assume, that there are node with frame stream id (thats why it is ignored)
+  if (frame.header.type == HEADERS || frame.header.type == DATA) {
+    if (is_closed_stream(frame.header.streamId) || is_idle_stream(frame.header.streamId)) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("DATA sent for idle frame with streamid {}", frame.header.streamId));
+    }
+  }
   switch (frame.header.type) {
-    case frame_e::HEADERS:
+    case HEADERS:
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-19
       // maintain hpack dynamic table
       hpack::decode_headers_block(decoder, frame.data,
                                   [](std::string_view /*name*/, std::string_view /*value*/) {});
       return;
-    case frame_e::DATA:
+    case DATA:
       // NOTE: not using data.size(), since padding should be counted as received
       // octets
       // ('data' does not contain padding)
@@ -449,6 +472,42 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
     default:
       return;
   }
+}
+
+void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_t new_window_size) {
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9.2-3
+  //  When the value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust the size of all stream
+  //  flow-control windows that it maintains by the difference between the new value and the old value.
+  if (old_window_size == new_window_size)
+    return;
+  // make sure every stream handled once
+  std::unordered_set<request_node*> handled;
+  cfint_t increment = new_window_size - old_window_size;
+  if (std::abs(increment) > std::numeric_limits<int32_t>::max()) {
+    throw protocol_error(
+        errc_e::FLOW_CONTROL_ERROR,
+        std::format("SETTINGS_INITIAL_WINDOW_SIZE leads to control flow overflow, old: {}, new: {}",
+                    old_window_size, new_window_size));
+  }
+
+  auto adjust_stream = [&](request_node& x) {
+    if (handled.contains(&x))
+      return;
+    try {
+      increment_window_size(x.lrStreamlevelWindowSize, increment, x.streamid);
+    } catch (stream_error const& e) {
+      // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9.2-7
+      // "An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that causes any flow-control window
+      // to exceed the maximum size as a connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR"
+      throw protocol_error(errc_e::FLOW_CONTROL_ERROR, e.msg());
+    }
+    handled.insert(&x);
+  };
+
+  for (request_node& x : requests)
+    adjust_stream(x);
+  for (request_node& x : responses)
+    adjust_stream(x);
 }
 
 }  // namespace http2

@@ -15,7 +15,7 @@ struct bench_server : http2_server {
 };
 
 int main() {
-  // workaround bug in h2spec, several tests require small max frame size
+  // several h2spec tests require small max frame size
   http2_server_options options{.maxReceiveFrameSize = 15'000, .singlethread = true};
   bench_server server(options);
 

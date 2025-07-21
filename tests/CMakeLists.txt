@@ -23,3 +23,10 @@ set_target_properties(http2_bench_server PROPERTIES
   LINKER_LANGUAGE CXX
   CMAKE_CXX_STANDARD_REQUIRED ON
   CXX_STANDARD 20)
+
+add_executable(test_merged_segments ${CMAKE_CURRENT_SOURCE_DIR}/test_merged_segments.cpp)
+target_link_libraries(test_merged_segments PUBLIC http2lib)
+
+set_target_properties(test_merged_segments PROPERTIES CXX_STANDARD 20)
+
+add_test(test_merged_segments test_merged_segments)

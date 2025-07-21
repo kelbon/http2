@@ -150,7 +150,7 @@ void server_session::onRequestReady(request_node& n) noexcept {
 }
 
 bool server_session::rstStreamServer(rst_stream rstframe) {
-  connection->validateFrame(rstframe);
+  connection->validateRstFrame(rstframe);
   request_node* n = connection->findResponseByStreamid(rstframe.header.streamId);
   if (!n) {
     auto it = std::find_if(
@@ -166,6 +166,15 @@ bool server_session::rstStreamServer(rst_stream rstframe) {
   return true;
 }
 
+void server_session::rstStreamAfterError(stream_error const& e) {
+  rst_stream rst;
+  rst.header = rst.make_header(e.streamid);
+  rst.errorCode = e.errc;
+  // reuse rst stream like if someone sent it
+  rstStreamServer(rst);
+  send_rst_stream(connection, e.streamid, e.errc).start_and_detach();
+}
+
 size_t server_session::requestsLeft() const noexcept {
   return connection->requests.size() + connection->responses.size();
 }
@@ -173,7 +182,8 @@ size_t server_session::requestsLeft() const noexcept {
 void server_session::requestShutdown() noexcept {
   if (!newRequestsForbiden) {
     newRequestsForbiden = true;
-    send_goaway(connection, connection->streamid, errc_e::NO_ERROR, "graceful shutdown").start_and_detach();
+    send_goaway(connection, connection->lastInitiatedStreamId(), errc_e::NO_ERROR, "graceful shutdown")
+        .start_and_detach();
   }
 
   if (requestsLeft() == 0) {
@@ -191,7 +201,8 @@ void server_session::requestTerminate() noexcept {
   terminated = true;
   newRequestsForbiden = true;
 
-  send_goaway(connection, connection->streamid, errc_e::NO_ERROR, "graceful shutdown").start_and_detach();
+  send_goaway(connection, connection->lastInitiatedStreamId(), errc_e::NO_ERROR, "graceful shutdown")
+      .start_and_detach();
 
   // forget requests (including not finished)
   auto doforget = [&](request_node* n) { finishServerRequest(*n); };
@@ -230,21 +241,59 @@ node_ptr server_session::newEmptyStreamNode(stream_id_t id) {
   return connection->newRequestNode({}, deadline_t::never(), nullptr, nullptr, id);
 }
 
-request_node& server_session::startRequestAssemble(stream_id_t id) {
-  connection->streamid = std::max(id, connection->streamid);
-  if (connection->findResponseByStreamid(id)) {
-    // TODO check if trying to create already closed stream
-    HTTP2_LOG(ERROR, "[SERVER] client initiates stream, which was already open, con: {}",
-              (void*)connection.get());
-    throw protocol_error{errc_e::PROTOCOL_ERROR,
-                         std::format("client initiates stream, which was already open, streamid: {}", id)};
+void server_session::startRequestAssemble(const http2_frame_t& frame) {
+  assert(frame.header.type == frame_e::HEADERS);
+
+  // if stream already exist, its trailers or error
+  if (auto* r = connection->findResponseByStreamid(frame.header.streamId)) [[unlikely]] {
+    if (r->status == reqerr_e::RESPONSE_IN_PROGRESS) {
+      HTTP2_LOG(ERROR, "[SERVER] client initiates stream, which was already open, con: {}",
+                (void*)connection.get());
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("client initiates stream, which was already open, streamid: {}",
+                                       frame.header.streamId));
+    } else {
+      // trailer headers received
+      r->receiveTrailersHeaders(connection->decoder, frame);
+      if (frame.header.flags & flags::END_STREAM) {
+        // Note: manages 'node' lifetime
+        onRequestReady(*r);
+      }
+      return;
+    }
   }
-  http2::node_ptr n = newEmptyStreamNode(id);
+
+  if (frame.header.streamId <= connection->laststartedstreamid) {
+    // https://www.rfc-editor.org/rfc/rfc9113.html#section-5.1.1-2
+    // "identifier of a newly established stream MUST be numerically greater than all streams that the
+    // initiating endpoint has opened"
+    throw protocol_error(
+        errc_e::PROTOCOL_ERROR,
+        std::format("stream identifier that is not numerically greater than previous (new: {}, prev: {})",
+                    frame.header.streamId, connection->laststartedstreamid));
+  }
+
+  if (connection->is_closed_stream(frame.header.streamId)) {
+    throw protocol_error(errc_e::STREAM_CLOSED,
+                         std::format("stream already closed, but received HEADERS frame. Stream id: {}",
+                                     frame.header.streamId));
+  }
+
+  // frame.header.streamId guaranteed to be > last started streamid (checked above)
+  connection->laststartedstreamid = frame.header.streamId;
+
+  http2::node_ptr n = newEmptyStreamNode(frame.header.streamId);
   n->status = reqerr_e::REQUEST_CREATED;
   connection->responses.insert(*n);
   // Note: после этого detach() стрим остаётся без владельца
   // это учитывается в onRequestReady и finishServerRequest
-  return *n.detach();
+  request_node& node = *n.detach();
+
+  node.receiveRequestHeaders(connection->decoder, frame);
+  if (frame.header.flags & flags::END_STREAM) {
+    // Note: manages 'node' lifetime
+    onRequestReady(node);
+  }
 }
 
 void server_session::clientSettingsChanged(http2_frame_t newsettings) {
@@ -264,8 +313,8 @@ void server_session::clientSettingsChanged(http2_frame_t newsettings) {
               connection->remoteSettings.headerTableSize, before.headerTableSize, (void*)connection.get());
     connection->encodertablesizechangerequested = true;
   }
-  // TODO other value changes, e.g. if initial stream size changed,
-  // then change all active streams window size
+  connection->adjustWindowForAllStreams(before.initialStreamWindowSize,
+                                        connection->remoteSettings.initialStreamWindowSize);
   send_settings_ack(connection).start_and_detach();
 }
 

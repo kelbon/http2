@@ -3,6 +3,7 @@
 
 #include "http2/errors.hpp"
 
+#include <cassert>
 #include <exception>
 #include <string_view>
 
@@ -73,11 +74,12 @@ constexpr std::string_view e2str(errc_e e) noexcept {
   }
 }
 
+// causes GOAWAY and connection close
 struct protocol_error : std::exception {
   errc_e errc = errc_e::PROTOCOL_ERROR;
   std::string dbginfo;
 
-  explicit protocol_error(errc_e merrc = errc_e::PROTOCOL_ERROR, std::string mdbginfo = {}) noexcept
+  explicit protocol_error(errc_e merrc, std::string mdbginfo = {}) noexcept
       : errc(merrc), dbginfo(std::move(mdbginfo)) {
   }
 
@@ -93,11 +95,23 @@ struct protocol_error : std::exception {
   return protocol_error(errc_e::INTERNAL_ERROR, std::format("UNSUPPORTED {}", s));
 }
 
-// TODO stream errors (causing RST stream, not closing connection)
-[[nodiscard]] inline protocol_error stream_error(errc_e, stream_id_t streamid, std::string msg) {
-  (void)streamid;  // now unused
-  return protocol_error(errc_e::PROTOCOL_ERROR, std::move(msg));
-}
+// causes RST_STREAM
+struct stream_error : protocol_error {
+  stream_id_t streamid;
+
+  // precondition: streamid != 0
+  stream_error(errc_e e, stream_id_t streamid, std::string msg)
+      : protocol_error(e, std::move(msg)), streamid(streamid) {
+    assert(streamid != 0);
+  }
+  char const* what() const noexcept override {
+    return "http2 stream error";
+  }
+  std::string msg() const {
+    return std::format("http2 stream error, errc: {}, dbginfo: {}, streamid: {}", (int)errc, dbginfo,
+                       streamid);
+  }
+};
 
 struct goaway_exception : std::exception {
   stream_id_t lastStreamId;

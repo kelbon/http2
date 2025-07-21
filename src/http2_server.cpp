@@ -142,6 +142,7 @@ struct http2_server::impl {
     }
 
     http2_server_options opts = options;
+    int reader_ec = 0;
 
     // firstly insert session into list, so server will drop it if stops during session establishing
     server_session session(std::move(http2con), opts, *creator);
@@ -196,8 +197,11 @@ struct http2_server::impl {
       }
     });
     session.connection->pingtimer.arm_periodic(std::chrono::milliseconds(100));
-    (void)co_await start_server_reader_for(session);
-
+    reader_ec = co_await start_server_reader_for(session);
+    if (reader_ec != reqerr_e::DONE) {
+      // give time for sending goaway
+      co_await net.sleep(ioctx(), std::chrono::milliseconds(1));
+    }
     HTTP2_LOG(TRACE, "[SERVER] session {} reader stops, waiting stop", (void*)session.connection.get());
   drop_session:
     session.requestTerminate();

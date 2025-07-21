@@ -57,7 +57,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       HTTP2_LOG(WARN, "[SERVER] received CONTINUATION, not supported");
       return false;
     case PRIORITY:
-      con.validatePriorityFrameHeader(frame.header);
+      con.validatePriorityFrameHeader(frame);
     case PRIORITY_UPDATE:
     default:
       // ignore
@@ -94,12 +94,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
         return true;
       }
 
-      request_node& node = session.startRequestAssemble(frame.header.streamId);
-      node.receiveRequestHeaders(con.decoder, frame);
-      if (frame.header.flags & flags::END_STREAM) {
-        // Note: manages 'node' lifetime
-        session.onRequestReady(node);
-      }
+      session.startRequestAssemble(frame);
       return true;
     }
     case DATA: {
@@ -126,7 +121,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
 }
 
 // returns false on protocol error
-[[nodiscard]] static bool server_handle_frame(http2_frame_t frame, server_session& session) {
+[[nodiscard]] static bool server_handle_frame(http2_frame_t frame, server_session& session) try {
   using enum frame_e;
   switch (frame.header.type) {
     case HEADERS:
@@ -135,6 +130,10 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
     default:
       return server_handle_utility_frame(frame, session);
   }
+} catch (stream_error& e) {
+  HTTP2_LOG(ERROR, "[SERVER] stream exception in reader. err: {}", e.msg());
+  session.rstStreamAfterError(e);
+  return true;  // do not require connection close
 }
 
 dd::task<int> start_server_reader_for(http2::server_session& session) try {
@@ -202,7 +201,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     }
   } catch (hpack::protocol_error& e) {
     HTTP2_LOG(ERROR, , "[SERVER] hpack error happens in reader, err: {}", e.what());
-    send_goaway(&con, con.streamid, errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
+    send_goaway(&con, con.lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
     goto hpack_error;
   } catch (protocol_error& e) {
     HTTP2_LOG(ERROR, "[SERVER] exception in reader. err: {}", e.msg());

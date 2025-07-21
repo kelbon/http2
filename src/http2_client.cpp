@@ -82,14 +82,14 @@ struct ping_callback {
     assert(clientptr);
     con = std::move(c);
     client = std::move(clientptr);
-    lastid = con->streamid;
+    lastid = con->laststartedstreamid;
     pingtimeout = pingTimeout;
   }
 
   void operator()() {
     // send ping only if nothing happens since last iteration
-    if (lastid != con->streamid) {
-      lastid = con->streamid;
+    if (lastid != con->laststartedstreamid) {
+      lastid = con->laststartedstreamid;
       return;
     }
     if (!con->pingdeadlinetimer.armed()) {
@@ -226,7 +226,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
       HTTP2_LOG(INFO, "received CONTINUATION, not supported");
       return false;
     case PRIORITY:
-      con.validatePriorityFrameHeader(frame.header);
+      con.validatePriorityFrameHeader(frame);
     case PRIORITY_UPDATE:
     default:
       // ignore
@@ -281,9 +281,8 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
     // identifier
     send_goaway(&con, MAX_STREAM_ID, errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
     return false;
-  } catch (protocol_error& e) {
-    HTTP2_LOG(ERROR, "exception while handling frame for stream {}, err: {}", node->streamid, e.what());
-    return false;
+  } catch (protocol_error&) {
+    throw;
   } catch (...) {
     // user-handling exception, do not drop connection
     con.finishRequestWithUserException(*node, std::current_exception());
@@ -297,7 +296,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
 }
 
 // returns false on protocol error
-[[nodiscard]] static bool handle_frame(http2_frame_t frame, http2_connection& con) {
+[[nodiscard]] static bool handle_frame(http2_frame_t frame, http2_connection& con) try {
   using enum frame_e;
   switch (frame.header.type) {
     case HEADERS:
@@ -306,6 +305,15 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
     default:
       return handle_utility_frame(frame, con);
   }
+} catch (stream_error& e) {
+  // reuse finish request with 'user' exception to make sure user will know about error
+  request_node* node = con.findResponseByStreamid(e.streamid);
+  if (node) {
+    con.finishRequestWithUserException(*node, std::current_exception());
+  } else {
+    throw protocol_error(e.errc, e.msg());
+  }
+  return true;  // do not require connection close
 }
 
 // writer works on node with reader (window_update / rst_stream possible)

@@ -66,6 +66,8 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // returns false if no such stream
   bool rstStreamServer(rst_stream);
 
+  void rstStreamAfterError(stream_error const&);
+
   // invoked when session completely done
   void onSessionDone() noexcept;
 
@@ -79,7 +81,9 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // rstStreamServer()
   // * server terminates session, then onResponseDone called by
   // server_session::requestTerminate
-  request_node& startRequestAssemble(stream_id_t);
+  //
+  // Note: may accept trailers headers too
+  void startRequestAssemble(const http2_frame_t& /*HEADERS frame*/);
 
   // after creation 3 hooks (requests, responses, timers) and 'task' left unused
   http2::node_ptr newEmptyStreamNode(stream_id_t);

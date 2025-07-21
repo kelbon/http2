@@ -194,16 +194,19 @@ struct rst_stream {
 
   static constexpr inline size_t LEN = FRAME_HEADER_LEN + 4;
 
-  template <std::output_iterator<byte_t> O>
-  static O form(stream_id_t streamid, errc_e ec, O out) {
-    assert(streamid != 0);
-    frame_header header{
+  static frame_header make_header(stream_id_t streamid) {
+    return frame_header{
         .length = 4,
         .type = frame_e::RST_STREAM,
         .flags = flags::EMPTY_FLAGS,
         .streamId = streamid,
     };
-    out = header.form(out);
+  }
+
+  template <std::output_iterator<byte_t> O>
+  static O form(stream_id_t streamid, errc_e ec, O out) {
+    assert(streamid != 0);
+    out = make_header(streamid).form(out);
     htonli(ec);
     return std::copy_n(as_bytes(ec).data(), 4, out);
   }
@@ -294,7 +297,7 @@ inline void validate_settings_not_ack_frame(const frame_header& h) {
   if (h.type != frame_e::SETTINGS || (h.flags & flags::ACK) || h.streamId != 0 ||
       (h.length % sizeof(setting_t)) != 0) {
     HTTP2_LOG(ERROR, "invalid frame: {}, provided data size: {}", h, h.length);
-    throw protocol_error{errc_e::PROTOCOL_ERROR, std::format("invalid frame {}", h)};
+    throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid frame {}", h));
   }
 }
 
@@ -488,24 +491,32 @@ static O form_connection_initiation(settings_t settings, O out) {
 }
 
 // used while handling window_update frames
-// throws on protocol errors
-// precondition: windowSizeIncrement >= 0 (but zero is protocol error)
-inline void increment_window_size(cfint_t& size, int32_t windowSizeIncrement) {
-  assert(windowSizeIncrement >= 0);
+// throws on control flow errors (stream error)
+// handles both positive (default) and negative (only SETTINGS change) increments
+inline void increment_window_size(cfint_t& size, int32_t windowSizeIncrement, stream_id_t streamid) {
   if (windowSizeIncrement == 0) {
     HTTP2_LOG(ERROR, "invalid window size increment: zero");
     throw protocol_error(errc_e::FLOW_CONTROL_ERROR, "invalid window size increment: zero");
   }
-  // avoid overflow
-  if (int64_t(size) + int64_t(windowSizeIncrement) > int64_t(MAX_WINDOW_SIZE)) {
+  // avoid overflow (and negative overflow)
+  // rfc does not specify minimal negative value for window size,
+  // this implementation uses -MAX_WINDOW_SIZE as negative minimum
+  if (std::abs(int64_t(size) + int64_t(windowSizeIncrement)) > int64_t(MAX_WINDOW_SIZE)) {
     HTTP2_LOG(ERROR,
               "invalid window size increment: overflow, current size: {}, "
               "increment: {}",
               uint64_t(size), uint64_t(windowSizeIncrement));
-    throw protocol_error(
-        errc_e::FLOW_CONTROL_ERROR,
-        std::format("invalid window size increment: overflow, current size: {}, increment: {}",
-                    uint64_t(size), uint64_t(windowSizeIncrement)));
+    if (streamid != 0) {
+      throw stream_error(
+          errc_e::FLOW_CONTROL_ERROR, streamid,
+          std::format("invalid window size increment: overflow, current size: {}, increment: {}",
+                      uint64_t(size), uint64_t(windowSizeIncrement)));
+    } else {
+      throw protocol_error(
+          errc_e::FLOW_CONTROL_ERROR,
+          std::format("invalid window size increment: overflow, current size: {}, increment: {}",
+                      uint64_t(size), uint64_t(windowSizeIncrement)));
+    }
   }
   size += windowSizeIncrement;
 }

@@ -9,8 +9,6 @@
 
 namespace http2 {
 
-// TODO? мб не на boost asio завязывать а на timer group, вопрос откуда она возьмётся конечно...
-
 // for using in single thread!
 struct timer_t {
   using clock_type = std::chrono::steady_clock;

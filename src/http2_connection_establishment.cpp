@@ -53,7 +53,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
       .deprecatedPriorityDisabled = true,
   };
   con->decoder = hpack::decoder(con->localSettings.headerTableSize);
-  con->streamid = 1;  // client
+  con->laststartedstreamid = 0;
 
   io_error_code ec;
 
