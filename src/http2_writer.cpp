@@ -213,7 +213,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
       node_ptr node = &con->requests.front();
 
       con->requests.pop_front();
-      con->responses.insert(*node);
+      con->insertResponseNode(*node);
 
       // send headers
 

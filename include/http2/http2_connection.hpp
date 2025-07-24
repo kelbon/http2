@@ -93,11 +93,15 @@ struct http2_frame_t {
 // and reused in server, in this case its response for sending in writer (.req
 // field stores response)
 struct request_node {
+  using requests_hook_type = bi::list_member_hook<link_option_t>;
+  using responses_hook_type = bi::unordered_set_member_hook<link_option_t>;
+  using timers_hooks_type = bi::bs_set_member_hook<link_option_t>;
+
   // used when request started in connection.requests and when its free in
   // connection.freeNodes
-  bi::list_member_hook<link_option_t> requestsHook;
-  bi::unordered_set_member_hook<link_option_t> responsesHook;
-  bi::bs_set_member_hook<link_option_t> timersHook;
+  requests_hook_type requestsHook;
+  responses_hook_type responsesHook;
+  timers_hooks_type timersHook;
   uint32_t refcount = 0;
   // local -> remote hope
   // inited from remote settings
@@ -175,16 +179,19 @@ struct request_node {
 // stop writer/reader in shutdown with seastar
 struct http2_connection {
   using requests_member_hook_t =
-      bi::member_hook<request_node, bi::list_member_hook<link_option_t>, &request_node::requestsHook>;
-  using responses_member_hook_t = bi::member_hook<request_node, bi::unordered_set_member_hook<link_option_t>,
-                                                  &request_node::responsesHook>;
+      bi::member_hook<request_node, request_node::requests_hook_type, &request_node::requestsHook>;
+  using responses_member_hook_t =
+      bi::member_hook<request_node, request_node::responses_hook_type, &request_node::responsesHook>;
+  using timers_member_hook_t =
+      bi::member_hook<request_node, request_node::timers_hooks_type, &request_node::timersHook>;
+
   using requests_t = bi::list<request_node, bi::cache_last<true>, requests_member_hook_t>;
+
   using responses_t = bi::unordered_set<request_node, bi::constant_time_size<true>, responses_member_hook_t,
                                         bi::key_of_value<request_node::key_of_value>,
                                         bi::equal<request_node::equal_by_streamid>,
                                         bi::hash<request_node::hash_by_streamid>, bi::power_2_buckets<true>>;
-  using timers_member_hook_t =
-      bi::member_hook<request_node, bi::bs_set_member_hook<link_option_t>, &request_node::timersHook>;
+
   using timers_t = bi::treap_multiset<request_node, bi::constant_time_size<true>, timers_member_hook_t,
                                       bi::priority<request_node::compare_by_deadline>,
                                       bi::compare<request_node::compare_by_deadline>>;
@@ -208,9 +215,12 @@ struct http2_connection {
   // setted only when writer is suspended and nullptr when works
   dd::job writer;
   requests_t requests;
+
+  static constexpr inline size_t initial_buckets_count = 2;
+
   // Note: must be before 'responses' because of destroy ordering
-  static constexpr inline size_t buckets_count = 256;
-  responses_t::bucket_type buckets[buckets_count];
+  // invariant: .size is always pow of 2
+  std::vector<responses_t::bucket_type> buckets;
   responses_t responses;
   timers_t timers;
   bool dropped = false;  // setted ONLY in dropConnection
@@ -250,6 +260,22 @@ struct http2_connection {
 
   void startDrop() noexcept {
     dropped = true;
+  }
+
+  // used when client send request and waits for response
+  // OR
+  // when server assebles request (in this case 'responses' used as hash table)
+  // or server writes response and inserts into responses to catch WINDOW_UPDATe / RST_STREAM
+  void insertResponseNode(request_node& node) {
+    responses.insert(node);
+    if (responses.size() > buckets.size() / 2) [[unlikely]] {
+      // https://github.com/boostorg/intrusive/issues/96
+      // workaround:
+      // unordered set bucket copy(move) ctor does nothing, so .resize will be UB
+      decltype(buckets) new_buckets(buckets.size() * 2);
+      responses.rehash({new_buckets.data(), new_buckets.size()});
+      buckets = std::move(new_buckets);
+    }
   }
 
   // interface for writer only

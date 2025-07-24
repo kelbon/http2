@@ -145,7 +145,6 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
   }
   assert(req.headers.empty());
   parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
-  assert(!req.path.empty());  // parsing should throw on this failure
 #ifdef HTTP2_ENABLE_TRACE
   trace_request_headers(req, /*from client=*/true);
 #endif
@@ -170,7 +169,8 @@ void request_node::receiveRequestData(http2_frame_t frame) {
 
 http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context& ctx)
     : tcpCon(std::move(c)),
-      responses({buckets, buckets_count}),
+      buckets(initial_buckets_count),
+      responses({buckets.data(), buckets.size()}),
       pingtimer(ctx),
       pingdeadlinetimer(ctx),
       timeoutWardenTimer(ctx) {

@@ -89,7 +89,6 @@ server_session::~server_session() {
 
 static dd::task<int> send_response(node_ptr node, server_session& session) {
   assert(node);
-  assert(!node->req.path.empty());
   assert(node->refcount == 1);
   assert(node->status == reqerr_e::RESPONSE_IN_PROGRESS);
   on_scope_exit {
@@ -120,7 +119,6 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
 }
 
 void server_session::onRequestReady(request_node& n) noexcept {
-  assert(!n.req.path.empty());
   assert(n.refcount == 1);
 
   // was detached before in startRequestAssemble
@@ -284,7 +282,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
 
   http2::node_ptr n = newEmptyStreamNode(frame.header.streamId);
   n->status = reqerr_e::REQUEST_CREATED;
-  connection->responses.insert(*n);
+  connection->insertResponseNode(*n);
   // Note: после этого detach() стрим остаётся без владельца
   // это учитывается в onRequestReady и finishServerRequest
   request_node& node = *n.detach();
