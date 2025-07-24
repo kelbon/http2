@@ -13,9 +13,9 @@ static void validate_initial_window_size(setting_t s) {
   assert(s.identifier == SETTINGS_INITIAL_WINDOW_SIZE);
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.8.3
   if (s.value > MAX_WINDOW_SIZE) {
-    throw protocol_error(
-        errc_e::FLOW_CONTROL_ERROR,
-        std::format("SETTINGS_INITIAL_WINDOW_SIZE > max, max: {}, value: {}", MAX_WINDOW_SIZE, s.value));
+    throw protocol_error(errc_e::FLOW_CONTROL_ERROR,
+                         std::format("SETTINGS_INITIAL_WINDOW_SIZE > max, max: {}, value: {}",
+                                     MAX_WINDOW_SIZE, uint32_t(s.value)));
   }
 }
 
@@ -28,7 +28,8 @@ static void validate_max_frame_size(setting_t s) {
   if (s.value < MIN_MAX_FRAME_LEN || s.value > 16'777'215) {
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
-        std::format("invalid MAX_FRAME_SIZE, must be in range [16'384, 16`777`215], value: {}", s.value));
+        std::format("invalid MAX_FRAME_SIZE, must be in range [16'384, 16`777`215], value: {}",
+                    uint32_t(s.value)));
   }
 }
 
@@ -43,7 +44,7 @@ connection error of type PROTOCOL_ERROR.
     HTTP2_LOG(ERROR,
               "invalid server setting NO_RFC7540 option, value: {}, is first "
               "settings frame: {}",
-              s.value, firstframe);
+              uint32_t(s.value), firstframe);
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         "MUST NOT change the SETTINGS_NO_RFC7540_PRIORITIES value after the first SETTINGS frame");
@@ -53,9 +54,9 @@ connection error of type PROTOCOL_ERROR.
 static void validate_enable_push_from_client(setting_t s) {
   assert(s.identifier == SETTINGS_ENABLE_PUSH);
   if (s.value > 1) {
-    HTTP2_LOG(ERROR, "invalid client settings enable_push value: {}", s.value);
+    HTTP2_LOG(ERROR, "invalid client settings enable_push value: {}", uint32_t(s.value));
     throw protocol_error(errc_e::PROTOCOL_ERROR,
-                         std::format("invalid client settings enable_push value: {}", s.value));
+                         std::format("invalid client settings enable_push value: {}", uint32_t(s.value)));
   }
 }
 
@@ -63,9 +64,9 @@ static void validate_enable_push_from_server(setting_t s) {
   assert(s.identifier == SETTINGS_ENABLE_PUSH);
   // server MUST NOT send i
   if (s.value > 0) {
-    HTTP2_LOG(ERROR, "invalid server settings enable push, value: {}", s.value);
+    HTTP2_LOG(ERROR, "invalid server settings enable push, value: {}", uint32_t(s.value));
     throw protocol_error(errc_e::PROTOCOL_ERROR,
-                         std::format("invalid server settings enable push, value: {}", s.value));
+                         std::format("invalid server settings enable push, value: {}", uint32_t(s.value)));
   }
 }
 
@@ -296,7 +297,7 @@ static protocol_error duplicated_pseudoheader(stream_id_t streamid, std::string_
 static void validate_header_name(const hpack::header_view& h, stream_id_t streamid) {
   std::string_view str = h.name.str();
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.1-3.1
-  for (char c : str) {
+  for (int c : str) {
     switch (c) {
       default:
         continue;

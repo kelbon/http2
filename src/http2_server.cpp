@@ -5,6 +5,7 @@
 #include "http2/http2_server_session.hpp"
 
 #include <exception>
+#include <list>
 
 #include <http2/http2_connection.hpp>
 #include <http2/http2_connection_establishment.hpp>

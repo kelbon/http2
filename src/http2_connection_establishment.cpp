@@ -26,10 +26,11 @@ static void validate_client_magic(std::span<byte_t> magic) {
     HTTP2_LOG(ERROR,
               "[SERVER] client session establishment failed: "
               "incorrect client preface");
-    throw protocol_error(errc_e::PROTOCOL_ERROR,
-                         std::format("invalid client magic, expected: {}, received: {}",
-                                     std::string_view((const char*)CONNECTION_PREFACE),
-                                     std::string_view((const char*)magic.data(), magic.size())));
+    throw protocol_error(
+        errc_e::PROTOCOL_ERROR,
+        std::format("invalid client magic, expected: {}, received: {}",
+                    std::string_view((const char*)CONNECTION_PREFACE, std::size(CONNECTION_PREFACE)),
+                    std::string_view((const char*)magic.data(), magic.size())));
   }
 }
 

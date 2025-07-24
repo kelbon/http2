@@ -1,4 +1,5 @@
 #include <http2/http2_server.hpp>
+#include <iostream>
 
 using namespace http2;
 struct bench_server : http2_server {
@@ -14,7 +15,7 @@ struct bench_server : http2_server {
   }
 };
 
-int main() {
+int main() try {
   // several h2spec tests require small max frame size
   http2_server_options options{.maxReceiveFrameSize = 15'000, .singlethread = true};
   bench_server server(options);
@@ -23,4 +24,6 @@ int main() {
   server.listen({ipv4_endpoint});
 
   server.ioctx().run();
+} catch (std::exception& e) {
+  std::cout << e.what() << std::endl;
 }
