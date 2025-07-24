@@ -11,7 +11,7 @@ struct bench_server : http2_server {
   bench_server(http2_server_options o) : http2_server(o), t(ioctx()) {
   }
 
-  dd::task<http_response> handle_request(http_request&& r) override {
+  dd::task<http_response> handle_request(http_request r) override {
     http_response& rsp = co_await dd::this_coro::return_place;
     rsp.status = 200;
     std::string_view answer = "hello world";
