@@ -463,21 +463,34 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
   HTTP2_LOG(TRACE, "ignoring frame, type: {}, stream: {}. len: {}, con: {}", (int)frame.header.type,
             frame.header.streamId, frame.header.length, (void*)this);
   using enum frame_e;
-  // here we assume, that there are node with frame stream id (thats why it is ignored)
-  if (frame.header.type == HEADERS || frame.header.type == DATA) {
-    if (is_closed_stream(frame.header.streamId) || is_idle_stream(frame.header.streamId)) {
-      throw protocol_error(errc_e::PROTOCOL_ERROR,
-                           std::format("DATA sent for idle frame with streamid {}", frame.header.streamId));
-    }
-  }
+  // here we assume, that there are no node with frame stream id (thats why it is ignored)
+
+  // Note: sending frame for closed stream is only stream error, not protocol
+  // because its possible that stream was canceled due timeout and then frame received
   switch (frame.header.type) {
     case HEADERS:
+      if (is_closed_stream(frame.header.streamId)) {
+        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
+                           "HEADERS frame sent for closed stream");
+      }
+      // even if we ignoring frame, stream is done
+      laststartedstreamid = std::max(laststartedstreamid, frame.header.streamId);
+      mark_stream_closed(frame.header.streamId);
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-19
       // maintain hpack dynamic table
       hpack::decode_headers_block(decoder, frame.data,
                                   [](std::string_view /*name*/, std::string_view /*value*/) {});
       return;
     case DATA:
+      if (is_closed_stream(frame.header.streamId)) {
+        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
+                           "DATA frame sent for closed or idle frame");
+      }
+      if (is_idle_stream(frame.header.streamId)) {
+        throw protocol_error(
+            errc_e::PROTOCOL_ERROR,
+            std::format("DATA frame sent for idle stream, streamid {}", frame.header.streamId));
+      }
       // NOTE: not using data.size(), since padding should be counted as received
       // octets
       // ('data' does not contain padding)

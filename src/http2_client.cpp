@@ -312,7 +312,8 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
   if (node) {
     con.finishRequestWithUserException(*node, std::current_exception());
   } else {
-    throw protocol_error(e.errc, e.what());
+    // may be request ended by timeout
+    send_rst_stream(&con, e.streamid, e.errc).start_and_detach();
   }
   return true;  // do not require connection close
 }

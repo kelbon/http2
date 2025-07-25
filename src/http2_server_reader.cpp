@@ -54,8 +54,10 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       }
       return false;
     case CONTINUATION:
-      HTTP2_LOG(WARN, "[SERVER] received CONTINUATION, not supported");
-      return false;
+      // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.10-8
+      throw protocol_error(
+          errc_e::PROTOCOL_ERROR,
+          "CONTINUATION frame received without a preceding HEADERS without END_HEADERS flag");
     case PRIORITY:
       con.validatePriorityFrameHeader(frame);
       [[fallthrough]];
@@ -80,8 +82,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
     return false;
   }
   session.connection->validateDataOrHeadersFrameSize(frame.header);
-  if ((frame.header.streamId % 2) == 0) {
-    // TODO check if tries to create already closed stream
+  if ((frame.header.streamId % 2) == 0) [[unlikely]] {
     HTTP2_LOG(ERROR, "[SERVER] client tries to initiate stream with even stream id");
     return false;
   }
@@ -89,8 +90,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
     case HEADERS: {
       frame.ignoreDeprecatedPriority();
       if (session.newRequestsForbiden) [[unlikely]] {
-        // maintain hpack table anyway
-        hpack::decode_headers_block(con.decoder, frame.data, [](std::string_view, std::string_view) {});
+        session.connection->ignoreFrame(frame);
         send_rst_stream(&con, frame.header.streamId, errc_e::REFUSED_STREAM).start_and_detach();
         return true;
       }
