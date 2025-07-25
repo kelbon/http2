@@ -312,7 +312,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
   if (node) {
     con.finishRequestWithUserException(*node, std::current_exception());
   } else {
-    throw protocol_error(e.errc, e.msg());
+    throw protocol_error(e.errc, e.what());
   }
   return true;  // do not require connection close
 }
@@ -385,12 +385,12 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
       }
     }
   } catch (protocol_error& e) {
-    HTTP2_LOG(INFO, "exception: {}", e.msg());
+    HTTP2_LOG(INFO, "exception: {}", e.what());
     reason = reqerr_e::PROTOCOL_ERR;
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     goto dropConnection;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "goaway received, {}", gae.msg());
+    HTTP2_LOG(ERROR, "goaway received, {}", gae.what());
     reason = reqerr_e::SERVER_CANCELLED_REQUEST;
     goto dropConnection;
   } catch (std::exception& se) {

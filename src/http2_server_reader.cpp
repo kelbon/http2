@@ -135,7 +135,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       return server_handle_utility_frame(frame, session);
   }
 } catch (stream_error& e) {
-  HTTP2_LOG(ERROR, "[SERVER] stream exception in reader. err: {}", e.msg());
+  HTTP2_LOG(ERROR, "[SERVER] stream exception in reader. err: {}", e.what());
   session.rstStreamAfterError(e);
   return true;  // do not require connection close
 }
@@ -204,15 +204,15 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
       }
     }
   } catch (hpack::protocol_error& e) {
-    HTTP2_LOG(ERROR, , "[SERVER] hpack error happens in reader, err: {}", e.what());
+    HTTP2_LOG(ERROR, "[SERVER] hpack error happens in reader, err: {}", e.what());
     send_goaway(&con, con.lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
     goto hpack_error;
   } catch (protocol_error& e) {
-    HTTP2_LOG(ERROR, "[SERVER] exception in reader. err: {}", e.msg());
+    HTTP2_LOG(ERROR, "[SERVER] exception in reader. err: {}", e.what());
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     co_return reqerr_e::PROTOCOL_ERR;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "[SERVER] goaway received, {}", gae.msg());
+    HTTP2_LOG(ERROR, "[SERVER] goaway received, {}", gae.what());
     co_return reqerr_e::CANCELLED;
   } catch (std::exception& se) {
     HTTP2_LOG(INFO, "[SERVER] unexpected exception in reader {}", se.what());

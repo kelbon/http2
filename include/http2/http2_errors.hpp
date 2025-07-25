@@ -79,15 +79,16 @@ struct protocol_error : std::exception {
   errc_e errc = errc_e::PROTOCOL_ERROR;
   std::string dbginfo;
 
-  explicit protocol_error(errc_e merrc, std::string mdbginfo = {}) noexcept
-      : errc(merrc), dbginfo(std::move(mdbginfo)) {
+  explicit protocol_error(errc_e merrc) noexcept : errc(merrc) {
+  }
+
+  explicit protocol_error(errc_e merrc, std::string mdbginfo)
+      : errc(merrc),
+        dbginfo(std::format("HTTP/2 protocol error: errc: {}, dbginfo: \"{}\"", e2str(errc), mdbginfo)) {
   }
 
   char const* what() const noexcept override {
-    return "http2 protocol error";
-  }
-  std::string msg() const {
-    return std::format("http2 protocol error, errc: {}, dbginfo: {}", (int)errc, dbginfo);
+    return dbginfo.c_str();
   }
 };
 
@@ -100,16 +101,9 @@ struct stream_error : protocol_error {
   stream_id_t streamid;
 
   // precondition: streamid != 0
-  stream_error(errc_e e, stream_id_t streamid, std::string msg)
-      : protocol_error(e, std::move(msg)), streamid(streamid) {
+  stream_error(errc_e e, stream_id_t id, std::string msg) : protocol_error(e), streamid(id) {
     assert(streamid != 0);
-  }
-  char const* what() const noexcept override {
-    return "http2 stream error";
-  }
-  std::string msg() const {
-    return std::format("http2 stream error, errc: {}, dbginfo: {}, streamid: {}", (int)errc, dbginfo,
-                       streamid);
+    this->dbginfo = std::format("HTTP/2 stream error: errc: {}, dbginfo: \"{}\"", e2str(errc), msg);
   }
 };
 
@@ -117,18 +111,16 @@ struct goaway_exception : std::exception {
   stream_id_t lastStreamId;
   errc_e errorCode;
   std::string debugInfo;
+  std::string msg;
 
-  goaway_exception(stream_id_t lastId, errc_e ec, std::string dbgInfo) noexcept
+  goaway_exception(stream_id_t lastId, errc_e ec, std::string dbgInfo)
       : lastStreamId(lastId), errorCode(ec), debugInfo(std::move(dbgInfo)) {
+    msg = std::format("errc: {}, debug info: \"{}\", last stream id: {}", e2str(errorCode), debugInfo,
+                      lastStreamId);
   }
 
   char const* what() const noexcept override {
-    return e2str(errorCode).data();  // assume null terminated
-  }
-
-  std::string msg() {
-    return std::format("errc: {}, debug info: \"{}\", last stream id: {}", e2str(errorCode), debugInfo,
-                       lastStreamId);
+    return msg.c_str();
   }
 };
 

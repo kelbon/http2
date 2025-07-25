@@ -39,6 +39,7 @@ struct http2_server {
   virtual ~http2_server();
 
   // precondition: 'handle_request' must not wait for sever shutdown / terminate (deadlock)
+  // if exception thrown from 'handle_request', server will RST_STREAM (PROTOCOL_ERROR)
   virtual dd::task<http_response> handle_request(http_request) = 0;
 
   [[nodiscard]] size_t sessionsCount() const noexcept;

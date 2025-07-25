@@ -128,7 +128,11 @@ struct request_node {
     return task == nullptr;
   }
 
-  void receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t frame);
+  // client side
+  void receiveTrailersHeaders(hpack::decoder&, http2_frame_t /*headers frame*/);
+
+  // server side
+  void receiveRequestTrailers(hpack::decoder&, http2_frame_t /*headers frame*/);
 
   // client side
   // expects :status as first header

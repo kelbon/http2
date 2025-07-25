@@ -172,7 +172,7 @@ static dd::task<void> write_pending_data_frames(node_ptr work, http2_connection_
   HTTP2_LOG(ERROR,
             "writing pending frames for stream {} ended with protocol error, "
             "err: {}, con: {}",
-            work->streamid, e.msg(), (void*)con.get());
+            work->streamid, e.what(), (void*)con.get());
 } catch (std::exception& e) {
   con->finishRequest(*work, reqerr_e::UNKNOWN_ERR);
   send_rst_stream(con, work->streamid, errc_e::CANCEL).start_and_detach();

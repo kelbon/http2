@@ -88,6 +88,20 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
   }
 }
 
+void request_node::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t hdrs) {
+  assert(hdrs.header.type == frame_e::HEADERS);
+  assert(!onHeader && !onDataPart);
+  on_scope_exit {
+    onHeader = nullptr;
+  };
+  auto onheader = [&](std::string_view name, std::string_view value) {
+    req.headers.push_back(http_header_t(std::string(name), std::string(value)));
+  };
+  // server does not set 'onHeader' / 'onDataPart' callbacks, but reuses this function for trailers
+  onHeader = &onheader;
+  receiveTrailersHeaders(decoder, hdrs);
+}
+
 void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
@@ -499,7 +513,7 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9.2-7
       // "An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that causes any flow-control window
       // to exceed the maximum size as a connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR"
-      throw protocol_error(errc_e::FLOW_CONTROL_ERROR, e.msg());
+      throw protocol_error(errc_e::FLOW_CONTROL_ERROR, e.what());
     }
     handled.insert(&x);
   };

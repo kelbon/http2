@@ -105,7 +105,14 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   // не будет ждать .stop сервера (нарушение ведёт к вечному ожиданию)
   // и вернёт хоть когда-нибудь response (нарушение ведёт к зависанию стрима)
   // Note: callback accepts Request by reference, need to handle it here...
-  http_response rsp = co_await session.server->handle_request(std::move(node->req));
+  http_response rsp;
+  try {
+    rsp = co_await session.server->handle_request(std::move(node->req));
+  } catch (std::exception& e) {
+    HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what());
+    send_rst_stream(session.connection, node->streamid, errc_e::PROTOCOL_ERROR).start_and_detach();
+    co_return 0;
+  }
 
   node->status = (int)rsp.status;
   node->req = response_bro::torequest(std::move(rsp));
@@ -252,7 +259,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
                                        frame.header.streamId));
     } else {
       // trailer headers received
-      r->receiveTrailersHeaders(connection->decoder, frame);
+      r->receiveRequestTrailers(connection->decoder, frame);
       if (frame.header.flags & flags::END_STREAM) {
         // Note: manages 'node' lifetime
         onRequestReady(*r);

@@ -13,6 +13,16 @@ struct bench_server : http2_server {
 
   dd::task<http_response> handle_request(http_request r) override {
     http_response& rsp = co_await dd::this_coro::return_place;
+    // some specific h2 test for content-length, which i dont want to handle in server
+    auto hdr = std::ranges::find(r.headers, "content-length", &http2::http_header_t::hname);
+    if (hdr != r.headers.end()) {
+      std::string_view len = hdr->hvalue;
+      size_t value;
+      auto [ptr, ec] = std::from_chars(len.data(), len.data() + len.size(), value);
+      if (ec != std::errc{} || value != r.body.data.size())
+        throw http2::stream_error(errc_e::PROTOCOL_ERROR, /*does not know*/ 1,
+                                  "\"content-length\" does not equal to DATA len");
+    }
     rsp.status = 200;
     std::string_view answer = "hello world";
     auto* in = answer.data();

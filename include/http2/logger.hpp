@@ -4,7 +4,14 @@
 #include <format>
 #include <iostream>
 
+// validates FMT_STR to not be empty token, forbids LOG(, arg)
+#define HTTP2_FMT_STRING_IS_EMPTY_ invalid_empty_fmt_str
+#define HTTP2_FMT_STRING_IS_EMPTY_NO
+#define HTTP2_CHECK_NOT_EMPTY_IMPL(TOKEN) HTTP2_FMT_STRING_IS_EMPTY_##TOKEN
+#define HTTP2_CHECK_NOT_EMPTY(...) HTTP2_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
+
 #define HTTP2_DO_LOG(LEVEL, FMT_STR, ...)             \
+  HTTP2_CHECK_NOT_EMPTY(FMT_STR)                      \
   std::format_to(std::ostreambuf_iterator(std::cout), \
                  "[" #LEVEL "] HTTP/2 " FMT_STR "\n" __VA_OPT__(, ) __VA_ARGS__)
 
