@@ -186,7 +186,8 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   // write ACK and my settiings
 
   con->localSettings.headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize;
-  con->localSettings.maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS;
+  con->localSettings.maxConcurrentStreams =
+      std::clamp(options.maxConcurrentStreams, {1}, settings_t::MAX_MAX_CONCURRENT_STREAMS);
   con->localSettings.initialStreamWindowSize = MAX_WINDOW_SIZE;
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
   con->localSettings.maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN);

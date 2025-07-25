@@ -212,6 +212,7 @@ void server_session::requestTerminate() noexcept {
   // forget requests (including not finished)
   auto doforget = [&](request_node* n) { finishServerRequest(*n); };
   connection->responses.clear_and_dispose(doforget);
+  connection->requests.clear_and_dispose(doforget);
 
   assert(connection->requests.empty() && connection->responses.empty() && connection->timers.empty());
   if (requestsLeft() == 0) {
@@ -282,6 +283,9 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
     throw protocol_error(errc_e::STREAM_CLOSED,
                          std::format("stream already closed, but received HEADERS frame. Stream id: {}",
                                      frame.header.streamId));
+  } else if (requestsLeft() >= connection->localSettings.maxConcurrentStreams) {
+    throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
+                       "refused due max concurrent streams exceeded");
   }
 
   // frame.header.streamId guaranteed to be > last started streamid (checked above)

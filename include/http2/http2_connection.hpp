@@ -189,7 +189,8 @@ struct http2_connection {
   using timers_member_hook_t =
       bi::member_hook<request_node, request_node::timers_hooks_type, &request_node::timersHook>;
 
-  using requests_t = bi::list<request_node, bi::cache_last<true>, requests_member_hook_t>;
+  using requests_t =
+      bi::list<request_node, bi::cache_last<true>, requests_member_hook_t, bi::constant_time_size<true>>;
 
   using responses_t = bi::unordered_set<request_node, bi::constant_time_size<true>, responses_member_hook_t,
                                         bi::key_of_value<request_node::key_of_value>,

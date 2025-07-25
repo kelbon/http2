@@ -26,6 +26,8 @@ struct http2_server_options {
   // Note: disabling hpack from global config has higher priority
   bool forceDisableHpack = false;
   uint32_t maxReceiveFrameSize = FRAME_LEN_MAX;
+  // how many streams client may run concurrently, default: max possible
+  uint32_t maxConcurrentStreams = uint32_t(-1);
   duration_t connectionTimeout = SERVER_DEFAULT_CONNECTION_TIMEOUT;
   // when drop client if it does not send anything
   duration_t idleTimeout = SERVER_DEFAULT_IDLE_TIMEOUT;
