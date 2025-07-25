@@ -63,7 +63,7 @@ struct http2_server::impl {
   ssl_context_ptr sslctx = nullptr;  // if nullptr, then server is http (not https)
   std::list<acceptor_t> listeners;
   // gate for opened sessions / acceptors
-  dd::gate gate;
+  gate sessionsgate;
   http2_server_options options;
   http2_server* creator = nullptr;
 
@@ -77,19 +77,19 @@ struct http2_server::impl {
   void listen(server_endpoint a) {
     acceptor_t& acceptor = listeners.emplace_back(ioctx(), a.addr, a.reuse_address);
     acceptor.listen();
-    acceptConnections(gate.hold(), listeners.back()).start_and_detach();
+    acceptConnections(sessionsgate.hold(), listeners.back()).start_and_detach();
     HTTP2_LOG(INFO, "[SERVER] is listening on {}:{}", a.addr.address().to_string(), a.addr.port());
   }
 
   // TODO должен быть один поток принимающий соединения и все остальные обрабатывающие соединения
   // видимо какая то абстракция как получать strand? А мб это на пользователя переложить через отдачу
   // io_context а тут просто делать стренды
-  dd::task<void> acceptConnections(dd::gate::gate::holder, acceptor_t& srv) {
+  dd::task<void> acceptConnections(gate::holder, acceptor_t& srv) {
     on_scope_exit {
       HTTP2_LOG(TRACE, "[SERVER] stops listening");
     };
     // note: do not remove listener on scope exit
-    while (!gate.is_closed()) {
+    while (!sessionsgate.is_closed()) {
       io_error_code ec;
       // there are only one acceptConnections for each address (listen), after creation connection will be
       // handled singlethreaded so strand used here for single thread guarantee
@@ -106,8 +106,8 @@ struct http2_server::impl {
         continue;
       }
       HTTP2_LOG(TRACE, "[SERVER] accepted connection");
-      if (!gate.is_closed()) {
-        sessionLifecycle(gate.hold(), std::move(socket)).start_and_detach();
+      if (!sessionsgate.is_closed()) {
+        sessionLifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
       }
     }
     HTTP2_LOG(TRACE, "[SERVER] acceptConnections: gate is closed");
@@ -131,12 +131,12 @@ struct http2_server::impl {
   }
 
   // Note: this code ignores possible bad_alloc and other logs exceptions
-  dd::task<void> sessionLifecycle(dd::gate::gate::holder, asio::ip::tcp::socket socket) try {
+  dd::task<void> sessionLifecycle(gate::holder, asio::ip::tcp::socket socket) try {
     http2_connection_ptr_t http2con = co_await createConnection(std::move(socket));
     if (!http2con || !creator) {
       co_return;
     }
-    if (gate.is_closed()) {
+    if (sessionsgate.is_closed()) {
       http2con->shutdown(reqerr_e::CANCELLED);
       HTTP2_LOG(INFO, "session completed, but server stopped (server session is not created)");
       co_return;
@@ -179,7 +179,7 @@ struct http2_server::impl {
       goto drop_session;
     }
 
-    if (gate.is_closed()) {
+    if (sessionsgate.is_closed()) {
       goto drop_session;
     }
 
@@ -211,8 +211,8 @@ struct http2_server::impl {
     }
     // we are here if reader ended with exception or after soft shutdown (streams closed, new requests
     // forbidden)
-    co_await session.connectionPartsGate.close();
-    co_await session.responsegate.close();
+    co_await session.connectionPartsGate.close(ioctx());
+    co_await session.responsegate.close(ioctx());
     HTTP2_LOG(TRACE, "[SERVER] session {} stop ended", (void*)session.connection.get());
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "session ended with exception: {}", e.what());
@@ -231,12 +231,12 @@ struct http2_server::impl {
     on_scope_exit {
       HTTP2_LOG(TRACE, "[SERVER] shutdown ended. server {}", (void*)this);
     };
-    gate.request_close();
+    sessionsgate.request_close();
     stopListeners();
     for (auto& session : sessions) {
       session.requestShutdown();
     }
-    co_await gate.close();
+    co_await sessionsgate.close(ioctx());
     assert(sessions.empty());
   }
 
@@ -245,12 +245,12 @@ struct http2_server::impl {
     on_scope_exit {
       HTTP2_LOG(TRACE, "[SERVER] terminate ended. server {}", (void*)this);
     };
-    gate.request_close();
+    sessionsgate.request_close();
     stopListeners();
     for (auto& session : sessions) {
       session.requestTerminate();
     }
-    co_await gate.close();
+    co_await sessionsgate.close(ioctx());
     assert(sessions.empty());
   }
 };
@@ -269,7 +269,7 @@ http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options)
 http2_server::~http2_server() {
   assert(m_impl);
 
-  if (m_impl->gate.active_count() == 0) {
+  if (m_impl->sessionsgate.active_count() == 0) {
     return;
   }
   m_impl->creator = nullptr;

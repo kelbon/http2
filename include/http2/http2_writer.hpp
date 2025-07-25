@@ -5,10 +5,10 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
+#include "http2/utils/gate.hpp"
 
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
-#include <kelcoro/gate.hpp>
 #include <kelcoro/gate.hpp>
 
 namespace http2 {
@@ -31,9 +31,9 @@ using writer_on_network_err_t = move_only_fn<void() noexcept>;
 // precondition: con && sleepcb  && onnetworkerr. Callbacks should not throw and
 // behave as values, not references
 dd::job start_writer_for_client(http2_connection_ptr_t con, writer_sleepcb_t, writer_on_network_err_t,
-                                bool forcedisablehpack, dd::gate::gate::holder);
+                                bool forcedisablehpack, gate::holder);
 
 dd::job start_writer_for_server(http2_connection_ptr_t con, writer_sleepcb_t, writer_on_network_err_t,
-                                bool forcedisablehpack, dd::gate::gate::holder);
+                                bool forcedisablehpack, gate::holder);
 
 }  // namespace http2

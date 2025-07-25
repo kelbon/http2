@@ -124,7 +124,7 @@ static void validate_window_update(const frame_header& h) {
 
 static void validate_window_update_increment(const frame_header& h, cfint_t increment) {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9-6
-  if (increment >= uintmax_t(1u << 31)) {
+  if (increment >= cfint_t(1u << 31)) {
     HTTP2_LOG(ERROR, "invalid frame {}, window size increment too big ({})", h, increment);
     throw protocol_error(errc_e::FLOW_CONTROL_ERROR,
                          std::format("invalid frame {}, window size increment too big ({})", h, increment));
@@ -306,7 +306,7 @@ static void validate_header_name(const hpack::header_view& h, stream_id_t stream
       case 0x7f ... 0xff:
       case ':':
         throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
-                           std::format("forbidden character 0x{:x} in header name \"{}\")", int(c), str));
+                           std::format("forbidden character 0x{:x} in header name \"{}\")", c, str));
     }
   }
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.2-1

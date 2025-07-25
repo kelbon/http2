@@ -30,8 +30,10 @@ struct reqerr_e {
 
   // used for request nodes in server implementation
   enum server_request_progress_e : int {
-    REQUEST_CREATED = -10,       // стрим без владельца (detach), сохранён в con.responses
-    RESPONSE_IN_PROGRESS = -11,  // корутина send_response создана и владеет стримом
+    // стрим без владельца (detach), сохранён в con.responses
+    REQUEST_CREATED = -10,
+    // запрос СОБРАН (assembled), корутина send_response создана и владеет стримом
+    RESPONSE_IN_PROGRESS = -11,
   };
 };
 

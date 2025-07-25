@@ -186,7 +186,7 @@ consteval std::string_view actor_name(bool isclient) {
 
 template <bool IS_CLIENT>
 dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
-                         writer_on_network_err_t neterrcb, bool forcedisablehpack, dd::gate::gate::holder) {
+                         writer_on_network_err_t neterrcb, bool forcedisablehpack, gate::holder) {
   assert(con && sleepcb && neterrcb);
   // make callbacks easy to copy into write_pending_frames for future use
   std::shared_ptr<writer_callbacks> cbs =
@@ -279,14 +279,14 @@ end:
 
 dd::job start_writer_for_client(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
                                 writer_on_network_err_t neterrcb, bool forcedisablehpack,
-                                dd::gate::gate::holder guard) {
+                                gate::holder guard) {
   return start_writer_for</*IS_CLIENT=*/true>(std::move(con), std::move(sleepcb), std::move(neterrcb),
                                               forcedisablehpack, std::move(guard));
 }
 
 dd::job start_writer_for_server(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
                                 writer_on_network_err_t neterrcb, bool forcedisablehpack,
-                                dd::gate::gate::holder guard) {
+                                gate::holder guard) {
   return start_writer_for</*IS_CLIENT=*/false>(std::move(con), std::move(sleepcb), std::move(neterrcb),
                                                forcedisablehpack, std::move(guard));
 }

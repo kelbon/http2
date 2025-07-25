@@ -7,6 +7,7 @@
 #include "http2/transport_factory.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
+#include "http2/utils/gate.hpp"
 
 #include <memory>
 
@@ -15,7 +16,6 @@
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
-#include <kelcoro/gate.hpp>
 
 #include <zal/zal.hpp>
 
@@ -93,9 +93,9 @@ struct http2_client {
   http2_connection_ptr_t m_notYetReadyConnection = nullptr;
   size_t m_stopRequested = 0;
   //  used to correctly wait in 'stop' while all connect calls will end
-  dd::gate m_connectionGate;
+  gate m_connectionGate;
   // for connection reader/writer
-  dd::gate m_connectionPartsGate;
+  gate m_connectionPartsGate;
 
   // fills requests from raw http2 frames
   static dd::job startReaderFor(http2_client*, http2_connection_ptr_t);

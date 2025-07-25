@@ -227,6 +227,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
       return false;
     case PRIORITY:
       con.validatePriorityFrameHeader(frame);
+      [[fallthrough]];
     case PRIORITY_UPDATE:
     default:
       // ignore
@@ -543,7 +544,7 @@ dd::task<void> http2_client::coStop() {
     --m_stopRequested;
   };
   // wait all 'connect' coroutines done
-  co_await m_connectionGate.close();
+  co_await m_connectionGate.close(ioctx());
   // prevent new connection tries and wait all startConnecting coroutines are
   // done
   auto lock = lockConnections();
@@ -558,7 +559,7 @@ dd::task<void> http2_client::coStop() {
   // drop our connection correctly if exists
   dropConnection(reqerr_e::CANCELLED);
 
-  co_await m_connectionPartsGate.close();
+  co_await m_connectionPartsGate.close(ioctx());
   m_connectionPartsGate = {};  // reopen
   m_connectionGate = {};       // reopen
 

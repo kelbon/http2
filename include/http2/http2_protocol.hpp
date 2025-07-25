@@ -286,10 +286,10 @@ inline void validate_settings_ack_frame(const frame_header& h) {
   assert(h.type == frame_e::SETTINGS && (h.flags & flags::ACK));
   if (h.length != 0 || h.streamId != 0) {
     HTTP2_LOG(ERROR, "[SERVER] received client settings with ACK and len != 0 ({}), ", h.length);
-    throw protocol_error{
+    throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("invalid SETTINGS ACK frame, len != 0 or stream id != 0, len: {}, streamid: {}", h.length,
-                    h.streamId)};
+                    h.streamId));
   }
 }
 

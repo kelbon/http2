@@ -58,6 +58,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       return false;
     case PRIORITY:
       con.validatePriorityFrameHeader(frame);
+      [[fallthrough]];
     case PRIORITY_UPDATE:
     default:
       // ignore
@@ -102,6 +103,9 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       if (!node) {
         con.ignoreFrame(frame);
         return true;
+      }
+      if (node->status == reqerr_e::RESPONSE_IN_PROGRESS) {
+        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
       }
       // applicable only to data
       // Note: includes padding!

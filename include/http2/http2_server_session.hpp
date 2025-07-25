@@ -8,10 +8,9 @@
 #include "http2/http2_protocol.hpp"
 #include "http2/signewaiter_signal.hpp"
 #include "http2/utils/boost_intrusive.hpp"
+#include "http2/utils/gate.hpp"
 
 #include <boost/intrusive/list_hook.hpp>
-
-#include <kelcoro/gate.hpp>
 
 namespace http2 {
 
@@ -21,9 +20,9 @@ struct http2_frame_t;
 // Not RAII type, must be closed (requestTerminate/shutdown + wait gate) before
 // destroy
 struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
-  dd::gate responsegate;
+  gate responsegate;
   // for connection reader/writer
-  dd::gate connectionPartsGate;
+  gate connectionPartsGate;
   // invariant: != nullptr
   http2_connection_ptr_t connection;
   http2_server_options options;

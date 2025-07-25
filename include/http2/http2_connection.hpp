@@ -363,13 +363,12 @@ struct http2_connection {
 
   // postcondition: returns correct streamid (<= MAX_STREAM_ID)
   [[nodiscard]] stream_id_t nextStreamid() noexcept {
-    // out of stream ids == (2 ^ 31 - 1) + 2
     if (laststartedstreamid == 0) [[unlikely]] {
       laststartedstreamid = 1;
       return laststartedstreamid;
     }
     assert(laststartedstreamid <= MAX_STREAM_ID);
-    assert((laststartedstreamid % 2) == 1);  // client side
+    assert((laststartedstreamid % 2) == 1);
     laststartedstreamid += 2;
     return laststartedstreamid;
   }

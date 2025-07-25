@@ -228,7 +228,7 @@ void http2_connection::initiateGracefulShutdown(stream_id_t laststreamid) noexce
   // So, connection will work until all done and create new connection for new
   // streams. we will do all what requested, > last stream id will be ignored, <
   // last stream id will be handled
-  laststreamid = MAX_STREAM_ID;
+  laststartedstreamid = MAX_STREAM_ID;
   for (auto b = responses.begin(); b != responses.end();) {
     auto n = std::next(b);
     if (b->streamid > laststreamid) {
