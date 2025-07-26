@@ -49,27 +49,27 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
         encoder.encode_header_fully_indexed(hdrs::method_post, out);
         break;
       default:
-        encoder.encode_header_and_cache(hdrs::method_get, e2str(request.method), out);
+        encoder.encode_with_cache(hdrs::method_get, e2str(request.method), out);
     }
-    encoder.encode_header_and_cache(hdrs::authority, request.authority, out);
-    encoder.encode_header_and_cache(hdrs::path, request.path, out);
+    if (!request.authority.empty()) {
+      encoder.encode_with_cache(hdrs::authority, request.authority, out);
+    }
+    encoder.encode_with_cache(hdrs::path, request.path, out);
   } else {
     // server, required only :status
     assert(node.status > 0);
-    char statusstr[32];
-    char* statusstrend = std::format_to(statusstr, "{}", node.status);
-    encoder.encode_header_and_cache(hdrs::status_200, std::string_view(+statusstr, statusstrend), out);
+    encoder.encode_status(node.status, out);
   }
 
   if (!request.body.data.empty()) {
-    encoder.encode_header_and_cache(hdrs::content_type, request.body.contentType, out);
+    encoder.encode_with_cache(hdrs::content_type, request.body.contentType, out);
   }
 
   // custom headers
 
   for (auto& [name, value] : request.headers) {
     assert(is_lowercase(name) && "http2 requires headers to be in lowercase");
-    encoder.encode_header_and_cache(name, value, out);
+    encoder.encode_with_cache(name, value, out);
   }
 }
 

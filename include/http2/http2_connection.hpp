@@ -272,7 +272,7 @@ struct http2_connection {
   // or server writes response and inserts into responses to catch WINDOW_UPDATe / RST_STREAM
   void insertResponseNode(request_node& node) {
     responses.insert(node);
-    if (responses.size() > buckets.size() / 2) [[unlikely]] {
+    if (responses.size() == buckets.size()) [[unlikely]] {
       // https://github.com/boostorg/intrusive/issues/96
       // workaround:
       // unordered set bucket copy(move) ctor does nothing, so .resize will be UB
