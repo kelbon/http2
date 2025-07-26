@@ -12,11 +12,14 @@
 
 namespace http2 {
 
-void trace_request_headers(http2::http_request const& req, bool fromclient) {
+void trace_request_headers(request_node const& node, bool fromclient) {
+  auto& req = node.req;
   std::string s;
   if (fromclient) {
     s += std::format(":path: {}\n:authority: {}\n:method: {}\n:scheme: {}\n", req.path, req.authority,
                      e2str(req.method), e2str(req.scheme));
+  } else {
+    s += std::format(":status: {}", node.status);
   }
   if (!req.body.contentType.empty()) {
     s += std::format("content-type: {}\n", req.body.contentType);
@@ -64,8 +67,8 @@ static void validate_trailer_header(std::string_view name, stream_id_t streamid)
 
 void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   // may handle both request trailers and response trailers
-  HTTP2_LOG(TRACE, "received HEADERS (trailers), con: {}, stream: {}, len: {}", (void*)connection.get(),
-            frame.header.streamId, frame.header.length);
+  HTTP2_LOG(TRACE, "received HEADERS (trailers): stream: {}, len: {}", frame.header.streamId,
+            frame.header.length, name());
   constexpr auto mask = flags::END_STREAM | flags::END_HEADERS;
   if (((frame.header.flags & mask) != mask)) {
     throw protocol_error(errc_e::STREAM_CLOSED, "trailers header without END_STREAM | END_HEADERS");
@@ -74,7 +77,7 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
   // https://www.rfc-editor.org/rfc/rfc7540#section-8.1.2.1
   // ( Pseudo-header fields MUST NOT appear in trailers )
   hpack::decode_headers_block(decoder, frame.data, [&](std::string_view name, std::string_view value) {
-    HTTP2_LOG(TRACE, "name: {}, value: {}", name, value);
+    HTTP2_LOG(TRACE, "name: {}, value: {}", name, value, this->name());
     validate_trailer_header(name, frame.header.streamId);
     if (onHeader)
       (*onHeader)(name, value);
@@ -105,12 +108,12 @@ void request_node::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t
 void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
-  HTTP2_LOG(TRACE, "received HEADERS, con: {}, stream: {}, len: {}", (void*)connection.get(),
-            frame.header.streamId, frame.header.length);
+  HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
+            name());
   // weird things like continuations, trailers, many header frames with CONTINUE
   // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
-    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame");
+    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
     throw unimplemented_feature("END_HEADERS == 0");
   }
   if (status > 0) [[unlikely]] {
@@ -121,7 +124,7 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   status = decoder.decode_response_status(in, e);
   // headers must be decoded to maintain HPACK dynamic table in correct state
   hpack::decode_headers_block(decoder, std::span(in, e), [&](std::string_view name, std::string_view value) {
-    HTTP2_LOG(TRACE, "name: {}, value: {}", name, value);
+    HTTP2_LOG(TRACE, "name: {}, value: {}", name, value, this->name());
     if (onHeader) {
       (*onHeader)(name, value);
     }
@@ -138,29 +141,25 @@ void request_node::receiveData(http2_frame_t frame) {
   if (onDataPart) {
     (*onDataPart)(frame.data, (frame.header.flags & flags::END_STREAM));
   }
-  HTTP2_LOG(TRACE, "received DATA, con: {}, stream: {}, len: {}, DATA: {}", (void*)connection.get(),
-            frame.header.streamId, frame.header.length,
-            std::string_view((char const*)frame.data.data(), frame.data.size()));
+  HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamId, frame.header.length,
+            std::string_view((char const*)frame.data.data(), frame.data.size()), name());
 }
 
 void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
-  HTTP2_LOG(TRACE, "[SERVER] received HEADERS, stream: {}, len: {}, con: {}", frame.header.streamId,
-            frame.header.length, (void*)connection.get());
+  HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
+            name());
   // weird things like continuations, many header frames with CONTINUE
   // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
-    HTTP2_LOG(ERROR,
-              "[SERVER] protocol error: unsupported not END_HEADERS headers "
-              "frame, con: {}",
-              (void*)connection.get());
+    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
     throw unimplemented_feature("END_HEADERS == 0");
   }
   assert(req.headers.empty());
   parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
 #ifdef HTTP2_ENABLE_TRACE
-  trace_request_headers(req, /*from client=*/true);
+  trace_request_headers(*this, /*from client=*/true);
 #endif
   // TODO find not lowered header name and mark it as protocol error (with
   // explaining)
@@ -174,9 +173,12 @@ void request_node::receiveRequestData(http2_frame_t frame) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
   }
   req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
-  HTTP2_LOG(TRACE, "[SERVER] received DATA, con: {}, stream: {}, len: {}, DATA: {}", (void*)connection.get(),
-            frame.header.streamId, frame.header.length,
-            std::string_view((char const*)frame.data.data(), frame.data.size()));
+  HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamId, frame.header.length,
+            std::string_view((char const*)frame.data.data(), frame.data.size()), name());
+}
+
+std::string_view request_node::name() const noexcept {
+  return connection ? connection->name.str() : "<null>";
 }
 
 // http2_connection methods
@@ -188,24 +190,22 @@ http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context
       pingtimer(ctx),
       pingdeadlinetimer(ctx),
       timeoutWardenTimer(ctx) {
-  HTTP2_LOG(TRACE, "http2_connection created {}", (void*)this);
 }
 
 http2_connection::~http2_connection() {
   freeNodes.clear_and_dispose([](request_node* node) { delete node; });
-  HTTP2_LOG(TRACE, "~http2_connection {}", (void*)this);
 }
 
 void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
   if (newsettings.header.flags & flags::ACK) {
     if (newsettings.header.streamId != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-7
-      HTTP2_LOG(ERROR, "received server settings with ACK and streamid != 0 ({}), con: {}",
-                newsettings.header.streamId, (void*)this);
+      HTTP2_LOG(ERROR, "received server settings with ACK and streamid != 0 ({})",
+                newsettings.header.streamId, name);
       throw protocol_error(errc_e::PROTOCOL_ERROR);
     }
     if (newsettings.header.length != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-6.2
-      HTTP2_LOG(ERROR, "received server settings with ACK and len != 0 ({}), con: {}",
-                newsettings.header.length, (void*)this);
+      HTTP2_LOG(ERROR, "received server settings with ACK and len != 0 ({})", newsettings.header.length,
+                name);
       throw protocol_error(errc_e::FRAME_SIZE_ERROR);
     }
     return;
@@ -215,8 +215,8 @@ void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
   server_settings_visitor vtor(remoteSettings);
   settings_frame::parse(newsettings.header, newsettings.data, vtor);
   if (before.headerTableSize != remoteSettings.headerTableSize) {
-    HTTP2_LOG(INFO, "HPACK table resized, new size {}, old size: {}, con: {}", remoteSettings.headerTableSize,
-              before.headerTableSize, (void*)this);
+    HTTP2_LOG(INFO, "HPACK table resized: new size {}, old size: {}", remoteSettings.headerTableSize,
+              before.headerTableSize, name);
     encodertablesizechangerequested = true;
   }
   adjustWindowForAllStreams(before.initialStreamWindowSize, remoteSettings.initialStreamWindowSize);
@@ -225,7 +225,7 @@ void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
 }
 
 void http2_connection::serverRequestsGracefulShutdown(goaway_frame f) {
-  HTTP2_LOG(TRACE, "graceful shutdown initiated, last stream id: {}, con: {}", f.lastStreamId, (void*)this);
+  HTTP2_LOG(TRACE, "graceful shutdown initiated: last stream id: {}", f.lastStreamId, name);
   // if we did not initiate this graceful shutdown
   if (!gracefulshutdownGoawaySended) {
     initiateGracefulShutdown(f.lastStreamId);
@@ -271,7 +271,7 @@ void http2_connection::finishRequest(request_node& node, int status) noexcept {
   if (!node.task) {
     return;
   }
-  HTTP2_LOG(TRACE, "stream {} finished, status: {}, con: {}", node.streamid, status, (void*)this);
+  HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, status, name);
   node.status = status;
   auto t = std::exchange(node.task, nullptr);
   if (status == reqerr_e::CANCELLED || status == reqerr_e::TIMEOUT) {
@@ -286,7 +286,7 @@ void http2_connection::finishRequestWithUserException(request_node& node, std::e
   if (!node.task) {
     return;
   }
-  HTTP2_LOG(TRACE, "stream {} finished with user exception, con: {}", node.streamid, (void*)this);
+  HTTP2_LOG(TRACE, "stream {} finished with user exception", node.streamid, name);
   node.task.promise().exception = std::move(e);
   // Note: избегаем выставления одновременно и результата и исключения,
   // поэтому не будим напрямую .task (она выставит результат из .status), вместо
@@ -315,8 +315,8 @@ void http2_connection::finishAllWithException(reqerr_e::values_e reason) {
   // nodes in reqs or in rsps, timers do not own them
   timers.clear();
   if (!reqs.empty() || !rsps.empty()) {
-    HTTP2_LOG(TRACE, "finish {} requests and {} responses, reason code: {}, con: {}", reqs.size(),
-              rsps.size(), (int)reason, (void*)this);
+    HTTP2_LOG(TRACE, "finish {} requests and {} responses, reason code: {}", reqs.size(), rsps.size(),
+              e2str(reason), name);
   }
   auto forgetAndResume = [&](request_node* node) { finishRequest(*node, reason); };
   reqs.clear_and_dispose(forgetAndResume);
@@ -338,18 +338,16 @@ void http2_connection::dropTimeouted() {
 }
 
 void http2_connection::windowUpdate(window_update_frame frame) {
-  HTTP2_LOG(TRACE, "received window update, stream: {}, inc: {}, con: {}", frame.header.streamId,
-            frame.windowSizeIncrement, (void*)this);
+  HTTP2_LOG(TRACE, "received window update, stream: {}, inc: {}", frame.header.streamId,
+            frame.windowSizeIncrement, name);
   if (frame.header.streamId == 0) {
     increment_window_size(receiverWindowSize, int32_t(frame.windowSizeIncrement), 0);
     return;
   }
   request_node* node = findResponseByStreamid(frame.header.streamId);
   if (!node) {
-    HTTP2_LOG(WARN,
-              "received window update for stream which not exist, streamid: "
-              "{}, con: {}",
-              frame.header.streamId, (void*)this);
+    HTTP2_LOG(WARN, "received window update for stream which not exist, streamid: {}", frame.header.streamId,
+              name);
     if (is_idle_stream(frame.header.streamId)) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            std::format("WINDOW_UPDATE for idle frame, streamid: {}", frame.header.streamId));
@@ -365,7 +363,7 @@ bool http2_connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
     return false;
   }
 
-  HTTP2_LOG(TRACE, "shutdown, con: {}", (void*)this);
+  HTTP2_LOG(TRACE, "shutdown", name);
 
   // set flag for anyone who will be resumed while shutting down this connection
   startDrop();
@@ -460,8 +458,8 @@ http2_connection::response_awaiter http2_connection::responseReceived(request_no
 }
 
 void http2_connection::ignoreFrame(http2_frame_t frame) {
-  HTTP2_LOG(TRACE, "ignoring frame, type: {}, stream: {}. len: {}, con: {}", (int)frame.header.type,
-            frame.header.streamId, frame.header.length, (void*)this);
+  HTTP2_LOG(TRACE, "ignoring frame, type: {}, stream: {}. len: {}", e2str(frame.header.type),
+            frame.header.streamId, frame.header.length, name);
   using enum frame_e;
   // here we assume, that there are no node with frame stream id (thats why it is ignored)
 

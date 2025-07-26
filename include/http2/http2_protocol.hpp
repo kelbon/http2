@@ -285,7 +285,6 @@ struct client_settings_visitor {
 inline void validate_settings_ack_frame(const frame_header& h) {
   assert(h.type == frame_e::SETTINGS && (h.flags & flags::ACK));
   if (h.length != 0 || h.streamId != 0) {
-    HTTP2_LOG(ERROR, "[SERVER] received client settings with ACK and len != 0 ({}), ", h.length);
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("invalid SETTINGS ACK frame, len != 0 or stream id != 0, len: {}, streamid: {}", h.length,
@@ -296,7 +295,6 @@ inline void validate_settings_ack_frame(const frame_header& h) {
 inline void validate_settings_not_ack_frame(const frame_header& h) {
   if (h.type != frame_e::SETTINGS || (h.flags & flags::ACK) || h.streamId != 0 ||
       (h.length % sizeof(setting_t)) != 0) {
-    HTTP2_LOG(ERROR, "invalid frame: {}, provided data size: {}", h, h.length);
     throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid frame {}", h));
   }
 }
@@ -495,17 +493,12 @@ static O form_connection_initiation(settings_t settings, O out) {
 // handles both positive (default) and negative (only SETTINGS change) increments
 inline void increment_window_size(cfint_t& size, int32_t windowSizeIncrement, stream_id_t streamid) {
   if (windowSizeIncrement == 0) {
-    HTTP2_LOG(ERROR, "invalid window size increment: zero");
     throw protocol_error(errc_e::FLOW_CONTROL_ERROR, "invalid window size increment: zero");
   }
   // avoid overflow (and negative overflow)
   // rfc does not specify minimal negative value for window size,
   // this implementation uses -MAX_WINDOW_SIZE as negative minimum
   if (std::abs(int64_t(size) + int64_t(windowSizeIncrement)) > int64_t(MAX_WINDOW_SIZE)) {
-    HTTP2_LOG(ERROR,
-              "invalid window size increment: overflow, current size: {}, "
-              "increment: {}",
-              uint64_t(size), uint64_t(windowSizeIncrement));
     if (streamid != 0) {
       throw stream_error(
           errc_e::FLOW_CONTROL_ERROR, streamid,
@@ -535,7 +528,8 @@ inline void decrease_window_size(cfint_t& size, int32_t decrease) {
   static_assert(sizeof(cfint_t) > 4);  // for avoiding overflow
   size -= decrease;
   if (size < 0) [[unlikely]] {
-    HTTP2_LOG(WARN, "window size is < 0 ( {} ) after decreasing by {}", size, decrease);
+    HTTP2_LOG(WARN, "window size is < 0 ( {} ) after decreasing by {}", size, decrease,
+              "<unknown connection>");
   }
   // ignore control flow errors from out side, 'size' undeflow not possible
   // since its int64_t

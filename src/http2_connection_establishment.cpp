@@ -10,22 +10,16 @@ namespace http2 {
 
 static void validate_first_server_frame_header(const frame_header& header) {
   if (header.type != frame_e::SETTINGS || header.length > FRAME_LEN_MAX) {
-    HTTP2_LOG(ERROR, "first server frame is not settings, its {} with len {}", (int)header.type,
-              header.length);
     throw protocol_error(errc_e::CONNECT_ERROR,
                          std::format("first server frame is not settings, frame: {}", header));
   }
   if (header.flags & flags::ACK) {
-    HTTP2_LOG(ERROR, "invalid server preface SETTINGS with ACK flag");
     throw protocol_error(errc_e::CONNECT_ERROR, "invalid server preface SETTINGS with ACK flag");
   }
 }
 
 static void validate_client_magic(std::span<byte_t> magic) {
   if (!std::ranges::equal(magic, std::span(CONNECTION_PREFACE))) {
-    HTTP2_LOG(ERROR,
-              "[SERVER] client session establishment failed: "
-              "incorrect client preface");
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("invalid client magic, expected: {}, received: {}",
@@ -43,6 +37,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
 
   assert(con);
   assert(options.maxReceiveFrameSize <= FRAME_LEN_MAX);
+  con->name.set_prefix(CLIENT_CONNECTION_PREFIX);
   con->localSettings = settings_t{
       .headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize,
       .enablePush = false,
@@ -65,10 +60,10 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
 
     bytes_t connectionRequest;
     form_connection_initiation(con->localSettings, std::back_inserter(connectionRequest));
-    HTTP2_LOG(TRACE, "sending client preface for {}", (void*)con.get());
+    HTTP2_LOG(TRACE, "sending client preface", con->name);
     (void)co_await con->write(connectionRequest, ec);
     if (ec) {
-      HTTP2_LOG(ERROR, "cannot write HTTP/2 client connection preface, err: {}", ec.what());
+      HTTP2_LOG(ERROR, "cannot write HTTP/2 client connection preface, err: {}", ec.what(), con->name);
       throw network_exception("cannot write HTTP/2 client connection preface, err: {}", ec.what());
     }
   }
@@ -89,7 +84,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   co_await con->read(std::span(buf, H2FHL), ec);
 
   if (ec) {
-    HTTP2_LOG(ERROR, "cannot read HTTP/2 server preface, {}", ec.what());
+    HTTP2_LOG(ERROR, "cannot read HTTP/2 server preface, {}", ec.what(), con->name);
     throw network_exception("cannot read HTTP/2 server preface, {}", ec.what());
   }
 
@@ -100,7 +95,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   bytes_t bytes(header.length);
   co_await con->read(bytes, ec);
   if (ec) {
-    HTTP2_LOG(ERROR, "cannot read accepted settings frame from server");
+    HTTP2_LOG(ERROR, "cannot read accepted settings frame from server", con->name);
     throw network_exception(ec);
   }
   settings_frame::parse(header, bytes, server_settings_visitor(con->remoteSettings, /*first frame*/ true));
@@ -113,7 +108,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   // answer settings ACK "as soon as possible"
 
   accepted_settings_frame().form(buf);
-  HTTP2_LOG(TRACE, "sending settings ACK for {}", (void*)con.get());
+  HTTP2_LOG(TRACE, "sending settings ACK", con->name);
   (void)co_await con->write(std::span(buf, H2FHL), ec);
   if (ec) {
     throw network_exception("cannot send accepted settings frame to server, {}", ec.what());
@@ -123,7 +118,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   // 'http2_connection::serverSettingsChanged' as regular frame
 
   HTTP2_LOG(TRACE, "connection successfully established, decoder size: {}",
-            con->remoteSettings.headerTableSize);
+            con->remoteSettings.headerTableSize, con->name);
 
   co_return con;
 }
@@ -146,10 +141,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
     std::span magic = buf.getExactly(MAGIC_SZ);
     co_await con->read(magic, ec);
     if (ec) {
-      HTTP2_LOG(ERROR,
-                "[SERVER] client session establishment failed: reading "
-                "preface, err: {}",
-                ec.what());
+      HTTP2_LOG(ERROR, "client session establishment failed: reading preface, err: {}", ec.what(), con->name);
       throw network_exception(ec);
     }
     validate_client_magic(magic);
@@ -159,10 +151,8 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
     std::span settingsframe = buf.getExactly(FRAME_HEADER_LEN);
     co_await con->read(settingsframe, ec);
     if (ec) {
-      HTTP2_LOG(ERROR,
-                "[SERVER] client session establishment failed: reading client "
-                "settings header, err: {}",
-                ec.what());
+      HTTP2_LOG(ERROR, "client session establishment failed: reading client settings header, err: {}",
+                ec.what(), con->name);
       throw network_exception(ec);
     }
     settingsheader = frame_header::parse(settingsframe);
@@ -173,10 +163,8 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
     std::span settingsdata = buf.getExactly(settingsheader.length);
     co_await con->read(settingsdata, ec);
     if (ec) {
-      HTTP2_LOG(ERROR,
-                "[SERVER] client session establishment failed: reading client "
-                "settings data, err: {}",
-                ec.what());
+      HTTP2_LOG(ERROR, "client session establishment failed: reading client settings data, err: {}",
+                ec.what(), con->name);
       throw network_exception(ec);
     }
     settings_frame::parse(settingsheader, settingsdata,
@@ -202,10 +190,8 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
     accepted_settings_frame().form(std::back_inserter(bytes));
     co_await con->write(bytes, ec);
     if (ec) {
-      HTTP2_LOG(ERROR,
-                "[SERVER] client session establishment failed: cannot send ACK "
-                "frame to client, err: {}",
-                ec.what());
+      HTTP2_LOG(ERROR, "client session establishment failed: cannot send ACK frame to client, err: {}",
+                ec.what(), con->name);
       throw network_exception(ec);
     }
   }
@@ -215,7 +201,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   con->encoder = hpack::encoder(con->remoteSettings.headerTableSize);
   // client settings ACK will be handled by server reader
 
-  HTTP2_LOG(TRACE, "[SERVER] client session {} successfully established", (void*)con.get());
+  HTTP2_LOG(TRACE, "client session successfully established", con->name);
   co_return con;
 }
 

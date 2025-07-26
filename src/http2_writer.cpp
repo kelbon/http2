@@ -127,9 +127,9 @@ static dd::task<void> write_pending_data_frames(node_ptr work, http2_connection_
     if (framelen <= 0) {
       HTTP2_LOG(TRACE,
                 "cannot send bytes now! unhandled: {}, max_frame_len: {}, "
-                "stream wsz {}, con wsz: {}, con: {}",
+                "stream wsz {}, con wsz: {}",
                 std::distance(in, dataEnd), con->remoteSettings.maxFrameSize, work->lrStreamlevelWindowSize,
-                con->receiverWindowSize, (void*)con.get());
+                con->receiverWindowSize, con->name);
       co_await cbs->sleepcb(std::chrono::nanoseconds(500), ec);
       if (ec) {
         HTTP2_LOG(ERROR, "something went wrong while sleeping, con: {}", ec.what(), (void*)con.get());
@@ -142,18 +142,17 @@ static dd::task<void> write_pending_data_frames(node_ptr work, http2_connection_
       continue;
     }
     HTTP2_LOG(TRACE,
-              "FRAME for stream {}, con: {}, len: {}, unhandled: {}, rws: {}, "
+              "FRAME for stream {}, len: {}, unhandled: {}, rws: {}, "
               "csSlWsz: {}, maxFrameSize: {}, DATA: {}",
-              work->streamid, (void*)con.get(), framelen, std::distance(in, dataEnd), con->receiverWindowSize,
+              work->streamid, framelen, std::distance(in, dataEnd), con->receiverWindowSize,
               work->lrStreamlevelWindowSize, con->remoteSettings.maxFrameSize,
-              std::string_view((char const*)in, framelen));
+              std::string_view((char const*)in, framelen), con->name);
     // send frame
     (void)co_await con->write(std::span(in - H2FHL, framelen + H2FHL), ec);
 
     if (ec) {
       if (ec != boost::asio::error::operation_aborted) {
-        HTTP2_LOG(ERROR, "sending pending data frames ended with network err: {}, con: {}", ec.what(),
-                  (void*)con.get());
+        HTTP2_LOG(ERROR, "sending pending data frames ended with network err: {}", ec.what(), con->name);
         con->finishRequest(*work, reqerr_e::NETWORK_ERR);
         cbs->neterrcb();
       }
@@ -163,25 +162,18 @@ static dd::task<void> write_pending_data_frames(node_ptr work, http2_connection_
     decrease_window_size(con->receiverWindowSize, framelen);        // connection
     decrease_window_size(work->lrStreamlevelWindowSize, framelen);  // stream
   }  // end loop
-  HTTP2_LOG(TRACE, "pending data frames for stream {} successfully sended, con: {}", work->streamid,
-            (void*)con.get());
+  HTTP2_LOG(TRACE, "pending data frames for stream {} successfully sended", work->streamid, con->name);
   co_return;
 } catch (protocol_error& e) {
   con->finishRequest(*work, reqerr_e::PROTOCOL_ERR);
   send_rst_stream(con, work->streamid, e.errc).start_and_detach();
-  HTTP2_LOG(ERROR,
-            "writing pending frames for stream {} ended with protocol error, "
-            "err: {}, con: {}",
-            work->streamid, e.what(), (void*)con.get());
+  HTTP2_LOG(ERROR, "writing pending frames for stream {} ended with protocol error, err: {}", work->streamid,
+            e.what(), con->name);
 } catch (std::exception& e) {
   con->finishRequest(*work, reqerr_e::UNKNOWN_ERR);
   send_rst_stream(con, work->streamid, errc_e::CANCEL).start_and_detach();
-  HTTP2_LOG(ERROR, "writing pending frames for stream {} ended with error, err: {}, con: {}", work->streamid,
-            e.what(), (void*)con.get());
-}
-
-consteval std::string_view actor_name(bool isclient) {
-  return isclient ? "" : "[SERVER] ";
+  HTTP2_LOG(ERROR, "writing pending frames for stream {} ended with error, err: {}", work->streamid, e.what(),
+            con->name);
 }
 
 template <bool IS_CLIENT>
@@ -192,9 +184,9 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
   std::shared_ptr<writer_callbacks> cbs =
       std::make_shared<writer_callbacks>(std::move(sleepcb), std::move(neterrcb));
 
-  HTTP2_LOG(TRACE, "{}writer started for {}", actor_name(IS_CLIENT), (void*)con.get());
+  HTTP2_LOG(TRACE, "writer started", con->name);
   on_scope_exit {
-    HTTP2_LOG(TRACE, "{}writer for {} completed", actor_name(IS_CLIENT), (void*)con.get());
+    HTTP2_LOG(TRACE, "writer ended", con->name);
   };
 
   io_error_code ec;
@@ -244,10 +236,10 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
           .streamId = node->streamid,
       };
       headersframeheader.form(headers.data());
-      HTTP2_LOG(TRACE, "{}sending headers block: stream {}, block size: {}, con: {}", actor_name(IS_CLIENT),
-                node->streamid, headers.size() - H2FHL, (void*)con.get());
+      HTTP2_LOG(TRACE, "sending headers block: stream {}, block size: {}", node->streamid,
+                headers.size() - H2FHL, con->name);
 #ifdef HTTP2_ENABLE_TRACE
-      trace_request_headers(node->req, IS_CLIENT);
+      trace_request_headers(*node, IS_CLIENT);
 #endif
       (void)co_await con->write(headers, ec);
 

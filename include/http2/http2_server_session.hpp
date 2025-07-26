@@ -138,6 +138,10 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // Вызывается для нештатного завершения,
   // для успешного завершения писатель вызывает connection.finishRequest
   void finishServerRequest(request_node&) noexcept;
+
+  const unique_name& name() const noexcept {
+    return connection->name;
+  }
 };
 
 }  // namespace http2

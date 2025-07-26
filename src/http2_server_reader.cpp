@@ -32,8 +32,8 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       return true;
     case RST_STREAM:
       if (!session.rstStreamServer(rst_stream::parse(frame.header, frame.data))) {
-        HTTP2_LOG(INFO, "[SERVER] client finished stream (id: {}) which is not exists",
-                  frame.header.streamId);
+        HTTP2_LOG(INFO, "client finished stream (id: {}) which is not exists", frame.header.streamId,
+                  session.name());
       }
       return true;
     case GOAWAY: {
@@ -49,9 +49,10 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       con.windowUpdate(window_update_frame::parse(frame.header, frame.data));
       return true;
     case PUSH_PROMISE:
-      if (con.localSettings.enablePush) {
-        HTTP2_LOG(WARN, "[SERVER] received PUSH_PROMISE, not supported");
-      }
+      // https://datatracker.ietf.org/doc/html/rfc9113#section-6.6-9
+      assert(!con.localSettings.enablePush);  // always setted to 0
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           "PUSH_PROMISE must not be sent, SETTINGS_ENABLE_PUSH is 0");
       return false;
     case CONTINUATION:
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.10-8
@@ -83,7 +84,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
   }
   session.connection->validateDataOrHeadersFrameSize(frame.header);
   if ((frame.header.streamId % 2) == 0) [[unlikely]] {
-    HTTP2_LOG(ERROR, "[SERVER] client tries to initiate stream with even stream id");
+    HTTP2_LOG(ERROR, "client tries to initiate stream with even stream id", session.name());
     return false;
   }
   switch (frame.header.type) {
@@ -135,7 +136,7 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       return server_handle_utility_frame(frame, session);
   }
 } catch (stream_error& e) {
-  HTTP2_LOG(ERROR, "[SERVER] stream exception in reader. err: {}", e.what());
+  HTTP2_LOG(ERROR, "stream exception in reader. err: {}", e.what(), session.name());
   session.rstStreamAfterError(e);
   return true;  // do not require connection close
 }
@@ -144,9 +145,9 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   auto guard = session.connectionPartsGate.hold();
   assert(session.connection);
   using enum frame_e;
-  HTTP2_LOG(TRACE, "[SERVER] reader started for session {}", (void*)session.connection.get());
+  HTTP2_LOG(TRACE, "reader started", session.name());
   on_scope_exit {
-    HTTP2_LOG(TRACE, "[SERVER] reader for session {} ended", (void*)session.connection.get());
+    HTTP2_LOG(TRACE, "reader ended", session.name());
   };
   http2_connection& con = *session.connection;
   io_error_code ec;
@@ -204,28 +205,28 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
       }
     }
   } catch (hpack::protocol_error& e) {
-    HTTP2_LOG(ERROR, "[SERVER] hpack error happens in reader, err: {}", e.what());
+    HTTP2_LOG(ERROR, "hpack error happens in reader, err: {}", e.what(), session.name());
     send_goaway(&con, con.lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
     goto hpack_error;
   } catch (protocol_error& e) {
-    HTTP2_LOG(ERROR, "[SERVER] exception in reader. err: {}", e.what());
+    HTTP2_LOG(ERROR, "exception in reader. err: {}", e.what(), session.name());
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     co_return reqerr_e::PROTOCOL_ERR;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "[SERVER] goaway received, {}", gae.what());
+    HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), session.name());
     co_return reqerr_e::CANCELLED;
   } catch (std::exception& se) {
-    HTTP2_LOG(INFO, "[SERVER] unexpected exception in reader {}", se.what());
+    HTTP2_LOG(INFO, "unexpected exception in reader {}", se.what(), session.name());
     co_return reqerr_e::UNKNOWN_ERR;
   } catch (...) {
-    HTTP2_LOG(INFO, "[SERVER] unknown exception happens in reader");
+    HTTP2_LOG(INFO, "unknown exception happens in reader", session.name());
     co_return reqerr_e::UNKNOWN_ERR;
   }
   unreachable();
 hpack_error:
   co_return reqerr_e::PROTOCOL_ERR;
 } catch (std::exception& e) {
-  HTTP2_LOG(ERROR, "[SERVER] reader ended with exception: {}", e.what());
+  HTTP2_LOG(ERROR, "reader ended with exception: {}", e.what(), session.name());
   co_return reqerr_e::UNKNOWN_ERR;
 }
 

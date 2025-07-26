@@ -8,6 +8,7 @@
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/gate.hpp"
+#include "http2/utils/unique_name.hpp"
 
 #include <memory>
 
@@ -96,6 +97,7 @@ struct http2_client {
   gate m_connectionGate;
   // for connection reader/writer
   gate m_connectionPartsGate;
+  unique_name m_name;
 
   // fills requests from raw http2 frames
   static dd::job startReaderFor(http2_client*, http2_connection_ptr_t);
@@ -133,6 +135,7 @@ struct http2_client {
   // note: same as :authority for HTTP2
   explicit http2_client(endpoint_t host, http2_client_options opts)
       : http2_client(std::move(host), std::move(opts), default_transport_factory(m_ioctx)) {
+    m_name.set_prefix(CLIENT_PREFIX);
   }
   explicit http2_client(endpoint_t host, http2_client_options, any_transport_factory);
 
@@ -207,6 +210,10 @@ struct http2_client {
 
   asio::io_context& ioctx() {
     return m_ioctx;
+  }
+
+  [[nodiscard]] unique_name const& name() const noexcept {
+    return m_name;
   }
 };
 

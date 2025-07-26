@@ -66,19 +66,21 @@ struct http2_server::impl {
   gate sessionsgate;
   http2_server_options options;
   http2_server* creator = nullptr;
+  unique_name name;
 
   asio::io_context& ioctx() {
     return io;
   }
 
   explicit impl(int boost_hint) : io(boost_hint) {
+    name.set_prefix(SERVER_PREFIX);
   }
 
   void listen(server_endpoint a) {
     acceptor_t& acceptor = listeners.emplace_back(ioctx(), a.addr, a.reuse_address);
     acceptor.listen();
     acceptConnections(sessionsgate.hold(), listeners.back()).start_and_detach();
-    HTTP2_LOG(INFO, "[SERVER] is listening on {}:{}", a.addr.address().to_string(), a.addr.port());
+    HTTP2_LOG(INFO, "Server listening on {}:{}", a.addr.address().to_string(), a.addr.port(), name);
   }
 
   // TODO должен быть один поток принимающий соединения и все остальные обрабатывающие соединения
@@ -86,7 +88,7 @@ struct http2_server::impl {
   // io_context а тут просто делать стренды
   dd::task<void> acceptConnections(gate::holder, acceptor_t& srv) {
     on_scope_exit {
-      HTTP2_LOG(TRACE, "[SERVER] stops listening");
+      HTTP2_LOG(TRACE, "stops listening", name);
     };
     // note: do not remove listener on scope exit
     while (!sessionsgate.is_closed()) {
@@ -97,35 +99,35 @@ struct http2_server::impl {
       co_await net.accept(srv, socket, ec);
 
       if (ec == asio::error::operation_aborted) {
-        HTTP2_LOG(TRACE, "[SERVER] listening on {} stopped", srv.local_endpoint().address().to_string());
+        HTTP2_LOG(TRACE, "listening on {} stopped", srv.local_endpoint().address().to_string(), name);
         co_return;
       }
       if (ec) {
-        HTTP2_LOG(ERROR, "[SERVER] accept failed on {}, err: {}", srv.local_endpoint().address().to_string(),
-                  ec.message());
+        HTTP2_LOG(ERROR, "accept failed on {}, err: {}", srv.local_endpoint().address().to_string(),
+                  ec.message(), name);
         continue;
       }
-      HTTP2_LOG(TRACE, "[SERVER] accepted connection");
+      HTTP2_LOG(TRACE, "accepted connection", name);
       if (!sessionsgate.is_closed()) {
         sessionLifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
       }
     }
-    HTTP2_LOG(TRACE, "[SERVER] acceptConnections: gate is closed");
+    HTTP2_LOG(TRACE, "acceptConnections: gate is closed", name);
   }
 
   dd::task<http2_connection_ptr_t> createConnection(asio::ip::tcp::socket socket) {
     try {
       if (sslctx) {
-        HTTP2_LOG(TRACE, "start TLS session");
+        HTTP2_LOG(TRACE, "start TLS session", name);
         any_connection_t tcpcon(new asio_tls_connection(std::move(socket), sslctx));
         co_return new http2_connection(std::move(tcpcon), ioctx());
       } else {
-        HTTP2_LOG(TRACE, "start non-tls session");
+        HTTP2_LOG(TRACE, "start non-tls session", name);
         any_connection_t tcpcon(new asio_connection(std::move(socket)));
         co_return new http2_connection(std::move(tcpcon), ioctx());
       }
     } catch (std::exception const& e) {
-      HTTP2_LOG(ERROR, "Transport initialization failure: {}", e.what());
+      HTTP2_LOG(ERROR, "connection creation failure: {}", e.what(), name);
       co_return nullptr;
     }
   }
@@ -138,7 +140,7 @@ struct http2_server::impl {
     }
     if (sessionsgate.is_closed()) {
       http2con->shutdown(reqerr_e::CANCELLED);
-      HTTP2_LOG(INFO, "session completed, but server stopped (server session is not created)");
+      HTTP2_LOG(INFO, "session completed, but server stopped (server session is not created)", name);
       co_return;
     }
 
@@ -147,6 +149,9 @@ struct http2_server::impl {
 
     // firstly insert session into list, so server will drop it if stops during session establishing
     server_session session(std::move(http2con), opts, *creator);
+    session.connection->name.set_prefix(SERVER_SESSION_PREFIX);
+    HTTP2_LOG(TRACE, "starting server session {}", name, session.name());
+
     sessions.push_back(session);
     on_scope_exit {
       erase_byref(sessions, session);
@@ -157,25 +162,25 @@ struct http2_server::impl {
       co_await net.sleep(timer, d, ec);
     };
     auto requestTerminateInactive = [&] {
-      HTTP2_LOG(TRACE, "[SERVER] drops connection {} due client inactivity", (void*)session.connection.get());
+      HTTP2_LOG(TRACE, "{} drops connection due client inactivity", name, session.name());
       session.requestTerminate();
     };
     auto requestTerminate = [&] {
-      HTTP2_LOG(TRACE, "[SERVER] writer drops connection {}", (void*)session.connection.get());
+      HTTP2_LOG(TRACE, "writer drops connection", session.name());
       session.requestTerminate();
     };
 
     try {
       timer_t timer(ioctx());
       timer.set_callback([&] {
-        HTTP2_LOG(ERROR, "[SERVER] connection timeout, session: {}", (void*)session.connection.get());
+        HTTP2_LOG(ERROR, "connection timeout", session.name());
         session.connection->shutdown(reqerr_e::TIMEOUT);
       });
       timer.arm(options.connectionTimeout);
       (void)co_await establish_http2_session_server(session.connection, opts);
       timer.cancel();
     } catch (std::exception& e) {
-      HTTP2_LOG(ERROR, "server -> client connection establishment failed, err: {}", e.what());
+      HTTP2_LOG(ERROR, "server -> client connection establishment failed, err: {}", e.what(), name);
       goto drop_session;
     }
 
@@ -203,7 +208,7 @@ struct http2_server::impl {
       // give time for sending goaway
       co_await net.sleep(ioctx(), std::chrono::milliseconds(1));
     }
-    HTTP2_LOG(TRACE, "[SERVER] session {} reader stops, waiting stop", (void*)session.connection.get());
+    HTTP2_LOG(TRACE, "reader stops, waiting stop", session.name());
   drop_session:
     session.requestTerminate();
     if (session.requestsLeft() > 0) {
@@ -213,13 +218,13 @@ struct http2_server::impl {
     // forbidden)
     co_await session.connectionPartsGate.close(ioctx());
     co_await session.responsegate.close(ioctx());
-    HTTP2_LOG(TRACE, "[SERVER] session {} stop ended", (void*)session.connection.get());
+    HTTP2_LOG(TRACE, "session stop ended", session.name());
   } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "session ended with exception: {}", e.what());
+    HTTP2_LOG(ERROR, "session ended with exception: {}", e.what(), name);
   }
 
   void stopListeners() {
-    HTTP2_LOG(TRACE, "[SERVER] shutdown: listeners size {}", listeners.size());
+    HTTP2_LOG(TRACE, "shutdown: listeners size {}", listeners.size(), name);
     for (auto& l : listeners) {
       l.close();
     }
@@ -227,9 +232,9 @@ struct http2_server::impl {
   }
 
   dd::task<void> shutdown() {
-    HTTP2_LOG(TRACE, "[SERVER] shutdown started, server: {}", (void*)this);
+    HTTP2_LOG(TRACE, "shutdown started", name);
     on_scope_exit {
-      HTTP2_LOG(TRACE, "[SERVER] shutdown ended. server {}", (void*)this);
+      HTTP2_LOG(TRACE, "shutdown ended", name);
     };
     sessionsgate.request_close();
     stopListeners();
@@ -241,9 +246,9 @@ struct http2_server::impl {
   }
 
   dd::task<void> terminate() {
-    HTTP2_LOG(TRACE, "[SERVER] terminate started, server: {}", (void*)this);
+    HTTP2_LOG(TRACE, "terminate started", name);
     on_scope_exit {
-      HTTP2_LOG(TRACE, "[SERVER] terminate ended. server {}", (void*)this);
+      HTTP2_LOG(TRACE, "terminate ended", name);
     };
     sessionsgate.request_close();
     stopListeners();
@@ -268,7 +273,7 @@ http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options)
 
 http2_server::~http2_server() {
   assert(m_impl);
-
+  HTTP2_LOG(TRACE, "~http2_server", m_impl->name);
   if (m_impl->sessionsgate.active_count() == 0) {
     return;
   }

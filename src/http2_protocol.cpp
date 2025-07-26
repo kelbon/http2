@@ -41,10 +41,6 @@ first SETTINGS frame. Receivers that detect a change MAY treat it as a
 connection error of type PROTOCOL_ERROR.
 */
   if (s.value > 1 || !firstframe) {
-    HTTP2_LOG(ERROR,
-              "invalid server setting NO_RFC7540 option, value: {}, is first "
-              "settings frame: {}",
-              uint32_t(s.value), firstframe);
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         "MUST NOT change the SETTINGS_NO_RFC7540_PRIORITIES value after the first SETTINGS frame");
@@ -54,7 +50,6 @@ connection error of type PROTOCOL_ERROR.
 static void validate_enable_push_from_client(setting_t s) {
   assert(s.identifier == SETTINGS_ENABLE_PUSH);
   if (s.value > 1) {
-    HTTP2_LOG(ERROR, "invalid client settings enable_push value: {}", uint32_t(s.value));
     throw protocol_error(errc_e::PROTOCOL_ERROR,
                          std::format("invalid client settings enable_push value: {}", uint32_t(s.value)));
   }
@@ -64,7 +59,6 @@ static void validate_enable_push_from_server(setting_t s) {
   assert(s.identifier == SETTINGS_ENABLE_PUSH);
   // server MUST NOT send i
   if (s.value > 0) {
-    HTTP2_LOG(ERROR, "invalid server settings enable push, value: {}", uint32_t(s.value));
     throw protocol_error(errc_e::PROTOCOL_ERROR,
                          std::format("invalid server settings enable push, value: {}", uint32_t(s.value)));
   }
@@ -116,7 +110,6 @@ static void validate_window_update(const frame_header& h) {
   assert(h.type == frame_e::WINDOW_UPDATE);
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9-12
   if (h.length != 4) {
-    HTTP2_LOG(ERROR, "invalid window update frame, streamid {}, len: {}", h.streamId, h.length);
     throw protocol_error(errc_e::FRAME_SIZE_ERROR,
                          std::format("invalid WINDOW_UPDATE len != 4 ({})", h.length));
   }
@@ -125,7 +118,6 @@ static void validate_window_update(const frame_header& h) {
 static void validate_window_update_increment(const frame_header& h, cfint_t increment) {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9-6
   if (increment >= cfint_t(1u << 31)) {
-    HTTP2_LOG(ERROR, "invalid frame {}, window size increment too big ({})", h, increment);
     throw protocol_error(errc_e::FLOW_CONTROL_ERROR,
                          std::format("invalid frame {}, window size increment too big ({})", h, increment));
   }
@@ -133,12 +125,10 @@ static void validate_window_update_increment(const frame_header& h, cfint_t incr
   // (but now both stream and connection related errors are connection error, not stream error)
   if (increment == 0) {
     if (h.streamId != 0) {
-      HTTP2_LOG(ERROR, "invalid window update frame: increment == 0, streamid {}", h.streamId);
       throw stream_error(
           errc_e::PROTOCOL_ERROR, h.streamId,
           std::format("invalid window update frame, increment == 0, streamid: {}", h.streamId));
     } else {
-      HTTP2_LOG(ERROR, "invalid window update frame: increment == 0, streamid == 0");
       throw protocol_error(
           errc_e::PROTOCOL_ERROR,
           std::format("invalid window update frame, increment == 0, streamid == 0", h.streamId));

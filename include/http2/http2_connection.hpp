@@ -8,6 +8,7 @@
 #include "http2/signewaiter_signal.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
+#include "http2/utils/unique_name.hpp"
 #include "http2/utils/fn_ref.hpp"
 #include "http2/utils/timer.hpp"
 #include "http2/utils/merged_segments.hpp"
@@ -57,7 +58,6 @@ struct http2_frame_t {
     if (!(header.flags & flags::PRIORITY)) [[likely]] {
       return;
     }
-    HTTP2_LOG(INFO, "received PRIORITY headers frame");
     // options to disable priority is extension for protocol, it may not be
     // supported so i can receive it ignores
     //  [Exclusive (1)],
@@ -65,10 +65,6 @@ struct http2_frame_t {
     //  [Weight (8)]
     static_assert(CHAR_BIT == 8);
     if (data.size() < 5) {
-      HTTP2_LOG(ERROR,
-                "incorrect PRIORITY headers frame, len: {}, streamid: {}, "
-                "flags: {}, type: {}. Len after padding rm: {}",
-                header.length, header.streamId, header.flags, (int)header.type, data.size());
       throw protocol_error{
           errc_e::PROTOCOL_ERROR,
           std::format("invalid HEADERS frame with priority, data size < 5 ({})", data.size())};
@@ -177,6 +173,8 @@ struct request_node {
       return l.deadline < r.deadline;  // less means higher priority
     }
   };
+
+  std::string_view name() const noexcept;
 };
 
 // Note: shutdown must be called, its not RAII type because its not possible to
@@ -238,6 +236,7 @@ struct http2_connection {
   bi::slist<request_node, requests_member_hook_t, bi::constant_time_size<true>> freeNodes;
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;
+  unique_name name;
 
   explicit http2_connection(any_connection_t&& c, boost::asio::io_context&);
 
@@ -469,7 +468,7 @@ struct http2_connection {
 };
 
 #ifdef HTTP2_ENABLE_TRACE
-void trace_request_headers(http2::http_request const& req, bool fromclient);
+void trace_request_headers(request_node const&, bool fromclient);
 #endif
 
 }  // namespace http2
