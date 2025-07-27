@@ -73,18 +73,42 @@ asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options 
     : ioctx(ctx), options(std::move(opts)) {
 }
 
-// TODO use deadline
 dd::task<any_connection_t> asio_factory::createConnection(endpoint_t endpoint, deadline_t deadline) {
   using tcp = asio::ip::tcp;
 
   tcp::resolver resolver(ioctx);
-  tcp::socket tcp_sock(ioctx);
+
+  asio::steady_timer timer(ioctx);
+  bool timeoutflag = false;
+
+  timer.expires_at(deadline.tp);
+  timer.async_wait([&resolver, &timeoutflag](const io_error_code& ec) {
+    if (ec != asio::error::operation_aborted) {
+      timeoutflag = true;
+      resolver.cancel();
+    }
+  });
+
   io_error_code ec;
   auto results = co_await net.resolve(resolver, endpoint, ec);
-  if (ec) {
+  if (timeoutflag)
+    throw timeout_exception();
+
+  if (results.empty() || ec) {
     HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.address().to_string(), ec.message());
     throw network_exception(ec);
   }
+  tcp::socket tcp_sock(ioctx);
+
+  timer.cancel();
+  timer.expires_at(deadline.tp);
+  timer.async_wait([&tcp_sock, &timeoutflag](const io_error_code& ec) {
+    if (ec != asio::error::operation_aborted) {
+      timeoutflag = true;
+      close_tcp_sock(tcp_sock);
+    }
+  });
+
   co_await net.connect(tcp_sock, results, ec);
 
   if (ec) {
