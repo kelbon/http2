@@ -135,7 +135,6 @@ struct http2_client {
   // note: same as :authority for HTTP2
   explicit http2_client(endpoint_t host, http2_client_options opts)
       : http2_client(std::move(host), std::move(opts), default_transport_factory(m_ioctx)) {
-    m_name.set_prefix(CLIENT_PREFIX);
   }
   explicit http2_client(endpoint_t host, http2_client_options, any_transport_factory);
 

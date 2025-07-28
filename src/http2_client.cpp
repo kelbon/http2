@@ -219,7 +219,6 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
       assert(!con.localSettings.enablePush);  // always setted to 0
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            "PUSH_PROMISE must not be sent, SETTINGS_ENABLE_PUSH is 0");
-      return false;
     case CONTINUATION:
       HTTP2_LOG(INFO, "received CONTINUATION, not supported", con.name);
       return false;
@@ -385,20 +384,20 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
       }
     }
   } catch (protocol_error& e) {
-    HTTP2_LOG(INFO, "exception: {}", e.what(), self->name());
+    HTTP2_LOG(INFO, "exception: {}", e.what(), c->name);
     reason = reqerr_e::PROTOCOL_ERR;
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     goto dropConnection;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), self->name());
+    HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), c->name);
     reason = reqerr_e::SERVER_CANCELLED_REQUEST;
     goto dropConnection;
   } catch (std::exception& se) {
-    HTTP2_LOG(INFO, "unexpected exception {}", se.what(), self->name());
+    HTTP2_LOG(INFO, "unexpected exception {}", se.what(), c->name);
     reason = reqerr_e::UNKNOWN_ERR;
     goto dropConnection;
   } catch (...) {
-    HTTP2_LOG(INFO, "unknown exception happens", self->name());
+    HTTP2_LOG(INFO, "unknown exception happens", c->name);
     reason = reqerr_e::UNKNOWN_ERR;
     goto dropConnection;
   }
@@ -441,6 +440,7 @@ http2_client::~http2_client() {
 http2_client::http2_client(endpoint_t host, http2_client_options opts, any_transport_factory tf)
     : m_host(std::move(host)), m_options(opts), m_factory(std::move(tf)) {
   assert(m_factory);
+  m_name.set_prefix(CLIENT_PREFIX);
   m_options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, m_options.maxReceiveFrameSize);
   HTTP2_LOG(TRACE, "http2_client created", name());
 }

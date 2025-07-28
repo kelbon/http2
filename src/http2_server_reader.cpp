@@ -53,7 +53,6 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
       assert(!con.localSettings.enablePush);  // always setted to 0
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            "PUSH_PROMISE must not be sent, SETTINGS_ENABLE_PUSH is 0");
-      return false;
     case CONTINUATION:
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.10-8
       throw protocol_error(
