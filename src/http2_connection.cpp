@@ -19,7 +19,7 @@ void trace_request_headers(request_node const& node, bool fromclient) {
     s += std::format(":path: {}\n:authority: {}\n:method: {}\n:scheme: {}\n", req.path, req.authority,
                      e2str(req.method), e2str(req.scheme));
   } else {
-    s += std::format(":status: {}", node.status);
+    s += std::format(":status: {}\n", node.status);
   }
   if (!req.body.contentType.empty()) {
     s += std::format("content-type: {}\n", req.body.contentType);
@@ -59,10 +59,12 @@ void intrusive_ptr_release(request_node* p) noexcept {
 }
 
 static void validate_trailer_header(std::string_view name, stream_id_t streamid) {
-  if (name.starts_with(':'))
-    throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
-                       std::format("trailers section must not include pseudo-headers, name: {}, streamid: {}",
-                                   name, streamid));
+  if (name.starts_with(':')) {
+    throw protocol_error(
+        errc_e::PROTOCOL_ERROR,
+        std::format("trailers section must not include pseudo-headers, name: {}, streamid: {}", name,
+                    streamid));
+  }
 }
 
 void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t frame) {
@@ -110,6 +112,9 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
             name());
+  // Note: this code decodes headers block or fails with protocol_error (ends connection)
+  // thats why we dont care about `decode_headers_block` in fail branckes
+
   // weird things like continuations, trailers, many header frames with CONTINUE
   // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
@@ -271,7 +276,12 @@ void http2_connection::finishRequest(request_node& node, int status) noexcept {
   if (!node.task) {
     return;
   }
-  HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, status, name);
+  if (status <= 0) {
+    HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, e2str(reqerr_e::values_e(status)),
+              name);
+  } else {
+    HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, status, name);
+  }
   node.status = status;
   auto t = std::exchange(node.task, nullptr);
   if (status == reqerr_e::CANCELLED || status == reqerr_e::TIMEOUT) {
@@ -467,19 +477,25 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
   // because its possible that stream was canceled due timeout and then frame received
   switch (frame.header.type) {
     case HEADERS:
-      if (is_closed_stream(frame.header.streamId)) {
-        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
-                           "HEADERS frame sent for closed stream");
-      }
       // even if we ignoring frame, stream is done
       laststartedstreamid = std::max(laststartedstreamid, frame.header.streamId);
-      mark_stream_closed(frame.header.streamId);
+      // decode before all to ensure decoder will be in correct state
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-19
       // maintain hpack dynamic table
       hpack::decode_headers_block(decoder, frame.data,
                                   [](std::string_view /*name*/, std::string_view /*value*/) {});
+
+      if (is_closed_stream(frame.header.streamId)) {
+        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
+                           "HEADERS frame sent for closed stream");
+      }
+      mark_stream_closed(frame.header.streamId);
       return;
     case DATA:
+      // NOTE: not using data.size(), since padding should be counted as received
+      // octets
+      // ('data' does not contain padding)
+      decrease_window_size(myWindowSize, int32_t(frame.header.length));
       if (is_closed_stream(frame.header.streamId)) {
         throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
                            "DATA frame sent for closed or idle frame");
@@ -489,10 +505,6 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
             errc_e::PROTOCOL_ERROR,
             std::format("DATA frame sent for idle stream, streamid {}", frame.header.streamId));
       }
-      // NOTE: not using data.size(), since padding should be counted as received
-      // octets
-      // ('data' does not contain padding)
-      decrease_window_size(myWindowSize, int32_t(frame.header.length));
       return;
     default:
       return;

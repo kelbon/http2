@@ -50,7 +50,8 @@ dd::task<http_response> http2_client::sendRequest(http_request request, deadline
 
 std::string_view e2str(reqerr_e::values_e e) noexcept {
   using enum reqerr_e::values_e;
-  switch (e) {
+  assert((int)e <= 0);
+  switch ((int)e) {
     case DONE:
       return "done";
     case CANCELLED:
@@ -65,8 +66,12 @@ std::string_view e2str(reqerr_e::values_e e) noexcept {
       return "server_cancelled_request";
     case UNKNOWN_ERR:
       return "unknown_err";
+    case http2::reqerr_e::REQUEST_CREATED:
+      return "REQUEST_CREATED";
+    case reqerr_e::RESPONSE_IN_PROGRESS:
+      return "RESPONSE_IN_PROGRESS";
   }
-  unreachable();
+  return "UNKNOWN_BAD_STATUS";
 }
 
 std::string_view e2str(http_method_e e) noexcept {
