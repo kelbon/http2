@@ -124,6 +124,13 @@ struct request_node {
     return task == nullptr;
   }
 
+  // returns true if stream was already assembled and response now in progress
+  // server side
+  [[nodiscard]] bool is_half_closed_server() const noexcept {
+    // status >= 0 - запрос уже на стадии отправки
+    return status == reqerr_e::RESPONSE_IN_PROGRESS || status > 0;
+  }
+
   // client side
   void receiveTrailersHeaders(hpack::decoder&, http2_frame_t /*headers frame*/);
 

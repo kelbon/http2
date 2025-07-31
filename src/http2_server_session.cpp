@@ -19,36 +19,32 @@
 
 1. server_reader читает HEADERS фрейм от клиента
 2. server_reader вызывает startRequestAssemble, который создаёт стрим ноду и:
-    * добавляет её в connection.responses (в сервере responses используются
-также для сборки запроса)
-    * выставляет статус reqerr_e::REQUEST_CREATED чтобы обозначить, что запрос
-ещё не собран
+    * добавляет её в connection.responses (в сервере responses используются также для сборки запроса)
+    * выставляет статус reqerr_e::REQUEST_CREATED чтобы обозначить, что запрос ещё не собран
     ** после выхода из startRequestAssemble стрим остаётся без владельца
-3. server_reader продолжает получать фреймы от клиента, собирая их в один внутри
-responses и вызывает onRequestReady, когда приходит фрейм с флагом END_STREAM
-(это может быть самый первый фрейм HEADERS)
+3. server_reader продолжает получать фреймы от клиента, собирая их в один внутри responses
+и вызывает onRequestReady, когда приходит фрейм с флагом END_STREAM (это может быть самый первый фрейм
+HEADERS)
 4. onRequestReady
     * стартует корутину send_response перехватывает владение стримом
     * выставляет статус RESPONSE_IN_PROGRESS
     * вызывает пользовательский калбек для получения Response
-  Важно: если стрим отменён на этом этапе, то send_response будет продолжать
-ждать Response от пользователя и только потом удалится вместе с стримом .task в
-стриме ещё nullptr, чтобы не разбудить send_response во время ожидания Response
-5. После получения Response корутина sendResponse засыпает на responseWritten,
-предварительно выставляя в стрим.task свой хендл и перенося стрим из
-connection.responses в connection.requests (очередь на отправку для писателя)
-6. Писатель забирает из очереди стрим с готовым для отправки Response и пишет
-его, после завершения вызывает connection.finsihRequest
+  Важно: если стрим отменён на этом этапе, то send_response будет продолжать ждать Response от пользователя и
+только потом удалится вместе с стримом .task в стриме ещё nullptr, чтобы не разбудить send_response во время
+ожидания Response
+5. После получения Response корутина send_response выставляет стрим.status и стрим.request, засыпает на
+responseWritten, предварительно выставляя в стрим.task свой хендл и перенося стрим из connection.responses в
+connection.requests (очередь на отправку для писателя)
+6. Писатель забирает из очереди стрим с готовым для отправки Response и пишет его, после завершения вызывает
+connection.finsihRequest
 
-На любом из этапов стрим может быть отменён, например через получение фрейма
-RST_STREAM или .requestTerminate. Во время и для завершения учитываются
-stream.task, и владельцы (если стрим сейчас без владельца, он уничтожается на
-месте) Удаление из контейнеров requests/responses (forget) предотвращает любое
-получение фреймов для этого стрима в server_reader
+На любом из этапов стрим может быть отменён, например через получение фрейма RST_STREAM или .requestTerminate.
+Во время и для завершения учитываются stream.task, и владельцы (если стрим сейчас без владельца, он
+уничтожается на месте) Удаление из контейнеров requests/responses (forget) предотвращает любое получение
+фреймов для этого стрима в server_reader
 
-  Важно: стрим всегда должен быть хотя бы в одном из контейнеров
-responses/requests, чтобы пришедшие фреймы RST_STREAM и прочие могли на него
-повлиять
+  Важно: стрим всегда должен быть хотя бы в одном из контейнеров responses/requests, чтобы пришедшие фреймы
+RST_STREAM и прочие могли на него повлиять
 
 
 */
@@ -88,7 +84,6 @@ server_session::~server_session() {
 
 static dd::task<int> send_response(node_ptr node, server_session& session) {
   assert(node);
-  assert(node->refcount == 1);
   assert(node->status == reqerr_e::RESPONSE_IN_PROGRESS);
   on_scope_exit {
     session.onResponseDone();
@@ -113,7 +108,7 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
     send_rst_stream(session.connection, node->streamid, errc_e::PROTOCOL_ERROR).start_and_detach();
     co_return 0;
   }
-
+  assert(rsp.status > 0);
   node->status = (int)rsp.status;
   node->req = response_bro::torequest(std::move(rsp));
 
@@ -126,8 +121,6 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
 }
 
 void server_session::onRequestReady(request_node& n) noexcept {
-  assert(n.refcount == 1);
-
   // was detached before in startRequestAssemble
   http2::node_ptr np(&n, /*add_ref=*/false);
   np->status = reqerr_e::RESPONSE_IN_PROGRESS;
@@ -250,8 +243,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
 
   // if stream already exist, its trailers or error
   if (auto* r = connection->findResponseByStreamid(frame.header.streamId)) [[unlikely]] {
-    if (r->status == reqerr_e::RESPONSE_IN_PROGRESS) {
-      HTTP2_LOG(ERROR, "client initiates stream, which was already open", name());
+    if (r->is_half_closed_server()) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            std::format("client initiates stream, which was already open, streamid: {}",
                                        frame.header.streamId));
