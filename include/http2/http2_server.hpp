@@ -68,6 +68,9 @@ struct http2_server {
   // used to run server tasks
   // TODO test behavior with several threads running .run()
   asio::io_context& ioctx();
+
+ private:
+  friend struct http2_tester;
 };
 
 }  // namespace http2

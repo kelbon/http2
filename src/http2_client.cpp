@@ -614,5 +614,45 @@ dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {
   co_await net.sleep(timer, d, ec);
 }
 
+bool http2_client::dbg_cancel_stream(std::coroutine_handle<> handle) {
+  // if request waits connection
+  for (auto& waiter : m_connectionWaiters) {
+    if (waiter.task == handle) {
+      erase_byref(m_connectionWaiters, waiter);
+      waiter.result = nullptr;
+      waiter.task.resume();
+      return true;
+    }
+  }
+  request_node* n = dbg_get_node(handle);
+  if (n) {
+    m_connection->finishRequest(*n, reqerr_e::CANCELLED);
+    return true;
+  }
+  return false;
+}
+
+request_node* http2_client::dbg_get_node(std::coroutine_handle<> handle) noexcept {
+  if (!m_connection)
+    return nullptr;
+  // if request not sent yet
+  for (request_node& x : m_connection->requests) {
+    if (x.task == handle) {
+      return &x;
+    }
+  }
+  // request sent, but not received response
+  for (request_node& x : m_connection->responses) {
+    if (x.task == handle) {
+      return &x;
+    }
+  }
+  return nullptr;
+}
+
+http2_connection_ptr_t http2_client::dbg_get_connection() noexcept {
+  return m_connection;
+}
+
 }  // namespace http2
 #pragma GCC diagnostic pop
