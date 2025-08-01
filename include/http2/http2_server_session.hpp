@@ -62,6 +62,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // used when request fully handled and response is sent
   void onResponseDone() noexcept;
 
+  // called when client sent RST_STREAM
   // returns false if no such stream
   bool rstStreamServer(rst_stream);
 

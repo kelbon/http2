@@ -54,6 +54,14 @@ terminate отсылает goaway и отменяет все запросы на
 
 namespace http2 {
 
+stream_id_t request_context::streamid() const noexcept {
+  return node->streamid;
+}
+
+bool request_context::canceled_by_client() const noexcept {
+  return node->canceledByRstStream;
+}
+
 using acceptor_t = boost::asio::ip::tcp::acceptor;
 
 struct http2_server::impl {

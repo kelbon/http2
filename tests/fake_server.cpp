@@ -7,7 +7,7 @@
 struct print_server : http2::http2_server {
   using http2::http2_server::http2_server;
 
-  dd::task<http2::http_response> handle_request(http2::http_request req) {
+  dd::task<http2::http_response> handle_request(http2::http_request req, http2::request_context&) override {
     http2::http_response& rsp = co_await dd::this_coro::return_place;
     rsp.status = 200;
     std::string answer = R"(

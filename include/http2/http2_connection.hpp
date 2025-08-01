@@ -117,9 +117,10 @@ struct request_node {
   on_header_fn_ptr onHeader;
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
+  bool canceledByRstStream = false;  // for server request_context
   KELHTTP2_PIN;
 
-  // precondition: started ()
+  // precondition: started
   [[nodiscard]] bool finished() const noexcept {
     return task == nullptr;
   }

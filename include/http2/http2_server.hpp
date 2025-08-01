@@ -14,6 +14,19 @@ struct server_endpoint {
   bool reuse_address = true;
 };
 
+struct request_context {
+ private:
+  request_node* node;
+
+ public:
+  explicit request_context(request_node& n) noexcept : node(&n) {
+  }
+
+  stream_id_t streamid() const noexcept;
+  // true if client already sent RST_STREAM for this request
+  bool canceled_by_client() const noexcept;
+};
+
 // NOTE! this class is made to be used with seastar::sharded<T>
 struct http2_server {
   struct impl;
@@ -40,7 +53,7 @@ struct http2_server {
 
   // precondition: 'handle_request' must not wait for sever shutdown / terminate (deadlock)
   // if exception thrown from 'handle_request', server will RST_STREAM (PROTOCOL_ERROR)
-  virtual dd::task<http_response> handle_request(http_request) = 0;
+  virtual dd::task<http_response> handle_request(http_request, request_context&) = 0;
 
   [[nodiscard]] size_t sessionsCount() const noexcept;
 

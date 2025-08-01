@@ -32,7 +32,7 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
 struct test_server : http2::http2_server {
   using http2::http2_server::http2_server;
 
-  dd::task<http2::http_response> handle_request(http2::http_request req) override {
+  dd::task<http2::http_response> handle_request(http2::http_request req, http2::request_context&) override {
     http2::http_response rsp = answer_req(std::move(req));
     co_return rsp;
   };

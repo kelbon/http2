@@ -429,6 +429,7 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   node->onHeader = onHeader;
   node->onDataPart = onDataPart;
   node->status = reqerr_e::UNKNOWN_ERR;
+  node->canceledByRstStream = false;
 
   assert(node->refcount == 1);
   assert(!node->requestsHook.is_linked());

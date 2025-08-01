@@ -101,7 +101,8 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   // Note: callback accepts Request by reference, need to handle it here...
   http_response rsp;
   try {
-    rsp = co_await session.server->handle_request(std::move(node->req));
+    request_context ctx(*node);
+    rsp = co_await session.server->handle_request(std::move(node->req), ctx);
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what(),
               session.name());
@@ -158,6 +159,7 @@ bool server_session::rstStreamServer(rst_stream rstframe) {
       return false;
     }
   }
+  n->canceledByRstStream = true;
   finishServerRequest(*n);
   return true;
 }
