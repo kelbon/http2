@@ -171,6 +171,46 @@ struct http2_client {
     return sendRequest(std::move(request), deadline_after(timeout));
   }
 
+  // `makebody` will be called only once, but will be alive atleast until channel is done.
+  // Channel may fill trailers if want to send them
+  //
+  // precondition: 'request.body.data` is empty,
+  //  body channel do not produces zero-sized chunks
+  dd::task<int> send_streaming_request(
+      on_header_fn_ptr, on_data_part_fn_ptr, http_request request,
+      move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody, deadline_t);
+
+  // `makebody` will be called only once, but will be alive atleast until channel is done.
+  // Channel may fill trailers if want to send them
+  //
+  // precondition: 'request.body.data` is empty,
+  //  body channel do not produces zero-sized chunks
+  dd::task<int> send_streaming_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
+                                       http_request request, streaming_body_t streambody,
+                                       deadline_t deadline) {
+    return send_streaming_request(
+        on_header, on_data_part, std::move(request),
+        [x = std::move(streambody)](http_headers_t& /*trailers*/) mutable -> streaming_body_t {
+          return std::move(x);
+        },
+        deadline);
+  }
+
+  // throws on errors
+  dd::task<http_response> send_streaming_request(
+      http_request, move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody, deadline_t);
+
+  // throws on errors
+  dd::task<http_response> send_streaming_request(http_request request, streaming_body_t streambody,
+                                                 deadline_t deadline) {
+    return send_streaming_request(
+        std::move(request),
+        [x = std::move(streambody)](http_headers_t& /*trailers*/) mutable -> streaming_body_t {
+          return std::move(x);
+        },
+        deadline);
+  }
+
   bool connected() const;
 
   void setHost(endpoint_t) noexcept;

@@ -14,6 +14,10 @@ using bytes_t = std::vector<uint8_t>;
 struct http_body {
   std::string contentType;
   http_body_bytes data;
+
+  std::string_view strview() const noexcept {
+    return {(const char*)data.data(), data.size()};
+  }
 };
 
-} // namespace http2
+}  // namespace http2

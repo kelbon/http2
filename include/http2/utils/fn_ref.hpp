@@ -17,7 +17,8 @@ using fn_ptr = aa::ptr<aa::call<SIGNATURE>>;
 template <typename SIGNATURE>
 using fn_cptr = aa::cptr<aa::call<SIGNATURE>>;
 
-template <typename SIGNATURE>
-using move_only_fn = aa::any_with<aa::call<SIGNATURE>, aa::move>;
+// move only with SooS == 0 for less sizeof (used in request_node)
+template <typename Signature>
+using move_only_fn = aa::basic_any_with<aa::default_allocator, 0, aa::call<Signature>>;
 
 }  // namespace http2

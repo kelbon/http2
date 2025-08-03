@@ -9,6 +9,8 @@
 #include <format>
 #include <algorithm>
 
+#include <kelcoro/channel.hpp>
+
 namespace http2 {
 
 [[nodiscard]] static constexpr bool is_lowercase(std::string_view s) noexcept {
@@ -74,6 +76,8 @@ struct http_header_t {
   std::string_view value() const noexcept {
     return hvalue;
   }
+
+  bool operator==(const http_header_t&) const = default;
 };
 
 using http_headers_t = std::vector<http_header_t>;
@@ -101,7 +105,13 @@ struct http_response {
   int status = 0;
   http_headers_t headers;
   http_body_bytes body;
+
+  std::string_view body_strview() const noexcept {
+    return {(const char*)body.data(), body.size()};
+  }
 };
+
+using streaming_body_t = dd::channel<std::span<const byte_t>>;
 
 }  // namespace http2
 

@@ -297,6 +297,7 @@ void http2_connection::finishRequestWithUserException(request_node& node, std::e
     return;
   }
   HTTP2_LOG(TRACE, "stream {} finished with user exception", node.streamid, name);
+  send_rst_stream(this, node.streamid, errc_e::CANCEL).start_and_detach();
   node.task.promise().exception = std::move(e);
   // Note: избегаем выставления одновременно и результата и исключения,
   // поэтому не будим напрямую .task (она выставит результат из .status), вместо
@@ -412,7 +413,7 @@ void http2_connection::shutdown(reqerr_e::values_e reason) noexcept {
 node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t deadline,
                                           on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
                                           stream_id_t id) {
-  node_ptr node = nullptr;
+  node_ptr node;
   if (freeNodes.empty()) {
     node = new request_node;
   } else {
@@ -435,6 +436,16 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   assert(!node->requestsHook.is_linked());
   assert(!node->responsesHook.is_linked());
   assert(!node->timersHook.is_linked());
+  assert(!node->is_streaming());
+  return node;
+}
+
+node_ptr http2_connection::newStreamingRequestNode(http_request&& request, deadline_t deadline,
+                                                   on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
+                                                   stream_id_t streamid,
+                                                   move_only_fn<streaming_body_t(http_headers_t&)> makebody) {
+  node_ptr node = newRequestNode(std::move(request), deadline, onHeader, onDataPart, streamid);
+  node->makebody = std::move(makebody);
   return node;
 }
 

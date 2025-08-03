@@ -520,6 +520,42 @@ dd::task<int> http2_client::sendRequest(on_header_fn_ptr onHeader, on_data_part_
   co_return co_await con->responseReceived(*node);
 }
 
+dd::task<int> http2_client::send_streaming_request(
+    on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part, http_request request,
+    move_only_fn<streaming_body_t(http_headers_t&)> bodyfactory, deadline_t deadline) {
+  assert(request.body.data.empty());
+  if (stopRequested()) [[unlikely]] {
+    co_return reqerr_e::CANCELLED;
+  }
+  if (deadline.isReached()) [[unlikely]] {
+    co_return reqerr_e::TIMEOUT;
+  }
+  ++m_requestsInProgress;
+  on_scope_exit {
+    --m_requestsInProgress;
+  };
+  http2_connection_ptr_t con = co_await borrowConnection(deadline);
+  if (deadline.isReached()) {
+    co_return reqerr_e::TIMEOUT;
+  }
+  if (!con) {
+    co_return reqerr_e::NETWORK_ERR;
+  }
+  if (stopRequested()) [[unlikely]] {
+    co_return reqerr_e::CANCELLED;
+  }
+  assert(!request.path.empty());
+  request.scheme = con->tcpCon->isHttps() ? scheme_e::HTTPS : scheme_e::HTTP;
+  stream_id_t streamid = con->nextStreamid();
+  HTTP2_LOG(TRACE, "sending http2 streaming request, path: {}, method: {}, streamid: {}", request.path,
+            e2str(request.method), streamid, con->name);
+
+  node_ptr node = con->newStreamingRequestNode(std::move(request), deadline, on_header, on_data_part,
+                                               streamid, std::move(bodyfactory));
+
+  co_return co_await con->responseReceived(*node);
+}
+
 dd::task<void> http2_client::coStop() {
   HTTP2_LOG(TRACE, "http2_client::coStop started", name());
   on_scope_exit {

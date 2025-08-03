@@ -99,6 +99,7 @@ struct request_node {
   responses_hook_type responsesHook;
   timers_hooks_type timersHook;
   uint32_t refcount = 0;
+  stream_id_t streamid = 0;
   // local -> remote hope
   // inited from remote settings
   // how many octets local can send to remote
@@ -109,7 +110,6 @@ struct request_node {
   cfint_t rlStreamlevelWindowSize = 0;
   // 'newRequestNode' fills req, deadline and initial stream window sizes
   http_request req;
-  stream_id_t streamid = 0;
   deadline_t deadline;
   dd::task<int>::handle_type task;  // setted by 'await_suspend' (requester)
   http2_connection_ptr_t connection = nullptr;
@@ -118,7 +118,16 @@ struct request_node {
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
   bool canceledByRstStream = false;  // for server request_context
+  // filled if this a streaming request
+  move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody;
   KELHTTP2_PIN;
+
+  [[nodiscard]] bool is_streaming() const noexcept {
+    return makebody.has_value();
+  }
+  [[nodiscard]] bool has_body() const noexcept {
+    return is_streaming() || !req.body.data.empty();
+  }
 
   // precondition: started
   [[nodiscard]] bool finished() const noexcept {
@@ -346,6 +355,7 @@ struct http2_connection {
   void finishRequest(request_node& node, int status) noexcept;
 
   // used only when user exception throwed from on_header/on_data_part callbacks
+  // or if channel for streaming node throws
   void finishRequestWithUserException(request_node& node, std::exception_ptr) noexcept;
 
   // client side
@@ -394,6 +404,11 @@ struct http2_connection {
   // after creation 3 hooks (requests, responses, timers) and 'task' left unused
   node_ptr newRequestNode(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
                           on_data_part_fn_ptr onDataPart, stream_id_t streamid);
+
+  // client side
+  node_ptr newStreamingRequestNode(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
+                                   on_data_part_fn_ptr onDataPart, stream_id_t streamid,
+                                   move_only_fn<streaming_body_t(http_headers_t&)> makebody);
 
   void returnNode(request_node* ptr) noexcept;
 

@@ -138,17 +138,27 @@ constexpr inline unsigned char CONNECTION_PREFACE[] = {
     0x2e, 0x30, 0x0d, 0x0a, 0x0d, 0x0a, 0x53, 0x4d, 0x0d, 0x0a, 0x0d, 0x0a,
 };
 
-/*
+struct data_frame {
+  /*
+    <header>
+    [Pad Length (8)],
+    Data (..),
+    Padding (..2040),
 
-struct data_frame
-{
-      <header>
-      [Pad Length (8)],
-      Data (..),
-      Padding (..2040),
+    client/server writer/reader form/decode this frame directly when required
+  */
 
-      client/server writer/reader form/decode this frame directly when required
+  static frame_header end_stream_marker(stream_id_t id) noexcept {
+    return frame_header{
+        .length = 0,
+        .type = frame_e::DATA,
+        .flags = flags::END_STREAM,
+        .streamId = id,
+    };
+  }
 };
+
+/*
 
 // opens new stream
 struct headers_frame

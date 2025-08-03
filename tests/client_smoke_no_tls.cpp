@@ -2,31 +2,51 @@
 #include <http2/asio/factory.hpp>
 #include <http2/http2_server.hpp>
 
-constexpr std::string_view expected_response = "hello world";
+#include <iostream>
+
+#define error_if(...)                                       \
+  if ((__VA_ARGS__)) {                                      \
+    std::cout << "ERROR ON LINE " << __LINE__ << std::endl; \
+    std::exit(__LINE__);                                    \
+  }
+
+using namespace http2;
+
+constexpr std::string_view EXPECTED_RESPONSE = "hello world";
 
 // all noinlines here is workaround gcc-12 bug (miscompilation)
 #define TGBM_GCC_WORKAROUND [[gnu::noinline]]
 
-TGBM_GCC_WORKAROUND void fail(int i) {
-  std::exit(i);
-}
+constexpr inline std::string_view STREAM_REQUEST_PATH = "/bcd";
+constexpr inline std::string_view REQUEST_PATH = "/abc";
+
+const inline http_headers_t EXPECTED_STREAMING_HEADERS{
+    http2::http_header_t{"hash", "55555"},
+    http2::http_header_t{"ok", "yes"},
+};
+
+constexpr inline std::string_view EXPECTED_STREAMING_DATA = "hello world!";
 
 TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   http2::http_response rsp;
-  if (req.path == "/abc" && req.method == http2::http_method_e::GET) {
+  if (req.path == REQUEST_PATH && req.method == http2::http_method_e::GET) {
     rsp.status = 200;
     rsp.headers.push_back(http2::http_header_t{.hname = "content-type", .hvalue = "text/plain"});
-    rsp.body.insert(rsp.body.end(), expected_response.begin(), expected_response.end());
-    if (!req.body.data.empty()) {
-      HTTP2_LOG_ERROR("incorrect body, size: {}", req.body.data.size());
-      fail(1);
-    }
-    return rsp;
+    rsp.body.insert(rsp.body.end(), EXPECTED_RESPONSE.begin(), EXPECTED_RESPONSE.end());
+    error_if(!req.body.data.empty());
+
+  } else if (req.path == STREAM_REQUEST_PATH) {
+    rsp.status = 200;
+    error_if(req.headers != EXPECTED_STREAMING_HEADERS);
+    error_if(std::string(req.body.strview()) != EXPECTED_STREAMING_DATA);
+    // echo
+    rsp.headers = req.headers;
+    rsp.body = req.body.data;
   } else {
-    HTTP2_LOG_ERROR("incorrect path! Path is: {}", req.path);
-    fail(2);
-    return rsp;
+    error_if(true);
   }
+
+  return rsp;
 }
 
 struct test_server : http2::http2_server {
@@ -35,40 +55,58 @@ struct test_server : http2::http2_server {
   dd::task<http2::http_response> handle_request(http2::http_request req, http2::request_context&) override {
     http2::http_response rsp = answer_req(std::move(req));
     co_return rsp;
-  };
+  }
 };
 
 inline bool all_good = false;
 
 TGBM_GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http2_client& client) {
   http2::http_request req{
-      .path = "/abc",
+      .path = std::string(REQUEST_PATH),
       .method = http2::http_method_e::GET,
   };
   return client.sendRequest(std::move(req), http2::deadline_t::never());
 }
 
-TGBM_GCC_WORKAROUND void check_response(http2::http2_client& client, const http2::http_response& rsp) {
-  if (rsp.headers.size() != 1) {  // status and content-type
-    HTTP2_LOG_ERROR("incorrect count of headers: {}", rsp.headers.size());
-    fail(3);
+TGBM_GCC_WORKAROUND void check_response(const http2::http_response& rsp) {
+  error_if(rsp.headers.size() != 1);  // status and content-type
+  error_if(rsp.headers[0].name() != "content-type" || rsp.headers[0].value() != "text/plain");
+  error_if(!std::ranges::equal(EXPECTED_RESPONSE, rsp.body));
+}
+
+void check_streaming_response(const http2::http_response& rsp) {
+  error_if(rsp.status != 200);
+  error_if(rsp.headers != EXPECTED_STREAMING_HEADERS);
+  error_if(rsp.body_strview() != EXPECTED_STREAMING_DATA);
+}
+
+http2::streaming_body_t makebody(http2::http_headers_t& trailers) {
+  for (const char& c : EXPECTED_STREAMING_DATA) {
+    co_yield {(const http2::byte_t*)&c, 1};
   }
-  if (rsp.headers[0].name() != "content-type" || rsp.headers[0].value() != "text/plain") {
-    HTTP2_LOG_ERROR("incorrect header: {}, value: {}", rsp.headers[0].name(), rsp.headers[0].value());
-    fail(4);
-  }
-  if (!std::ranges::equal(expected_response, rsp.body)) {
-    HTTP2_LOG_ERROR("incorrect body");
-    fail(5);
-  }
-  all_good = true;
-  HTTP2_LOG_INFO("success");
+  trailers = EXPECTED_STREAMING_HEADERS;
+}
+
+dd::task<http2::http_response> make_test_stream_request(http2::http2_client& client) {
+  http2::http_request req{
+      .path = std::string(STREAM_REQUEST_PATH),
+      .method = http2::http_method_e::PUT,
+  };
+  req.body.contentType = "text/plain";
+  auto body = [](http2::http_headers_t& trailers) { return makebody(trailers); };
+  co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
 }
 
 dd::task<void> main_coro(http2::http2_client& client) {
-  dd::task test_req = make_test_request(client);
-  http2::http_response rsp = co_await test_req;
-  check_response(client, rsp);
+  http2::http_response rsp = co_await make_test_request(client);
+  check_response(rsp);
+
+  rsp = co_await make_test_stream_request(client);
+  check_streaming_response(rsp);
+
+  all_good = true;
+  HTTP2_LOG_INFO("success");
+
   // TODO? client.stop();
 }
 
@@ -76,7 +114,7 @@ int main() try {
   std::thread([] {
     std::this_thread::sleep_for(std::chrono::seconds(5));
     HTTP2_LOG_ERROR("timeout!");
-    fail(4);
+    std::exit(-1);
   }).detach();
 
   namespace asio = boost::asio;

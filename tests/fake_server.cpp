@@ -25,8 +25,7 @@ struct print_server : http2::http2_server {
 }
 )";
     rsp.body.insert(rsp.body.end(), answer.begin(), answer.end());
-    std::cout << std::format("request, path: {}, body {}", req.path,
-                             std::string_view((const char*)req.body.data.data(), req.body.data.size()));
+    std::cout << std::format("request, path: {}, body {}", req.path, req.body.strview());
     co_return dd::rvo;
   }
 };

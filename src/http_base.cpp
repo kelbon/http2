@@ -45,7 +45,26 @@ dd::task<http_response> http2_client::sendRequest(http_request request, deadline
     throw_bad_status(rsp.status);
   }
 
-  co_return std::move(rsp);
+  co_return rsp;
+}
+
+dd::task<http_response> http2_client::send_streaming_request(
+    http_request request, move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody,
+    deadline_t deadline) {
+  http_response rsp;
+  auto onHeader = [&](std::string_view name, std::string_view value) {
+    rsp.headers.emplace_back(std::string(name), std::string(value));
+  };
+  auto onDataPart = [&](std::span<byte_t const> bytes, bool /*lastPart*/) {
+    rsp.body.insert(rsp.body.end(), bytes.begin(), bytes.end());
+  };
+  rsp.status = co_await send_streaming_request(&onHeader, &onDataPart, std::move(request),
+                                               std::move(makebody), deadline);
+  if (rsp.status < 0) {
+    throw_bad_status(rsp.status);
+  }
+
+  co_return rsp;
 }
 
 std::string_view e2str(reqerr_e::values_e e) noexcept {
