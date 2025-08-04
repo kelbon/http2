@@ -4,16 +4,25 @@
 #include <charconv>
 
 using namespace http2;
+
+dd::channel<std::span<const byte_t>> streambody() {
+  std::string_view answer = "hello world";
+  for (char const& c : answer) {
+    co_yield {(const byte_t*)&c, 1};
+  }
+}
+
 struct bench_server : http2_server {
   using http2_server::http2_server;
   asio::steady_timer t;
   io_error_code ec;
+  bool answer_stream = false;
 
   bench_server(http2_server_options o) : http2_server(o), t(ioctx()) {
   }
 
-  dd::task<http_response> handle_request(http_request r, request_context&) override {
-    http_response& rsp = co_await dd::this_coro::return_place;
+  dd::task<http_response> handle_request(http_request r, request_context& ctx) override {
+    answer_stream = !answer_stream;
     // some specific h2 test for content-length, which i dont want to handle in server
     auto hdr = std::ranges::find(r.headers, "content-length", &http2::http_header_t::hname);
     if (hdr != r.headers.end()) {
@@ -24,12 +33,16 @@ struct bench_server : http2_server {
         throw http2::stream_error(errc_e::PROTOCOL_ERROR, /*does not know*/ 1,
                                   "\"content-length\" does not equal to DATA len");
     }
+    if (answer_stream) {
+      co_return ctx.stream_response(200, {}, streambody());
+    }
+    http_response rsp;
     rsp.status = 200;
     std::string_view answer = "hello world";
     auto* in = answer.data();
     rsp.body.assign(in, in + answer.size());
     co_await net.sleep(t, std::chrono::milliseconds(100), ec);
-    co_return dd::rvo;
+    co_return rsp;
   }
 };
 

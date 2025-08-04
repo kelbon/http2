@@ -25,6 +25,19 @@ struct request_context {
   stream_id_t streamid() const noexcept;
   // true if client already sent RST_STREAM for this request
   bool canceled_by_client() const noexcept;
+
+  // must be returned from `handle_request` to send stream response.
+  // For example if server want to send big file. Also can send trailers (by settings headers passed into
+  // channel)
+  // precondition: makebody.has_value(), status > 0
+  [[nodiscard("return it")]] http_response stream_response(
+      int status, http_headers_t, move_only_fn<streaming_body_t(http_headers_t& trailers)> makebody);
+
+  [[nodiscard("return it")]] http_response stream_response(int status, http_headers_t request,
+                                                           streaming_body_t body) {
+    return stream_response(status, std::move(request),
+                           [x = std::move(body)](http_headers_t&) mutable { return std::move(x); });
+  }
 };
 
 // NOTE! this class is made to be used with seastar::sharded<T>

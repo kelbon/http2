@@ -520,10 +520,12 @@ dd::task<int> http2_client::sendRequest(on_header_fn_ptr onHeader, on_data_part_
   co_return co_await con->responseReceived(*node);
 }
 
-dd::task<int> http2_client::send_streaming_request(
-    on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part, http_request request,
-    move_only_fn<streaming_body_t(http_headers_t&)> bodyfactory, deadline_t deadline) {
+dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
+                                                   on_data_part_fn_ptr on_data_part, http_request request,
+                                                   move_only_fn<streaming_body_t(http_headers_t&)> makebody,
+                                                   deadline_t deadline) {
   assert(request.body.data.empty());
+  assert(makebody);
   if (stopRequested()) [[unlikely]] {
     co_return reqerr_e::CANCELLED;
   }
@@ -551,9 +553,66 @@ dd::task<int> http2_client::send_streaming_request(
             e2str(request.method), streamid, con->name);
 
   node_ptr node = con->newStreamingRequestNode(std::move(request), deadline, on_header, on_data_part,
-                                               streamid, std::move(bodyfactory));
+                                               streamid, std::move(makebody));
 
   co_return co_await con->responseReceived(*node);
+}
+
+[[noreturn]] static void throw_bad_status(int status) {
+  assert(status < 0);
+  using enum reqerr_e::values_e;
+  switch (reqerr_e::values_e(status)) {
+    case DONE:
+      unreachable();
+    case TIMEOUT:
+      throw timeout_exception{};
+    case NETWORK_ERR:
+      throw network_exception{""};
+    case PROTOCOL_ERR:
+      throw protocol_error(errc_e::PROTOCOL_ERROR);
+    case CANCELLED:
+      throw std::runtime_error("HTTP client: request was canceled");
+    case SERVER_CANCELLED_REQUEST:
+      throw std::runtime_error("HTTP client: request was canceled by server");
+    default:
+    case UNKNOWN_ERR:
+      throw std::runtime_error("HTTP client unknown error happens");
+  }
+}
+
+dd::task<http_response> http2_client::sendRequest(http_request request, deadline_t deadline) {
+  http_response rsp;
+  auto onHeader = [&](std::string_view name, std::string_view value) {
+    rsp.headers.emplace_back(std::string(name), std::string(value));
+  };
+  auto onDataPart = [&](std::span<byte_t const> bytes, bool /*lastPart*/) {
+    rsp.body.insert(rsp.body.end(), bytes.begin(), bytes.end());
+  };
+  rsp.status = co_await sendRequest(&onHeader, &onDataPart, std::move(request), deadline);
+  if (rsp.status < 0) {
+    throw_bad_status(rsp.status);
+  }
+
+  co_return rsp;
+}
+
+dd::task<http_response> http2_client::send_streaming_request(
+    http_request request, move_only_fn<streaming_body_t(http_headers_t&)> makebody, deadline_t deadline) {
+  assert(makebody);
+  http_response rsp;
+  auto onHeader = [&](std::string_view name, std::string_view value) {
+    rsp.headers.emplace_back(std::string(name), std::string(value));
+  };
+  auto onDataPart = [&](std::span<byte_t const> bytes, bool /*lastPart*/) {
+    rsp.body.insert(rsp.body.end(), bytes.begin(), bytes.end());
+  };
+  rsp.status = co_await send_streaming_request(&onHeader, &onDataPart, std::move(request),
+                                               std::move(makebody), deadline);
+  if (rsp.status < 0) {
+    throw_bad_status(rsp.status);
+  }
+
+  co_return rsp;
 }
 
 dd::task<void> http2_client::coStop() {

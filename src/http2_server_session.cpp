@@ -103,6 +103,8 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   try {
     request_context ctx(*node);
     rsp = co_await session.server->handle_request(std::move(node->req), ctx);
+    // here node->is_streaming() possible if ctx.streaming_response was called
+    assert(!node->is_streaming() || rsp.body.empty() && "streaming response must be with empty body");
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what(),
               session.name());

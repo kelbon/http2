@@ -204,6 +204,7 @@ static dd::task<void> write_trailers(http2_connection& con, stream_id_t streamid
   co_await con.write(bytes, ec);
 }
 
+template <bool IS_CLIENT>
 static dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
   assert(node && node->is_streaming());
 
@@ -274,7 +275,9 @@ static dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writ
     if (ec)
       goto end;
   }
-
+  if constexpr (!IS_CLIENT) {
+    con->finishRequest(snode, snode.status);
+  }
   co_return;
 end:
   if (ec != boost::asio::error::operation_aborted) {
@@ -373,15 +376,13 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
           }
           goto end;
         }
-      }
-      if constexpr (!IS_CLIENT) {
-        assert(!node->onHeader && !node->onDataPart);
-        con->finishRequest(*node, node->status);
-      }
-      if constexpr (IS_CLIENT) {
-        if (node->is_streaming()) {
-          (void)write_stream_data(node, con, cbs);
+      } else if (!node->is_streaming()) {
+        // request has no body
+        if constexpr (!IS_CLIENT) {
+          con->finishRequest(*node, node->status);
         }
+      } else {
+        (void)write_stream_data<IS_CLIENT>(node, con, cbs);
       }
     }
   }  // end loop handling requests

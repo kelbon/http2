@@ -316,4 +316,16 @@ asio::io_context& http2_server::ioctx() {
   return m_impl->ioctx();
 }
 
+http_response request_context::stream_response(int status, http_headers_t hdrs,
+                                               move_only_fn<streaming_body_t(http_headers_t&)> makebody) {
+  assert(status > 0);
+  assert(makebody);
+  http_response rsp;
+  rsp.status = status;
+  rsp.headers = std::move(hdrs);
+  node->makebody = std::move(makebody);
+
+  return rsp;
+}
+
 }  // namespace http2

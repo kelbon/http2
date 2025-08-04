@@ -176,6 +176,7 @@ struct http2_client {
   //
   // precondition: 'request.body.data` is empty,
   //  body channel do not produces zero-sized chunks
+  // makebody.has_value() == true
   dd::task<int> send_streaming_request(
       on_header_fn_ptr, on_data_part_fn_ptr, http_request request,
       move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody, deadline_t);
@@ -185,6 +186,7 @@ struct http2_client {
   //
   // precondition: 'request.body.data` is empty,
   //  body channel do not produces zero-sized chunks
+  // makebody.has_value() == true
   dd::task<int> send_streaming_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
                                        http_request request, streaming_body_t streambody,
                                        deadline_t deadline) {
