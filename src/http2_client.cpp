@@ -262,7 +262,7 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
         // applicable only to data
         // Note: includes padding!
         decrease_window_size(con.myWindowSize, frame.header.length);
-        node->receiveData(frame);
+        node->receiveResponseData(frame);
         break;
       default:
         unreachable();

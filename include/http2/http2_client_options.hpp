@@ -18,6 +18,9 @@ struct http2_client_options {
   duration_t connectionTimeout = std::chrono::seconds(1);
   // If the server does not respond to ping within this time, drops connection
   duration_t pingTimeout = std::chrono::seconds(10);
+  // can significantly speed up the first requests on connection,
+  // but not all servers correctly support it
+  bool allow_requests_before_server_settings = true;
 };
 
 }  // namespace http2

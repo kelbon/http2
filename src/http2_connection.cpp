@@ -136,11 +136,11 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   });
 }
 
-void request_node::receiveData(http2_frame_t frame) {
+void request_node::receiveResponseData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
   decrease_window_size(rlStreamlevelWindowSize, int32_t(frame.header.length));
-  if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2) {
+  if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2 && !(frame.header.flags & flags::END_STREAM)) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
   }
   if (onDataPart) {
@@ -174,7 +174,7 @@ void request_node::receiveRequestData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
   decrease_window_size(rlStreamlevelWindowSize, int32_t(frame.header.length));
-  if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2) {
+  if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2 && !(frame.header.flags & flags::END_STREAM)) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
   }
   req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
@@ -201,32 +201,38 @@ http2_connection::~http2_connection() {
   freeNodes.clear_and_dispose([](request_node* node) { delete node; });
 }
 
-void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
+void http2_connection::settings_changed(http2_frame_t newsettings, bool remote_is_client) {
   if (newsettings.header.flags & flags::ACK) {
-    if (newsettings.header.streamId != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-7
-      HTTP2_LOG(ERROR, "received server settings with ACK and streamid != 0 ({})",
-                newsettings.header.streamId, name);
-      throw protocol_error(errc_e::PROTOCOL_ERROR);
-    }
-    if (newsettings.header.length != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-6.2
-      HTTP2_LOG(ERROR, "received server settings with ACK and len != 0 ({})", newsettings.header.length,
-                name);
-      throw protocol_error(errc_e::FRAME_SIZE_ERROR);
-    }
+    validate_settings_ack_frame(newsettings.header);
+    // только после подтверждения настроек я действительно могу перейти на свои настройки
+    // ведь до этого клиент/сервер мог посылать запросы/ответы по старому размеру динамической таблицы
+    decoder.dyntab.set_user_protocol_max_size(localSettings.headerTableSize);
     return;
   }
-  // should be called from client, so remote settings is server settings
   settings_t before = remoteSettings;
-  server_settings_visitor vtor(remoteSettings);
-  settings_frame::parse(newsettings.header, newsettings.data, vtor);
+  if (remote_is_client) {
+    settings_frame::parse(newsettings.header, newsettings.data,
+                          client_settings_visitor{remoteSettings,
+                                                  /*firstframe=*/first_settings_frame_received});
+  } else {
+    settings_frame::parse(newsettings.header, newsettings.data,
+                          server_settings_visitor{remoteSettings,
+                                                  /*firstframe=*/first_settings_frame_received});
+  }
+  first_settings_frame_received = true;
   if (before.headerTableSize != remoteSettings.headerTableSize) {
     HTTP2_LOG(INFO, "HPACK table resized: new size {}, old size: {}", remoteSettings.headerTableSize,
               before.headerTableSize, name);
     encodertablesizechangerequested = true;
   }
+  // encoder обновится на основании новых настроек когда писатель увидит `encodertablesizechangerequested`
   adjustWindowForAllStreams(before.initialStreamWindowSize, remoteSettings.initialStreamWindowSize);
   // then change all active streams window size
   send_settings_ack(this).start_and_detach();
+}
+
+void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
+  settings_changed(newsettings, /*remote_is_client=*/false);
 }
 
 void http2_connection::serverRequestsGracefulShutdown(goaway_frame f) {

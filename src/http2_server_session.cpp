@@ -299,25 +299,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
 }
 
 void server_session::clientSettingsChanged(http2_frame_t newsettings) {
-  if (newsettings.header.flags & flags::ACK) {
-    validate_settings_ack_frame(newsettings.header);
-    // только после подтверждения настроек я действительно могу перейти на свои настройки
-    // ведь до этого клиент мог посылать запросы по старому размеру динамической таблицы
-    connection->decoder.dyntab.set_user_protocol_max_size(connection->localSettings.headerTableSize);
-    return;
-  }
-  // should be called from server, so remote settings is client settings
-  settings_t before = connection->remoteSettings;
-  client_settings_visitor vtor(connection->remoteSettings);
-  settings_frame::parse(newsettings.header, newsettings.data, vtor);
-  if (before.headerTableSize != connection->remoteSettings.headerTableSize) {
-    HTTP2_LOG(INFO, "HPACK table resized, new size {}, old size: {}",
-              connection->remoteSettings.headerTableSize, before.headerTableSize, name());
-    connection->encodertablesizechangerequested = true;
-  }
-  connection->adjustWindowForAllStreams(before.initialStreamWindowSize,
-                                        connection->remoteSettings.initialStreamWindowSize);
-  send_settings_ack(connection).start_and_detach();
+  connection->settings_changed(newsettings, /*remote_is_client=*/true);
 }
 
 void server_session::clientRequestsGracefulShutdown(goaway_frame f) {

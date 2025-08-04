@@ -41,8 +41,6 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   con->localSettings = settings_t{
       .headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize,
       .enablePush = false,
-      // means nothing, since server do not start streams
-      .maxConcurrentStreams = settings_t::MAX_MAX_CONCURRENT_STREAMS,
       .initialStreamWindowSize = MAX_WINDOW_SIZE,
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
       .maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN),
@@ -67,7 +65,10 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
       throw network_exception("cannot write HTTP/2 client connection preface, err: {}", ec.what());
     }
   }
-
+  if (options.allow_requests_before_server_settings) {
+    // server settings and settings ACK will be handled later
+    co_return con;
+  }
   // read server connection preface (settings frame)
 
   // read server preface

@@ -152,8 +152,9 @@ struct request_node {
   // precondition: padding removed
   void receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t frame);
 
+  // client side
   // precondition: padding removed
-  void receiveData(http2_frame_t frame);
+  void receiveResponseData(http2_frame_t frame);
 
   // server side
   // expects required pseudoheaders like :path
@@ -226,6 +227,8 @@ struct http2_connection {
   //
   // if true, new value in server_settings.header_table_size
   bool encodertablesizechangerequested = false;
+  // правила для первого фрейма SETTINGS отличаются от правил для последующих
+  bool first_settings_frame_received = false;
   hpack::decoder decoder;
   // odd, for client its last started stream, for server last stream started by client
   stream_id_t laststartedstreamid = 0;
@@ -413,6 +416,9 @@ struct http2_connection {
   void returnNode(request_node* ptr) noexcept;
 
   void ignoreFrame(http2_frame_t frame);
+
+  // `remote_is_client` should be true on server side
+  void settings_changed(http2_frame_t newsettings, bool remote_is_client);
 
   // client side
   // used when settings changed while connection active

@@ -294,11 +294,15 @@ struct client_settings_visitor {
 
 inline void validate_settings_ack_frame(const frame_header& h) {
   assert(h.type == frame_e::SETTINGS && (h.flags & flags::ACK));
-  if (h.length != 0 || h.streamId != 0) {
+  if (h.streamId != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-7
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("invalid SETTINGS ACK frame, len != 0 or stream id != 0, len: {}, streamid: {}", h.length,
                     h.streamId));
+  }
+  if (h.length != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-6.2
+    throw protocol_error(errc_e::FRAME_SIZE_ERROR,
+                         std::format("received SETTINGS ACK with len != 0 ({})", h.length));
   }
 }
 
