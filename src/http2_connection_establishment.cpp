@@ -28,7 +28,6 @@ static void validate_client_magic(std::span<byte_t> magic) {
   }
 }
 
-// TODO nullptr and no throw
 dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection_ptr_t con,
                                                                 http2_client_options options) {
   using enum frame_e;
@@ -124,7 +123,6 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   co_return con;
 }
 
-// TODO nullptr and no throw
 dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection_ptr_t con,
                                                                 http2_server_options options) {
   assert(con);
@@ -180,6 +178,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   con->localSettings.initialStreamWindowSize = MAX_WINDOW_SIZE;
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
   con->localSettings.maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN);
+  con->localSettings.enable_connect_protocol = options.supports_websocket;
   con->localSettings.deprecatedPriorityDisabled = true;
   {
     std::vector<byte_t> bytes;

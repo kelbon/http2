@@ -20,6 +20,7 @@ struct http2_frame_t;
 // Not RAII type, must be closed (requestTerminate/shutdown + wait gate) before
 // destroy
 struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
+  uint32_t refcount = 0;
   gate responsegate;
   // for connection reader/writer
   gate connectionPartsGate;
@@ -144,5 +145,18 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
     return connection->name;
   }
 };
+
+inline void intrusive_ptr_add_ref(server_session* p) noexcept {
+  ++p->refcount;
+}
+
+inline void intrusive_ptr_release(server_session* p) noexcept {
+  --p->refcount;
+  if (p->refcount == 0) {
+    delete p;
+  }
+}
+
+using server_session_ptr = boost::intrusive_ptr<server_session>;
 
 }  // namespace http2

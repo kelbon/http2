@@ -33,14 +33,14 @@ static void validate_max_frame_size(setting_t s) {
   }
 }
 
-static void validate_norfc7540_priority(setting_t s, bool firstframe) {
+static void validate_norfc7540_priority(setting_t s, bool firstframe, bool oldvalue) {
   assert(s.identifier == SETTINGS_NO_RFC7540_PRIORITIES);
   /*
 Senders MUST NOT change the SETTINGS_NO_RFC7540_PRIORITIES value after the
 first SETTINGS frame. Receivers that detect a change MAY treat it as a
 connection error of type PROTOCOL_ERROR.
 */
-  if (s.value > 1 || !firstframe) {
+  if (s.value > 1 || (!firstframe && s.value != oldvalue)) {
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         "MUST NOT change the SETTINGS_NO_RFC7540_PRIORITIES value after the first SETTINGS frame");
@@ -52,6 +52,24 @@ static void validate_enable_push_from_client(setting_t s) {
   if (s.value > 1) {
     throw protocol_error(errc_e::PROTOCOL_ERROR,
                          std::format("invalid client settings enable_push value: {}", uint32_t(s.value)));
+  }
+}
+
+static void validate_enable_connect_protocol_from_server(setting_t s) {
+  assert(s.identifier == SETTINGS_ENABLE_CONNECT_PROTOCOL);
+  if (s.value > 1) {
+    throw protocol_error(
+        errc_e::PROTOCOL_ERROR,
+        std::format("invalid server SETTINGS_ENABLE_CONNECT_PROTOCOL value: {}", uint32_t(s.value)));
+  }
+}
+
+static void validate_enable_connect_protocol_from_client(setting_t s) {
+  assert(s.identifier == SETTINGS_ENABLE_CONNECT_PROTOCOL);
+  if (s.value > 0) {
+    throw protocol_error(
+        errc_e::PROTOCOL_ERROR,
+        std::format("invalid client SETTINGS_ENABLE_CONNECT_PROTOCOL value: {}", uint32_t(s.value)));
   }
 }
 
@@ -125,9 +143,8 @@ static void validate_window_update_increment(const frame_header& h, cfint_t incr
   // (but now both stream and connection related errors are connection error, not stream error)
   if (increment == 0) {
     if (h.streamId != 0) {
-      throw stream_error(
-          errc_e::PROTOCOL_ERROR, h.streamId,
-          std::format("invalid window update frame, increment == 0, streamid: {}", h.streamId));
+      throw stream_error(errc_e::PROTOCOL_ERROR, h.streamId,
+                         std::format("invalid window update frame, increment == 0"));
     } else {
       throw protocol_error(
           errc_e::PROTOCOL_ERROR,
@@ -189,8 +206,12 @@ void server_settings_visitor::operator()(setting_t s) {
     case SETTINGS_MAX_HEADER_LIST_SIZE:
       settings.maxHeaderListSize = s.value;
       return;
+    case SETTINGS_ENABLE_CONNECT_PROTOCOL:
+      validate_enable_connect_protocol_from_server(s);
+      settings.enable_connect_protocol = s.value;
+      return;
     case SETTINGS_NO_RFC7540_PRIORITIES:
-      validate_norfc7540_priority(s, firstframe);
+      validate_norfc7540_priority(s, firstframe, settings.deprecatedPriorityDisabled);
       settings.deprecatedPriorityDisabled = s.value;
       return;
     default:
@@ -222,8 +243,12 @@ void client_settings_visitor::operator()(setting_t s) {
     case SETTINGS_MAX_HEADER_LIST_SIZE:
       settings.maxHeaderListSize = s.value;
       return;
+    case SETTINGS_ENABLE_CONNECT_PROTOCOL:
+      validate_enable_connect_protocol_from_client(s);
+      settings.enable_connect_protocol = s.value;
+      return;
     case SETTINGS_NO_RFC7540_PRIORITIES:
-      validate_norfc7540_priority(s, firstframe);
+      validate_norfc7540_priority(s, firstframe, settings.deprecatedPriorityDisabled);
       settings.deprecatedPriorityDisabled = s.value;
       return;
     default:

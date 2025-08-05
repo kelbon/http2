@@ -59,14 +59,6 @@ struct response_bro {
     // must not contain ":status" or other pseudoheaders
     assert(std::find_if(rsp.headers.begin(), rsp.headers.end(),
                         [](http_header_t& h) { return h.name().starts_with(':'); }) == rsp.headers.end());
-    auto it = std::find_if(req.headers.begin(), req.headers.end(), [](http_header_t const& h) {
-      // header names are always in lower case
-      return h.name() == "content-type";
-    });
-    if (it != req.headers.end()) {
-      req.body.contentType = std::move(it->hvalue);
-      req.headers.erase(it);
-    }
     return req;
   }
 };
@@ -101,10 +93,9 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   // Note: callback accepts Request by reference, need to handle it here...
   http_response rsp;
   try {
-    request_context ctx(*node);
-    rsp = co_await session.server->handle_request(std::move(node->req), ctx);
+    rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
     // here node->is_streaming() possible if ctx.streaming_response was called
-    assert(!node->is_streaming() || rsp.body.empty() && "streaming response must be with empty body");
+    assert((!node->is_streaming() || rsp.body.empty()) && "streaming response must be with empty body");
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what(),
               session.name());
@@ -272,6 +263,9 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
                     frame.header.streamId, connection->laststartedstreamid));
   }
 
+  // Note: before making a decision about a stream, to keep in mind the client's desire to create such stream
+  connection->laststartedstreamid = std::max(connection->laststartedstreamid, frame.header.streamId);
+
   if (connection->is_closed_stream(frame.header.streamId)) {
     throw protocol_error(errc_e::STREAM_CLOSED,
                          std::format("stream already closed, but received HEADERS frame. Stream id: {}",
@@ -280,9 +274,6 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
     throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
                        "refused due max concurrent streams exceeded");
   }
-
-  // frame.header.streamId guaranteed to be > last started streamid (checked above)
-  connection->laststartedstreamid = frame.header.streamId;
 
   http2::node_ptr n = newEmptyStreamNode(frame.header.streamId);
   n->status = reqerr_e::REQUEST_CREATED;

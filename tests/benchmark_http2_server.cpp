@@ -21,7 +21,7 @@ struct bench_server : http2_server {
   bench_server(http2_server_options o) : http2_server(o), t(ioctx()) {
   }
 
-  dd::task<http_response> handle_request(http_request r, request_context& ctx) override {
+  dd::task<http_response> handle_request(http_request r, request_context ctx) override {
     answer_stream = !answer_stream;
     // some specific h2 test for content-length, which i dont want to handle in server
     auto hdr = std::ranges::find(r.headers, "content-length", &http2::http_header_t::hname);

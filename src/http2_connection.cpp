@@ -16,8 +16,8 @@ void trace_request_headers(request_node const& node, bool fromclient) {
   auto& req = node.req;
   std::string s;
   if (fromclient) {
-    s += std::format(":path: {}\n:authority: {}\n:method: {}\n:scheme: {}\n", req.path, req.authority,
-                     e2str(req.method), e2str(req.scheme));
+    s += std::format(":path: {}\n:authority: {}\n:method: {}\n:scheme: {}\n", req.path,
+                     req.authority.empty() ? "<unset>" : req.authority, e2str(req.method), e2str(req.scheme));
   } else {
     s += std::format(":status: {}\n", node.status);
   }
@@ -166,8 +166,6 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
 #ifdef HTTP2_ENABLE_TRACE
   trace_request_headers(*this, /*from client=*/true);
 #endif
-  // TODO find not lowered header name and mark it as protocol error (with
-  // explaining)
 }
 
 void request_node::receiveRequestData(http2_frame_t frame) {
@@ -213,11 +211,11 @@ void http2_connection::settings_changed(http2_frame_t newsettings, bool remote_i
   if (remote_is_client) {
     settings_frame::parse(newsettings.header, newsettings.data,
                           client_settings_visitor{remoteSettings,
-                                                  /*firstframe=*/first_settings_frame_received});
+                                                  /*firstframe=*/!first_settings_frame_received});
   } else {
     settings_frame::parse(newsettings.header, newsettings.data,
                           server_settings_visitor{remoteSettings,
-                                                  /*firstframe=*/first_settings_frame_received});
+                                                  /*firstframe=*/!first_settings_frame_received});
   }
   first_settings_frame_received = true;
   if (before.headerTableSize != remoteSettings.headerTableSize) {

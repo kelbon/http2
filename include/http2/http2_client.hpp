@@ -177,6 +177,7 @@ struct http2_client {
   // precondition: 'request.body.data` is empty,
   //  body channel do not produces zero-sized chunks
   // makebody.has_value() == true
+  // channel MUST NOT go to another thread
   dd::task<int> send_streaming_request(
       on_header_fn_ptr, on_data_part_fn_ptr, http_request request,
       move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody, deadline_t);
@@ -187,15 +188,12 @@ struct http2_client {
   // precondition: 'request.body.data` is empty,
   //  body channel do not produces zero-sized chunks
   // makebody.has_value() == true
+  // channel MUST NOT go to another thread
   dd::task<int> send_streaming_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
                                        http_request request, streaming_body_t streambody,
                                        deadline_t deadline) {
-    return send_streaming_request(
-        on_header, on_data_part, std::move(request),
-        [x = std::move(streambody)](http_headers_t& /*trailers*/) mutable -> streaming_body_t {
-          return std::move(x);
-        },
-        deadline);
+    return send_streaming_request(on_header, on_data_part, std::move(request),
+                                  streaming_body_without_trailers(std::move(streambody)), deadline);
   }
 
   // throws on errors
@@ -205,12 +203,8 @@ struct http2_client {
   // throws on errors
   dd::task<http_response> send_streaming_request(http_request request, streaming_body_t streambody,
                                                  deadline_t deadline) {
-    return send_streaming_request(
-        std::move(request),
-        [x = std::move(streambody)](http_headers_t& /*trailers*/) mutable -> streaming_body_t {
-          return std::move(x);
-        },
-        deadline);
+    return send_streaming_request(std::move(request), streaming_body_without_trailers(std::move(streambody)),
+                                  deadline);
   }
 
   bool connected() const;

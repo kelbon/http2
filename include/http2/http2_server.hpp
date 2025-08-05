@@ -16,7 +16,7 @@ struct server_endpoint {
 
 struct request_context {
  private:
-  request_node* node;
+  node_ptr node;
 
  public:
   explicit request_context(request_node& n) noexcept : node(&n) {
@@ -35,8 +35,7 @@ struct request_context {
 
   [[nodiscard("return it")]] http_response stream_response(int status, http_headers_t request,
                                                            streaming_body_t body) {
-    return stream_response(status, std::move(request),
-                           [x = std::move(body)](http_headers_t&) mutable { return std::move(x); });
+    return stream_response(status, std::move(request), streaming_body_without_trailers(std::move(body)));
   }
 };
 
@@ -66,7 +65,9 @@ struct http2_server {
 
   // precondition: 'handle_request' must not wait for sever shutdown / terminate (deadlock)
   // if exception thrown from 'handle_request', server will RST_STREAM (PROTOCOL_ERROR)
-  virtual dd::task<http_response> handle_request(http_request, request_context&) = 0;
+  // request_context lighweight object, easy to copy. It will be valid while request in progress, even if
+  // .stream_response used
+  virtual dd::task<http_response> handle_request(http_request, request_context) = 0;
 
   [[nodiscard]] size_t sessionsCount() const noexcept;
 

@@ -231,6 +231,8 @@ enum : uint16_t {
   SETTINGS_INITIAL_WINDOW_SIZE = 0x4,
   SETTINGS_MAX_FRAME_SIZE = 0x5,
   SETTINGS_MAX_HEADER_LIST_SIZE = 0x6,
+  // websocket extended connect https://www.rfc-editor.org/rfc/rfc8441
+  SETTINGS_ENABLE_CONNECT_PROTOCOL = 0x8,
   // extension https://datatracker.ietf.org/doc/html/rfc9218
   SETTINGS_NO_RFC7540_PRIORITIES = 0x9,
 };
@@ -245,6 +247,7 @@ struct settings_t {
   uint32_t initialStreamWindowSize = 65'535;
   uint32_t maxFrameSize = MIN_MAX_FRAME_LEN;
   uint32_t maxHeaderListSize = uint32_t(-1);
+  bool enable_connect_protocol = false;
   // https://datatracker.ietf.org/doc/html/rfc9218
   bool deprecatedPriorityDisabled = false;
 };
@@ -339,6 +342,8 @@ struct settings_frame {
     len += settings.initialStreamWindowSize != default_.initialStreamWindowSize;
     len += settings.maxFrameSize != default_.maxFrameSize;
     len += settings.maxHeaderListSize != default_.maxHeaderListSize;
+    len += settings.enable_connect_protocol != default_.enable_connect_protocol;
+    len += settings.deprecatedPriorityDisabled != default_.deprecatedPriorityDisabled;
     len *= sizeof(setting_t);
 
     // send frame header
@@ -364,6 +369,8 @@ struct settings_frame {
     PUSH_SETTING(initialStreamWindowSize, SETTINGS_INITIAL_WINDOW_SIZE);
     PUSH_SETTING(maxFrameSize, SETTINGS_MAX_FRAME_SIZE);
     PUSH_SETTING(maxHeaderListSize, SETTINGS_MAX_HEADER_LIST_SIZE);
+    PUSH_SETTING(enable_connect_protocol, SETTINGS_ENABLE_CONNECT_PROTOCOL);
+    PUSH_SETTING(deprecatedPriorityDisabled, SETTINGS_NO_RFC7540_PRIORITIES);
 #undef PUSH_SETTING
 
     return out;

@@ -34,6 +34,8 @@ struct http2_server_options {
   // if this option is true, user must use server .run only from one thread and server will be optimized for
   // it
   bool singlethread = false;
+  // if false, server will not declare websocket support for clients
+  bool supports_websocket = true;
 };
 
 // creates server connection with client

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "http2/http_body.hpp"
+#include "http2/utils/fn_ref.hpp"
 
 #include <string_view>
 #include <vector>
@@ -112,6 +113,14 @@ struct http_response {
 };
 
 using streaming_body_t = dd::channel<std::span<const byte_t>>;
+
+// helper, mostly for implementation
+inline move_only_fn<streaming_body_t(http_headers_t&)> streaming_body_without_trailers(
+    streaming_body_t streambody) {
+  return [x = std::move(streambody)](http_headers_t& /*trailers*/) mutable -> streaming_body_t {
+    return std::move(x);
+  };
+}
 
 }  // namespace http2
 

@@ -103,7 +103,8 @@ struct stream_error : protocol_error {
   // precondition: streamid != 0
   stream_error(errc_e e, stream_id_t id, std::string msg) : protocol_error(e), streamid(id) {
     assert(streamid != 0);
-    this->dbginfo = std::format("HTTP/2 stream error: errc: {}, dbginfo: \"{}\"", e2str(errc), msg);
+    this->dbginfo =
+        std::format("HTTP/2 stream error: errc: {}, dbginfo: \"{}\", streamid: {}", e2str(errc), msg, id);
   }
 };
 

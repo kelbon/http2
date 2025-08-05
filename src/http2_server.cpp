@@ -156,7 +156,8 @@ struct http2_server::impl {
     int reader_ec = 0;
 
     // firstly insert session into list, so server will drop it if stops during session establishing
-    server_session session(std::move(http2con), opts, *creator);
+    server_session_ptr session_ptr = new server_session(std::move(http2con), opts, *creator);
+    server_session& session = *session_ptr;
     session.connection->name.set_prefix(SERVER_SESSION_PREFIX);
     HTTP2_LOG(TRACE, "starting server session {}", name, session.name());
 
@@ -165,24 +166,24 @@ struct http2_server::impl {
       erase_byref(sessions, session);
     };
 
-    auto sleepcb = [&session](duration_t d, io_error_code& ec) -> dd::task<void> {
-      asio::steady_timer timer(session.server->ioctx());
+    auto sleepcb = [session_ptr](duration_t d, io_error_code& ec) -> dd::task<void> {
+      asio::steady_timer timer(session_ptr->server->ioctx());
       co_await net.sleep(timer, d, ec);
     };
-    auto requestTerminateInactive = [&] {
-      HTTP2_LOG(TRACE, "{} drops connection due client inactivity", name, session.name());
-      session.requestTerminate();
+    auto requestTerminateInactive = [session_ptr, nm = this->name] {
+      HTTP2_LOG(TRACE, "{} drops connection due client inactivity", nm, session_ptr->name());
+      session_ptr->requestTerminate();
     };
-    auto requestTerminate = [&] {
-      HTTP2_LOG(TRACE, "writer drops connection", session.name());
-      session.requestTerminate();
+    auto requestTerminate = [session_ptr] {
+      HTTP2_LOG(TRACE, "writer drops connection", session_ptr->name());
+      session_ptr->requestTerminate();
     };
 
     try {
       timer_t timer(ioctx());
-      timer.set_callback([&] {
-        HTTP2_LOG(ERROR, "connection timeout", session.name());
-        session.connection->shutdown(reqerr_e::TIMEOUT);
+      timer.set_callback([session_ptr] {
+        HTTP2_LOG(ERROR, "connection timeout", session_ptr->name());
+        session_ptr->connection->shutdown(reqerr_e::TIMEOUT);
       });
       timer.arm(options.connectionTimeout);
       (void)co_await establish_http2_session_server(session.connection, opts);

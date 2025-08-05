@@ -12,33 +12,31 @@
 
 using namespace http2;
 
-constexpr std::string_view EXPECTED_RESPONSE = "hello world";
-
 // all noinlines here is workaround gcc-12 bug (miscompilation)
 #define TGBM_GCC_WORKAROUND [[gnu::noinline]]
 
 constexpr inline std::string_view STREAM_REQUEST_PATH = "/bcd";
 constexpr inline std::string_view REQUEST_PATH = "/abc";
 
-const inline http_headers_t EXPECTED_STREAMING_HEADERS{
+const inline http_headers_t EXPECTED_HEADERS{
     http2::http_header_t{"hash", "55555"},
     http2::http_header_t{"ok", "yes"},
+    http2::http_header_t{"content-type", "mycontent/type"},
 };
 
-constexpr inline std::string_view EXPECTED_STREAMING_DATA = "hello world!";
+constexpr inline std::string_view EXPECTED_DATA = "hello world!";
 
 TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   http2::http_response rsp;
   if (req.path == REQUEST_PATH && req.method == http2::http_method_e::GET) {
     rsp.status = 200;
-    rsp.headers.push_back(http2::http_header_t{.hname = "content-type", .hvalue = "text/plain"});
-    rsp.body.insert(rsp.body.end(), EXPECTED_RESPONSE.begin(), EXPECTED_RESPONSE.end());
+    rsp.headers = EXPECTED_HEADERS;
+    rsp.body.insert(rsp.body.end(), EXPECTED_DATA.begin(), EXPECTED_DATA.end());
     error_if(!req.body.data.empty());
-
   } else if (req.path == STREAM_REQUEST_PATH) {
     rsp.status = 200;
-    error_if(req.headers != EXPECTED_STREAMING_HEADERS);
-    error_if(std::string(req.body.strview()) != EXPECTED_STREAMING_DATA);
+    error_if(req.headers != EXPECTED_HEADERS);
+    error_if(std::string(req.body.strview()) != EXPECTED_DATA);
     // echo
     rsp.headers = req.headers;
     rsp.body = req.body.data;
@@ -52,7 +50,7 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
 struct test_server : http2::http2_server {
   using http2::http2_server::http2_server;
 
-  dd::task<http2::http_response> handle_request(http2::http_request req, http2::request_context&) override {
+  dd::task<http2::http_response> handle_request(http2::http_request req, http2::request_context) override {
     http2::http_response rsp = answer_req(std::move(req));
     co_return rsp;
   }
@@ -69,22 +67,21 @@ TGBM_GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http
 }
 
 TGBM_GCC_WORKAROUND void check_response(const http2::http_response& rsp) {
-  error_if(rsp.headers.size() != 1);  // status and content-type
-  error_if(rsp.headers[0].name() != "content-type" || rsp.headers[0].value() != "text/plain");
-  error_if(!std::ranges::equal(EXPECTED_RESPONSE, rsp.body));
+  error_if(rsp.headers != EXPECTED_HEADERS);
+  error_if(!std::ranges::equal(EXPECTED_DATA, rsp.body));
 }
 
 void check_streaming_response(const http2::http_response& rsp) {
   error_if(rsp.status != 200);
-  error_if(rsp.headers != EXPECTED_STREAMING_HEADERS);
-  error_if(rsp.body_strview() != EXPECTED_STREAMING_DATA);
+  error_if(rsp.headers != EXPECTED_HEADERS);
+  error_if(rsp.body_strview() != EXPECTED_DATA);
 }
 
 http2::streaming_body_t makebody(http2::http_headers_t& trailers) {
-  for (const char& c : EXPECTED_STREAMING_DATA) {
+  for (const char& c : EXPECTED_DATA) {
     co_yield {(const http2::byte_t*)&c, 1};
   }
-  trailers = EXPECTED_STREAMING_HEADERS;
+  trailers = EXPECTED_HEADERS;
 }
 
 dd::task<http2::http_response> make_test_stream_request(http2::http2_client& client) {
@@ -113,7 +110,7 @@ dd::task<void> main_coro(http2::http2_client& client) {
 int main() try {
   std::thread([] {
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    HTTP2_LOG_ERROR("timeout!");
+    HTTP2_LOG_ERROR("test timeout!");
     std::exit(-1);
   }).detach();
 
