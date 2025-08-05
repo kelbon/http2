@@ -4,6 +4,7 @@
 #include "http2/http2_connection_establishment.hpp"
 #include "http2/http_base.hpp"
 #include "http2/transport_factory.hpp"
+#include "http2/utils/memory_queue.hpp"
 
 #include <kelcoro/task.hpp>
 
@@ -14,6 +15,7 @@ struct server_endpoint {
   bool reuse_address = true;
 };
 
+// Note: its NOT thread safe to copy on other thread
 struct request_context {
  private:
   node_ptr node;
@@ -33,10 +35,16 @@ struct request_context {
   [[nodiscard("return it")]] http_response stream_response(
       int status, http_headers_t, move_only_fn<streaming_body_t(http_headers_t& trailers)> makebody);
 
-  [[nodiscard("return it")]] http_response stream_response(int status, http_headers_t request,
+  [[nodiscard("return it")]] http_response stream_response(int status, http_headers_t hdrs,
                                                            streaming_body_t body) {
-    return stream_response(status, std::move(request), streaming_body_without_trailers(std::move(body)));
+    return stream_response(status, std::move(hdrs), streaming_body_without_trailers(std::move(body)));
   }
+
+  // make sense only for :method == CONNECT requests, e.g. websockets / proxy
+  // `makestream` will be called once and will be alive while request exist
+  // yield from this channel will send data to client, memory_queue may be used to receive data
+  [[nodiscard("return it")]] http_response bidirectional_stream_response(
+      int status, http_headers_t hdrs, move_only_fn<streaming_body_t(memory_queue_ptr)> makestream);
 };
 
 // NOTE! this class is made to be used with seastar::sharded<T>

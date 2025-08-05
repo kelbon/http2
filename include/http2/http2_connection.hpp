@@ -118,6 +118,7 @@ struct request_node {
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
   bool canceledByRstStream = false;  // for server request_context
+
   // filled if this a streaming request
   move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody;
   KELHTTP2_PIN;
@@ -138,7 +139,7 @@ struct request_node {
   // server side
   [[nodiscard]] bool is_half_closed_server() const noexcept {
     // status >= 0 - запрос уже на стадии отправки
-    return status == reqerr_e::RESPONSE_IN_PROGRESS || status > 0;
+    return status == reqerr_e::RESPONSE_IN_PROGRESS || status >= 0;
   }
 
   // client side
@@ -369,7 +370,7 @@ struct http2_connection {
     finishRequest(node, reqerr_e::TIMEOUT);
   }
 
-  void finishAllWithException(reqerr_e::values_e reason);
+  void finishAllWithReason(reqerr_e::values_e reason);
 
   [[nodiscard]] request_node* findResponseByStreamid(stream_id_t id) noexcept;
 

@@ -115,11 +115,11 @@ struct http_response {
 using streaming_body_t = dd::channel<std::span<const byte_t>>;
 
 // helper, mostly for implementation
+// `args` will be just stored in returned object
 inline move_only_fn<streaming_body_t(http_headers_t&)> streaming_body_without_trailers(
-    streaming_body_t streambody) {
-  return [x = std::move(streambody)](http_headers_t& /*trailers*/) mutable -> streaming_body_t {
-    return std::move(x);
-  };
+    streaming_body_t streambody, auto... args) {
+  return [x = std::move(streambody), ... pack = std::move(args)](
+             http_headers_t& /*trailers*/) mutable -> streaming_body_t { return std::move(x); };
 }
 
 }  // namespace http2

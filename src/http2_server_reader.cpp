@@ -104,9 +104,6 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
         con.ignoreFrame(frame);
         return true;
       }
-      if (node->is_half_closed_server()) {
-        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
-      }
       // applicable only to data
       // Note: includes padding!
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2-1

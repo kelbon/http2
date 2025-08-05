@@ -329,4 +329,20 @@ http_response request_context::stream_response(int status, http_headers_t hdrs,
   return rsp;
 }
 
+http_response request_context::bidirectional_stream_response(
+    int status, http_headers_t hdrs, move_only_fn<streaming_body_t(memory_queue_ptr)> makestream) {
+  // if exception thrown, it will be in `server::handle_request`
+  // (since it called there) and will lead to  RST_STREAM
+  memory_queue_ptr q = std::make_shared<memory_queue>();
+  // emulating send_response here, send_response later will not handle it
+  http_response rsp;
+  rsp.status = status;
+  node->req.headers = std::move(hdrs);
+  node->onDataPart = &*q;
+  node->makebody = [mkstream = std::move(makestream), q = std::move(q)](http_headers_t&) mutable {
+    return mkstream(std::move(q));
+  };
+  return rsp;
+}
+
 }  // namespace http2

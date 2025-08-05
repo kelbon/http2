@@ -283,7 +283,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   request_node& node = *n.detach();
 
   node.receiveRequestHeaders(connection->decoder, frame);
-  if (frame.header.flags & flags::END_STREAM) {
+  if ((frame.header.flags & flags::END_STREAM) || node.req.method == http_method_e::CONNECT) {
     // Note: manages 'node' lifetime
     onRequestReady(node);
   }

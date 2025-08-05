@@ -115,7 +115,6 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
       return !n->responsesHook.is_linked();
     }
     std::coroutine_handle<> await_suspend(dd::task<int>::handle_type h) noexcept {
-      erase_byref(con->responses, *n);
       con->requests.push_back(*n);
       n->task = h;
       if (con->writer.handle)  // if writer waits job now

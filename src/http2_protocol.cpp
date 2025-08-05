@@ -320,8 +320,11 @@ static void validate_header_name(const hpack::header_view& h, stream_id_t stream
       case 0x41 ... 0x5a:
       case 0x7f ... 0xff:
       case ':':
-        throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
-                           std::format("forbidden character 0x{:x} in header name \"{}\")", c, str));
+        // websocket, handled here for better hot path
+        if (h.name != ":protocol") {
+          throw stream_error(errc_e::PROTOCOL_ERROR, streamid,
+                             std::format("forbidden character 0x{:x} in header name \"{}\")", c, str));
+        }
     }
   }
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.2-1
@@ -412,9 +415,11 @@ void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t cons
       throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("required header {} not present", hdrname));
     }
   };
-  checkrequired(":path", pathParsed);
   checkrequired(":method", methodParsed);
-  checkrequired(":scheme", schemeParsed);
+  if (req.method != http_method_e::CONNECT) [[likely]] {
+    checkrequired(":path", pathParsed);
+    checkrequired(":scheme", schemeParsed);
+  }
   // authority not checked, since its possible to not receive authority (client not required to sent it)
 }
 

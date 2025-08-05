@@ -171,13 +171,23 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
 void request_node::receiveRequestData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
+
+  HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamId, frame.header.length,
+            std::string_view((char const*)frame.data.data(), frame.data.size()), name());
+
   decrease_window_size(rlStreamlevelWindowSize, int32_t(frame.header.length));
   if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2 && !(frame.header.flags & flags::END_STREAM)) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
   }
+  if (this->is_half_closed_server()) {
+    if (is_streaming() && onDataPart) {  // bidirectional stream
+      (*onDataPart)(frame.data, (frame.header.flags & flags::END_STREAM));
+    } else {
+      throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
+    }
+    return;
+  }
   req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
-  HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamId, frame.header.length,
-            std::string_view((char const*)frame.data.data(), frame.data.size()), name());
 }
 
 std::string_view request_node::name() const noexcept {
@@ -319,7 +329,7 @@ bool http2_connection::finishStreamWithError(rst_stream rstframe) {
   return true;
 }
 
-void http2_connection::finishAllWithException(reqerr_e::values_e reason) {
+void http2_connection::finishAllWithReason(reqerr_e::values_e reason) {
   assert(isDropped());  // must be called only while dropConnection()
 
   // assume only i have access to it
@@ -403,7 +413,7 @@ bool http2_connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
     // == its in write/sleep
     // then writer must be canceled by socket.cancel() or shutdown
   }
-  finishAllWithException(reason);
+  finishAllWithReason(reason);
   return true;
 }
 

@@ -207,6 +207,9 @@ struct http2_client {
                                   deadline);
   }
 
+  // used for bidirectional stream requests, such as websockets request
+  void send_bidir_stream_request(http_request request);
+
   bool connected() const;
 
   void setHost(endpoint_t) noexcept;
