@@ -8,6 +8,7 @@
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/gate.hpp"
+#include "http2/utils/memory_queue.hpp"
 #include "http2/utils/unique_name.hpp"
 
 #include <memory>
@@ -161,6 +162,7 @@ struct http2_client {
   // then returns immediately returns < 0 if error (reqerr_e), 0 if request
   // done, but both handlers nullptr and status not parsed > 0 if 3-digit server
   // response code
+  // precondition: request.method is not CONNECT ( for connect use send_connect_request)
   dd::task<int> sendRequest(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart, http_request,
                             deadline_t deadline);
 
@@ -207,8 +209,13 @@ struct http2_client {
                                   deadline);
   }
 
-  // used for bidirectional stream requests, such as websockets request
-  void send_bidir_stream_request(http_request request);
+  // used for both connect and extented connect (websockets),
+  // `makestream` will be invoked once with response and memory queue from which user can receive data
+  // precondition: request.method == CONNECT && request.body.data.empty()
+  // returns status of first response, < 0 if connection request was failed
+  dd::task<int> send_connect_request(
+      http_request request, move_only_fn<streaming_body_t(http_response, memory_queue_ptr)> makestream,
+      deadline_t = deadline_t::never());
 
   bool connected() const;
 

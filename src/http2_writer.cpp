@@ -26,19 +26,54 @@ namespace http2 {
 
 constexpr inline auto H2FHL = FRAME_HEADER_LEN;
 
+// client-side
+static void generate_http2_connect_headers(request_node const& node, hpack::encoder& encoder,
+                                           bytes_t& bytes) {
+  assert(node.req.method == http_method_e::CONNECT);
+
+  auto& req = node.req;
+  auto out = std::back_inserter(bytes);
+  // https://datatracker.ietf.org/doc/html/rfc8441#section-4
+  bool extended_connect = std::ranges::find(req.headers, std::string_view(":protocol"),
+                                            &http_header_t::name) != req.headers.end();
+
+  encoder.encode(hpack::static_table_t::method_get, "CONNECT", out);
+  // does not check single value "websocket" for :protocol pseudoheader for future extensions
+  // anyway server will check it
+  if (extended_connect) {
+    // pseudoheaders must be first!
+    // do not handle / reorder user headers here to make sure
+    // echo server will exactly copy what user writes in request
+    assert(req.headers.front().name() == ":protocol");
+    assert(req.body.contentType.empty());
+    using hdrs = hpack::static_table_t::values;
+    hdrs scheme = req.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
+    encoder.encode_header_fully_indexed(scheme, out);
+    if (!req.authority.empty()) {
+      encoder.encode_with_cache(hdrs::authority, req.authority, out);
+    }
+    encoder.encode_with_cache(hdrs::path, req.path, out);
+  } else {
+    // https://www.rfc-editor.org/rfc/rfc9113.html#name-the-connect-method
+    // :path :scheme MUST be omitted, authority required
+    assert(!req.authority.empty());  // must be setted, address for server TCP connection
+  }
+  for (auto& h : req.headers) {
+    encoder.encode(h.name(), h.value(), out);
+  }
+}
+
 template <bool IS_CLIENT>
 static void generate_http2_headers_to(request_node const& node, hpack::encoder& encoder, bytes_t& headers) {
   using hdrs = hpack::static_table_t::values;
   auto const& request = node.req;
 
-  assert(!IS_CLIENT || !request.path.empty());
+  assert(!IS_CLIENT || !request.path.empty() || node.is_connect_request());
 
   auto out = std::back_inserter(headers);
 
   if constexpr (IS_CLIENT) {
-    // required scheme, method, authority, path
-    hdrs scheme = request.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
-    encoder.encode_header_fully_indexed(scheme, out);
+    // scheme, method, authority, path
 
     switch (request.method) {
       case http_method_e::GET:
@@ -47,6 +82,11 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
       case http_method_e::POST:
         encoder.encode_header_fully_indexed(hdrs::method_post, out);
         break;
+      case http_method_e::CONNECT:
+        if constexpr (IS_CLIENT) {
+          generate_http2_connect_headers(node, encoder, headers);
+          return;
+        }
       default:
         encoder.encode_with_cache(hdrs::method_get, e2str(request.method), out);
     }
@@ -54,6 +94,8 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
       encoder.encode_with_cache(hdrs::authority, request.authority, out);
     }
     encoder.encode_with_cache(hdrs::path, request.path, out);
+    hdrs scheme = request.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
+    encoder.encode_header_fully_indexed(scheme, out);
   } else {
     // server, required only :status
     assert(node.status > 0);
@@ -104,25 +146,6 @@ template <bool Streaming>
 
   return header.length;
 }
-
-struct writer_callbacks {
-  writer_sleepcb_t sleepcb;
-  writer_on_network_err_t neterrcb;
-  size_t refcount = 0;
-};
-
-static void intrusive_ptr_add_ref(writer_callbacks* p) noexcept {
-  ++p->refcount;
-}
-
-static void intrusive_ptr_release(writer_callbacks* p) noexcept {
-  --p->refcount;
-  if (p->refcount == 0) {
-    delete p;
-  }
-}
-
-using writer_callbacks_ptr = boost::intrusive_ptr<writer_callbacks>;
 
 template <bool Streaming>
 static dd::task<void> write_data(node_ptr work, http2_connection_ptr_t con, writer_callbacks_ptr cbs,
@@ -205,11 +228,10 @@ static dd::task<void> write_trailers(http2_connection& con, stream_id_t streamid
 }
 
 template <bool IS_CLIENT>
-static dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
+dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
   assert(node && node->is_streaming());
 
   request_node& snode = *node;
-
   assert(!!snode.makebody);
 
   io_error_code ec;
@@ -217,12 +239,7 @@ static dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writ
   // channel may fill trailers to send them
   http_headers_t trailers;
 
-  // Note: order. `chan` destroyed before `makebody`
-  on_scope_exit {
-    // clear for future using from freelist
-    node->makebody.reset();
-    assert(!node->is_streaming());
-  };
+  // Note: order. `chan` destroyed before `makebody` (which destroyed in returnNode)
   streaming_body_t chan = snode.makebody(trailers);
 
   on_scope_exit {
@@ -291,6 +308,10 @@ end:
             con->name);
 }
 
+template dd::job write_stream_data<true>(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs);
+template dd::job write_stream_data<false>(node_ptr node, http2_connection_ptr_t con,
+                                          writer_callbacks_ptr cbs);
+
 template <bool IS_CLIENT>
 dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
                          writer_on_network_err_t neterrcb, bool forcedisablehpack, gate::holder) {
@@ -327,19 +348,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
       // TODO if headers > con->settings.max_frame_size
       bytes_t headers(FRAME_HEADER_LEN, 0);  // reserve for frame header
 
-      // https://www.rfc-editor.org/rfc/rfc9113.html#name-settings-synchronization
-      if (con->encodertablesizechangerequested) [[unlikely]] {
-        con->encodertablesizechangerequested = false;
-        if (con->remoteSettings.headerTableSize < con->encoder.dyntab.max_size()) {
-          con->encoder.encode_dynamic_table_size_update(con->remoteSettings.headerTableSize,
-                                                        std::back_inserter(headers));
-        }
-        con->encoder.dyntab.set_user_protocol_max_size(con->remoteSettings.headerTableSize);
-      }
-      if (node->streamid == 1 && forcedisablehpack) [[unlikely]] {
-        con->encoder.encode_dynamic_table_size_update(0, std::back_inserter(headers));
-        con->encoder.dyntab.update_size(0);
-      }
+      con->start_headers_block(*node, forcedisablehpack, headers);
 
       generate_http2_headers_to<IS_CLIENT>(*node, con->encoder, headers);
       using namespace flags;

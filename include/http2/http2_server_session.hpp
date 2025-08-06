@@ -105,7 +105,6 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
       // data part and header marker for writer, that this request must be
       // awaiken after sending
       assert(con && n);
-      assert(!n->onDataPart && !n->onHeader);
       assert(!n->requestsHook.is_linked());
       if (con->isDropped()) {
         n->status = reqerr_e::CANCELLED;

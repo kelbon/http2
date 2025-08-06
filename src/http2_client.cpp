@@ -254,8 +254,10 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
       case HEADERS:
         frame.ignoreDeprecatedPriority();
         node->receiveResponseHeaders(con.decoder, frame);
-        if ((frame.header.flags & flags::END_HEADERS) && !node->onDataPart) {
-          con.finishRequest(*node, node->status);
+        if (node->is_connect_request()) [[unlikely]] {
+          assert(node->task);
+          std::exchange(node->task, nullptr).resume();
+          return true;
         }
         break;
       case DATA:
@@ -489,6 +491,8 @@ void http2_client::dropConnection(reqerr_e::values_e reason) noexcept {
 
 dd::task<int> http2_client::sendRequest(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
                                         http_request request, deadline_t deadline) {
+  // for CONNECT send_connect_request
+  assert(request.method != http_method_e::CONNECT);
   if (stopRequested()) [[unlikely]] {
     co_return reqerr_e::CANCELLED;
   }
@@ -613,6 +617,69 @@ dd::task<http_response> http2_client::send_streaming_request(
   }
 
   co_return rsp;
+}
+
+dd::task<int> http2_client::send_connect_request(
+    http_request request, move_only_fn<streaming_body_t(http_response, memory_queue_ptr)> makestream,
+    deadline_t deadline) {
+  assert(request.method == http_method_e::CONNECT);
+  assert(request.body.data.empty());
+  if (stopRequested()) [[unlikely]] {
+    co_return reqerr_e::CANCELLED;
+  }
+  if (deadline.isReached()) [[unlikely]] {
+    co_return reqerr_e::TIMEOUT;
+  }
+  ++m_requestsInProgress;
+  on_scope_exit {
+    --m_requestsInProgress;
+  };
+  http2_connection_ptr_t con = co_await borrowConnection(deadline);
+  if (deadline.isReached()) {
+    co_return reqerr_e::TIMEOUT;
+  }
+  if (!con) {
+    co_return reqerr_e::NETWORK_ERR;
+  }
+  if (stopRequested()) [[unlikely]] {
+    co_return reqerr_e::CANCELLED;
+  }
+  request.scheme = con->tcpCon->isHttps() ? scheme_e::HTTPS : scheme_e::HTTP;
+  stream_id_t streamid = con->nextStreamid();
+  HTTP2_LOG(TRACE, "sending CONNECT request, streamid: {}", streamid, con->name);
+
+  http_response rsp;
+  auto on_header = [&](std::string_view name, std::string_view value) {
+    rsp.headers.emplace_back(std::string(name), std::string(value));
+  };
+  node_ptr node = con->newRequestNode(std::move(request), deadline, &on_header, nullptr, streamid);
+
+  int status = co_await con->responseReceived(*node);
+  if (status < 0) {
+    throw_bad_status(status);
+  }
+  // server accepted connect request
+  rsp.status = status;
+
+  memory_queue_ptr q = std::make_shared<memory_queue>();
+  node->onDataPart = &*q;
+  auto makechan = [rsp = std::move(rsp), q = std::move(q), mkstream = std::move(makestream)](
+                      http_headers_t&) mutable { return mkstream(std::move(rsp), q); };
+  node->makebody = std::move(makechan);
+
+  auto sleepcb = [this, node](duration_t d, io_error_code& ec) -> dd::task<void> {
+    if (node->finished() || !node->connection || node->connection->isDropped())
+      throw stream_error(errc_e::STREAM_CLOSED, node->streamid, "stream already canceled");
+    return sleep(d, ec);
+  };
+  auto neterrcb = [] { /*noop*/ };
+
+  co_await dd::suspend_and_t([&](dd::task<int>::handle_type me) {
+    node->task = me;
+    // do not wait this stream, instead waiting RST_STREAM / END_STREAM flag
+    (void)write_stream_data</*IS_CLIENT=*/true>(node, con, new writer_callbacks(sleepcb, neterrcb));
+  });
+  co_return status;
 }
 
 dd::task<void> http2_client::coStop() {

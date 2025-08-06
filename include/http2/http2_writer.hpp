@@ -16,6 +16,33 @@ namespace http2 {
 using writer_sleepcb_t = move_only_fn<dd::task<void>(duration_t, io_error_code&)>;
 using writer_on_network_err_t = move_only_fn<void() noexcept>;
 
+struct writer_callbacks {
+  writer_sleepcb_t sleepcb;
+  writer_on_network_err_t neterrcb;
+  size_t refcount = 0;
+};
+
+static void intrusive_ptr_add_ref(writer_callbacks* p) noexcept {
+  ++p->refcount;
+}
+
+static void intrusive_ptr_release(writer_callbacks* p) noexcept {
+  --p->refcount;
+  if (p->refcount == 0) {
+    delete p;
+  }
+}
+
+using writer_callbacks_ptr = boost::intrusive_ptr<writer_callbacks>;
+
+template <bool IS_CLIENT>
+dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs);
+
+extern template dd::job write_stream_data<true>(node_ptr node, http2_connection_ptr_t con,
+                                                writer_callbacks_ptr cbs);
+extern template dd::job write_stream_data<false>(node_ptr node, http2_connection_ptr_t con,
+                                                 writer_callbacks_ptr cbs);
+
 // creates writer associated with connection.
 // Writer uses con->writer when awaiting new job
 // con->requests is a writer job. Writer grabs nodes from 'con->requests' one by

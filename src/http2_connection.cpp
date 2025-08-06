@@ -59,6 +59,8 @@ void intrusive_ptr_release(request_node* p) noexcept {
 }
 
 static void validate_trailer_header(std::string_view name, stream_id_t streamid) {
+  // https://www.rfc-editor.org/rfc/rfc7540#section-8.1.2.1
+  // ( Pseudo-header fields MUST NOT appear in trailers )
   if (name.starts_with(':')) {
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
@@ -75,9 +77,6 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
   if (((frame.header.flags & mask) != mask)) {
     throw protocol_error(errc_e::STREAM_CLOSED, "trailers header without END_STREAM | END_HEADERS");
   }
-  // Note: ignores possible pseudoheaders here, despite they are forbidden
-  // https://www.rfc-editor.org/rfc/rfc7540#section-8.1.2.1
-  // ( Pseudo-header fields MUST NOT appear in trailers )
   hpack::decode_headers_block(decoder, frame.data, [&](std::string_view name, std::string_view value) {
     HTTP2_LOG(TRACE, "name: {}, value: {}", name, value, this->name());
     validate_trailer_header(name, frame.header.streamId);
@@ -95,9 +94,9 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
 
 void request_node::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t hdrs) {
   assert(hdrs.header.type == frame_e::HEADERS);
-  assert(!onHeader && !onDataPart);
+  auto old_on_header = onHeader;
   on_scope_exit {
-    onHeader = nullptr;
+    onHeader = old_on_header;
   };
   auto onheader = [&](std::string_view name, std::string_view value) {
     req.headers.push_back(http_header_t(std::string(name), std::string(value)));
@@ -115,13 +114,14 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   // Note: this code decodes headers block or fails with protocol_error (ends connection)
   // thats why we dont care about `decode_headers_block` in fail branckes
 
-  // weird things like continuations, trailers, many header frames with CONTINUE
-  // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
     HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
     throw unimplemented_feature("END_HEADERS == 0");
   }
-  if (status > 0) [[unlikely]] {
+  // 199 - last informational status. Informational responses are interim and cannot have trailer section
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.1-4
+  // Note: ignores END_STREAM flag for interim responses, not marks it as error
+  if (status > 199) [[unlikely]] {
     return receiveTrailersHeaders(decoder, frame);
   }
   byte_t const* in = frame.data.data();
@@ -155,8 +155,6 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
             name());
-  // weird things like continuations, many header frames with CONTINUE
-  // etc not supported
   if (!(frame.header.flags & flags::END_HEADERS)) {
     HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
     throw unimplemented_feature("END_HEADERS == 0");
@@ -445,6 +443,7 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   node->onDataPart = onDataPart;
   node->status = reqerr_e::UNKNOWN_ERR;
   node->canceledByRstStream = false;
+  node->bidir_stream_active = false;
 
   assert(node->refcount == 1);
   assert(!node->requestsHook.is_linked());
@@ -469,6 +468,7 @@ void http2_connection::returnNode(request_node* ptr) noexcept {
   ptr->connection->mark_stream_closed(ptr->streamid);
   ptr->connection = nullptr;
   ptr->req = {};
+  ptr->makebody.reset();
   if (freeNodes.size() >= std::min<size_t>(1024, remoteSettings.maxConcurrentStreams)) {
     delete ptr;
     return;

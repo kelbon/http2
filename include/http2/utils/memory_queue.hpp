@@ -22,7 +22,7 @@ struct memory_queue {
       return !q->bytes.empty() || q->eof;
     }
 
-    void await_resume(std::coroutine_handle<> h) noexcept {
+    void await_suspend(std::coroutine_handle<> h) noexcept {
       assert(!q->waiter);
       q->waiter = h;
     }
@@ -43,12 +43,6 @@ struct memory_queue {
     return std::move(bytes);
   }
 
-  void push_data(std::span<const byte_t> b) {
-    bytes.insert(bytes.end(), b.begin(), b.end());
-    if (waiter)
-      std::exchange(waiter, nullptr).resume();
-  }
-
   // returns awaiters
   // await returns empty data only in case EOF
   // only one reader at one time allowed
@@ -62,7 +56,9 @@ struct memory_queue {
     // so if push will wait data again it will produce empty data (EOF marker)
     if (lastframe)
       eof = true;
-    push_data(b);
+    bytes.insert(bytes.end(), b.begin(), b.end());
+    if (waiter)
+      std::exchange(waiter, nullptr).resume();
   }
 };
 

@@ -118,11 +118,16 @@ struct request_node {
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
   bool canceledByRstStream = false;  // for server request_context
+  bool bidir_stream_active = false;  // true for CONNECT requests after accepting stream
 
   // filled if this a streaming request
   move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody;
   KELHTTP2_PIN;
 
+  // connect request returns before END_STREAM when first HEADERS received and not send :path and :authority
+  [[nodiscard]] bool is_connect_request() const noexcept {
+    return req.method == http_method_e::CONNECT;
+  }
   [[nodiscard]] bool is_streaming() const noexcept {
     return makebody.has_value();
   }
@@ -495,6 +500,24 @@ struct http2_connection {
 
   // used when SETTINGS_INITIAL_WINDOW_SIZE changed
   void adjustWindowForAllStreams(cfint_t old_window_size, cfint_t new_window_size);
+
+  inline void start_headers_block(request_node& node, bool force_disable_hpack, bytes_t& hdrs) {
+    // https://www.rfc-editor.org/rfc/rfc9113.html#name-settings-synchronization
+    if (encodertablesizechangerequested) [[unlikely]] {
+      encodertablesizechangerequested = false;
+      encoder.dyntab.set_user_protocol_max_size(remoteSettings.headerTableSize);
+      // encoding dyntab size update also updates size
+      if (force_disable_hpack) {
+        encoder.encode_dynamic_table_size_update(0, std::back_inserter(hdrs));
+      } else {
+        // not sure if encoder required to send it, but its not error, so just set max size for new settings
+        encoder.encode_dynamic_table_size_update(encoder.dyntab.user_protocol_max_size(),
+                                                 std::back_inserter(hdrs));
+      }
+    } else if (node.streamid == 1 && force_disable_hpack) [[unlikely]] {
+      encoder.encode_dynamic_table_size_update(0, std::back_inserter(hdrs));
+    }
+  }
 };
 
 #ifdef HTTP2_ENABLE_TRACE

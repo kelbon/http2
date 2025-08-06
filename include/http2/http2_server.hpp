@@ -43,8 +43,11 @@ struct request_context {
   // make sense only for :method == CONNECT requests, e.g. websockets / proxy
   // `makestream` will be called once and will be alive while request exist
   // yield from this channel will send data to client, memory_queue may be used to receive data
-  [[nodiscard("return it")]] http_response bidirectional_stream_response(
+  [[nodiscard("return it")]] http_response connect_response(
       int status, http_headers_t hdrs, move_only_fn<streaming_body_t(memory_queue_ptr)> makestream);
+
+  // precondition: status is informational (in range [100, 199])
+  dd::task<void> send_interim_response(int status, http_headers_t hdrs);
 };
 
 // NOTE! this class is made to be used with seastar::sharded<T>

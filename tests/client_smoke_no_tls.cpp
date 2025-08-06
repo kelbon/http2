@@ -24,6 +24,11 @@ const inline http_headers_t EXPECTED_HEADERS{
     http2::http_header_t{"content-type", "mycontent/type"},
 };
 
+const inline http_headers_t EXPECTED_CONNECT_HEADERS{
+    http2::http_header_t{":protocol", "websocket"},
+    http2::http_header_t{"some-special-hdr", "chat, superchat"},
+};
+
 constexpr inline std::string_view EXPECTED_DATA = "hello world!";
 
 TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
@@ -47,10 +52,29 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   return rsp;
 }
 
+static streaming_body_t handle_connect_request(memory_queue_ptr q) {
+  for (;;) {
+    bytes_t bytes = co_await q->wait_data();
+    std::cout << "server receives data: " << '"' << std::string_view((char*)bytes.data(), bytes.size()) << '"'
+              << std::endl;
+    if (bytes.empty())
+      co_return;
+    co_yield bytes;
+  }
+}
+
 struct test_server : http2::http2_server {
   using http2::http2_server::http2_server;
 
-  dd::task<http2::http_response> handle_request(http2::http_request req, http2::request_context) override {
+  dd::task<http2::http_response> handle_request(http2::http_request req,
+                                                http2::request_context ctx) override {
+    if (req.method == http2::http_method_e::CONNECT) {
+      error_if(req.headers != EXPECTED_CONNECT_HEADERS);
+      error_if(!req.body.data.empty());
+      error_if(req.path != "/ada");
+      // ignore websocket etc here, just assume its correct
+      co_return ctx.connect_response(200, {{"okay", "accepted"}}, &handle_connect_request);
+    }
     http2::http_response rsp = answer_req(std::move(req));
     co_return rsp;
   }
@@ -94,12 +118,38 @@ dd::task<http2::http_response> make_test_stream_request(http2::http2_client& cli
   co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
 }
 
+streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q) {
+  error_if(!rsp.body.empty());
+  error_if(rsp.status != 200);
+  error_if(rsp.headers != http_headers_t{{"okay", "accepted"}});
+
+  std::string data = "hello world!";
+
+  for (size_t i = 0; i < data.size(); ++i) {
+    co_yield {(byte_t*)&data[i], 1};
+    auto s = co_await q->wait_data();
+    error_if(s.size() != 1);
+    error_if(s.front() != data[i]);
+  }
+}
+
+dd::task<void> make_test_websocket_request(http2_client& client) {
+  http_request req;
+  req.headers = EXPECTED_CONNECT_HEADERS;
+  req.path = "/ada";
+  req.method = http2::http_method_e::CONNECT;
+  int status = co_await client.send_connect_request(std::move(req), &websocket_connect_test);
+  error_if(status != 200);  // server accepted request
+}
+
 dd::task<void> main_coro(http2::http2_client& client) {
   http2::http_response rsp = co_await make_test_request(client);
   check_response(rsp);
 
   rsp = co_await make_test_stream_request(client);
   check_streaming_response(rsp);
+
+  co_await make_test_websocket_request(client);
 
   all_good = true;
   HTTP2_LOG_INFO("success");

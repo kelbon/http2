@@ -28,7 +28,7 @@ std::string_view e2str(reqerr_e::values_e e) noexcept {
       return "server_cancelled_request";
     case UNKNOWN_ERR:
       return "unknown_err";
-    case http2::reqerr_e::REQUEST_CREATED:
+    case reqerr_e::REQUEST_CREATED:
       return "REQUEST_CREATED";
     case reqerr_e::RESPONSE_IN_PROGRESS:
       return "RESPONSE_IN_PROGRESS";
