@@ -134,7 +134,7 @@ struct http2_client {
   //   * connecting when required
   //  but 'host' header in requests may differ
   // note: same as :authority for HTTP2
-  explicit http2_client(endpoint_t host, http2_client_options opts)
+  explicit http2_client(endpoint_t host, http2_client_options opts = {})
       : http2_client(std::move(host), std::move(opts), default_transport_factory(m_ioctx)) {
   }
   explicit http2_client(endpoint_t host, http2_client_options, any_transport_factory);
@@ -177,7 +177,6 @@ struct http2_client {
   // Channel may fill trailers if want to send them
   //
   // precondition: 'request.body.data` is empty,
-  //  body channel do not produces zero-sized chunks
   // makebody.has_value() == true
   // channel MUST NOT go to another thread
   dd::task<int> send_streaming_request(
@@ -188,7 +187,6 @@ struct http2_client {
   // Channel may fill trailers if want to send them
   //
   // precondition: 'request.body.data` is empty,
-  //  body channel do not produces zero-sized chunks
   // makebody.has_value() == true
   // channel MUST NOT go to another thread
   dd::task<int> send_streaming_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
@@ -260,6 +258,12 @@ struct http2_client {
   [[nodiscard]] unique_name const& name() const noexcept {
     return m_name;
   }
+
+  size_t count_active_requests() const noexcept;
+  // how many active requests server allows (SETTINGS_MAX_CONCURRENT_STREAMS).
+  // size_t(-1) if no connection or connecting now (e.g. after sending
+  // request while there are no connection yet)
+  size_t max_count_requests_allowed() const noexcept;
 
  private:
   friend struct http2_tester;

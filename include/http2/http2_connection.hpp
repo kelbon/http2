@@ -242,7 +242,7 @@ struct http2_connection {
   cfint_t myWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   cfint_t receiverWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   // setted only when writer is suspended and nullptr when works
-  dd::job writer;
+  dd::job writer = {};
   requests_t requests;
 
   static constexpr inline size_t initial_buckets_count = 2;
@@ -322,7 +322,8 @@ struct http2_connection {
       connection->writer.handle = writer;
     }
     [[nodiscard]] bool await_resume() const noexcept {
-      connection->writer.handle = nullptr;
+      // resumer should set it to nullptr
+      assert(connection->writer.handle == nullptr);
       return !connection->isDropped();
     }
   };

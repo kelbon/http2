@@ -30,6 +30,10 @@ struct callback_t {
     auto x = w.lock();
     if (!x)
       return;
+    if (ec) {
+      x->armed = false;
+      return;
+    }
     if (x->fn)
       x->fn();
     if (!x->period) {

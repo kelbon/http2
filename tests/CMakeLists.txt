@@ -30,3 +30,10 @@ target_link_libraries(test_merged_segments PUBLIC http2lib)
 set_target_properties(test_merged_segments PROPERTIES CXX_STANDARD 20)
 
 add_test(test_merged_segments test_merged_segments)
+
+add_executable(test_fuzz ${CMAKE_CURRENT_SOURCE_DIR}/test_fuzz.cpp)
+target_link_libraries(test_fuzz PUBLIC http2_fuzzinglib kelecholib)
+
+set_target_properties(test_fuzz PROPERTIES CXX_STANDARD 20)
+
+add_test(test_fuzz test_fuzz)

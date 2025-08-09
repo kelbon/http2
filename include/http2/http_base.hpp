@@ -122,6 +122,14 @@ inline move_only_fn<streaming_body_t(http_headers_t&)> streaming_body_without_tr
              http_headers_t& /*trailers*/) mutable -> streaming_body_t { return std::move(x); };
 }
 
+inline move_only_fn<streaming_body_t(http_headers_t&)> streaming_body_with_trailers(streaming_body_t body,
+                                                                                    http_headers_t trailers) {
+  return [b = std::move(body), t = std::move(trailers)](http_headers_t& hdrs) mutable -> streaming_body_t {
+    co_yield dd::elements_of(std::move(b));
+    hdrs = std::move(t);
+  };
+}
+
 }  // namespace http2
 
 namespace std {

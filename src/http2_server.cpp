@@ -208,6 +208,7 @@ struct http2_server::impl {
       }
       // nothing happens since last call
       if (!session.connection->pingdeadlinetimer.armed()) {
+        HTTP2_LOG(TRACE, "detect nothing happens, arm idle deadline timer", session.name());
         session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
       }
     });

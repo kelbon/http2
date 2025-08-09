@@ -133,6 +133,10 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       HTTP2_LOG(TRACE, "creating connection", self->name());
       on_scope_exit {
         lock.release();
+        // assume all connection waiters will observe new connection.
+        // Note: writer/reader not yet created, but it should not be problem
+        assert(!self->m_connection);
+        self->m_connection = newConnection;
         self->notifyConnectionWaiters(newConnection);
       };
       any_connection_t tcpCon = co_await self->m_factory->createConnection(self->getHost(), deadline);
@@ -148,9 +152,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       newConnection = co_await establish_http2_session_client(std::move(con), self->m_options);
       timer.cancel();
     }
-    assert(!self->m_connection);
     assert(newConnection);
-    self->m_connection = newConnection;
 
     // this gate closed only in coStop and only after all startConnecting already done
     assert(!self->m_connectionPartsGate.is_closed());
@@ -178,6 +180,8 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     });
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "exception while trying to connect: {}", e.what(), self->name());
+    // if we created connection, but failed when starting reader / writer - drop
+    self->dropConnection(reqerr_e::UNKNOWN_ERR);
   }
 }
 
@@ -774,6 +778,14 @@ void http2_client::stop() {
 dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {
   boost::asio::steady_timer timer(ioctx());
   co_await net.sleep(timer, d, ec);
+}
+
+size_t http2_client::count_active_requests() const noexcept {
+  return m_requestsInProgress;
+}
+
+size_t http2_client::max_count_requests_allowed() const noexcept {
+  return m_connection ? m_connection->remoteSettings.maxConcurrentStreams : size_t(-1);
 }
 
 bool http2_client::dbg_cancel_stream(std::coroutine_handle<> handle) {

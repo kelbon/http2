@@ -46,7 +46,7 @@ struct memory_queue {
   // returns awaiters
   // await returns empty data only in case EOF
   // only one reader at one time allowed
-  auto wait_data() {
+  auto read() {
     return data_awaiter(this);
   }
 

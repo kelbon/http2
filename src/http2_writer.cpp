@@ -249,9 +249,10 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   auto b = co_await chan.begin();
   for (; b != chan.end(); (co_await (++b))) {
     std::span<const byte_t> chunk = *b;
-    assert(chunk.size() > 0);
     if (snode.finished() || con->isDropped())
       co_return;
+    if (chunk.empty())
+      continue;
     snode.req.body.data.resize(chunk.size(), uninitialized_byte);
     memcpy(snode.req.body.data.data(), chunk.data(), chunk.size());
     HTTP2_LOG(TRACE, "sendind DATA part for stream {}, len: {}, bodystr: \"{}\"", snode.streamid,
