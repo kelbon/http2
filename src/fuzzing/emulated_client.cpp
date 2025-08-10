@@ -1,6 +1,8 @@
 #include "http2/fuzzing/emulated_client.hpp"
 #include "http2/asio/awaiters.hpp"
 
+#include "http2/logger.hpp"
+
 using namespace std::chrono_literals;
 
 namespace http2::fuzzing {
@@ -110,18 +112,17 @@ auto chain(dd::task<T> t1, U t2) -> dd::task<std::invoke_result_t<U, T>> {
 // TODO run context fuzzer + client + stats + etc?
 dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem tem, size_t request_count,
                                 size_t max_active_streams, req_weights weights) {
-  size_t done = 0;
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
   asio::steady_timer timer(client.ioctx());
-  size_t planned = 0;
   io_error_code ec;
   // receive server settings before (to get correct max_count_requests_allowed)
   bool b = co_await client.tryConnect();
   REQUIRE(b);
-  while (request_count != done) {
-    while (request_count != planned && client.count_active_requests() < client.max_count_requests_allowed()) {
+  while (request_count != 0) {
+    while (request_count >= client.count_active_requests() &&
+           client.count_active_requests() < client.max_count_requests_allowed() &&
+           client.count_active_requests() < max_active_streams) {
       dd::task<void> task;
-      ++planned;
       switch (dist(fuz.g)) {
         case 0:
           task = send_echo_request(fuz, client, tem.generate_request(fuz));
@@ -134,9 +135,9 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
               send_echo_request_connect(fuz, client, tem.generate_request(fuz), /*websocket=*/fuz.rbool(0.3));
           break;
       }
-      chain(std::move(task), [&] { ++done; }).start_and_detach();
+      chain(std::move(task), [&] { --request_count; }).start_and_detach();
     }
-    co_await net.sleep(timer, std::chrono::microseconds(100), ec);
+    co_await dd::suspend_and_t([&](std::coroutine_handle<> h) { asio::post(client.ioctx(), h); });
   }
   // TODO print stats (done etc)
   co_await client.coStop();
@@ -155,7 +156,8 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
   REQUIRE(b);
   // TODO клиент должен давать информацию о том сколько разрешает сервер, сколько сейчас активно
   while (!deadline.isReached()) {
-    while (!deadline.isReached() && client.count_active_requests() < client.max_count_requests_allowed()) {
+    while (!deadline.isReached() && client.count_active_requests() < client.max_count_requests_allowed() &&
+           client.count_active_requests() < max_active_streams) {
       dd::task<void> task;
       switch (dist(fuz.g)) {
         case 0:

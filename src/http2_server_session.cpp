@@ -273,7 +273,8 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
                                      frame.header.streamId));
   } else if (requestsLeft() >= connection->localSettings.maxConcurrentStreams) {
     throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
-                       "refused due max concurrent streams exceeded");
+                       std::format("refused due max concurrent streams exceeded, max count: {}, actual: {}",
+                                   connection->localSettings.maxConcurrentStreams, requestsLeft()));
   }
 
   http2::node_ptr n = newEmptyStreamNode(frame.header.streamId);

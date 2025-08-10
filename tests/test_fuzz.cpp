@@ -51,15 +51,16 @@ int main() try {
   rr.body.contentType = "text/plain";
   rr.body.data.assign(bd.begin(), bd.end());
   bool done = false;
-  chain(emulate_client_n(fuz, client1, tem, 100, 10, {.connect = 0}), [&] {
+  chain(emulate_client_n(fuz, client1, tem, 100, 10, {.stream = 0, .connect = 0}), [&] {
     done = true;
   }).start_and_detach();
 
   while (!done) {
-    client1.ioctx().poll();
     server.ioctx().poll();
+    // poll one to avoid endless work while server cannot done anything to answer
+    client1.ioctx().poll_one();
   }
-
+  HTTP2_LOG_INFO("FUZZING TEST: SUCCESS");
   return 0;
 } catch (...) {
   HTTP2_LOG_ERROR("unknown error");

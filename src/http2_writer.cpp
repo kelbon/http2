@@ -245,6 +245,7 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   on_scope_exit {
     snode.req.body = {};
   };
+  // if !IS_CLIENT request finished on each code path
   // create 'b' before loop to handle exception after loop
   auto b = co_await chan.begin();
   for (; b != chan.end(); (co_await (++b))) {
@@ -298,9 +299,8 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   }
   co_return;
 end:
-  if (ec != boost::asio::error::operation_aborted) {
-    con->finishRequest(snode, reqerr_e::NETWORK_ERR);
-  }
+  con->finishRequest(
+      snode, ec != boost::asio::error::operation_aborted ? reqerr_e::NETWORK_ERR : reqerr_e::CANCELLED);
   cbs->neterrcb();
 } catch (std::exception& e) {
   con->finishRequest(*node, reqerr_e::UNKNOWN_ERR);
@@ -386,12 +386,16 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
           }
           goto end;
         }
+        if constexpr (!IS_CLIENT) {
+          con->finishRequest(*node, node->status);
+        }
       } else if (!node->is_streaming()) {
         // request has no body
         if constexpr (!IS_CLIENT) {
           con->finishRequest(*node, node->status);
         }
       } else {
+        // stream finished in write_stream-data
         (void)write_stream_data<IS_CLIENT>(node, con, cbs);
       }
     }
