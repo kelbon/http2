@@ -3,6 +3,8 @@
 
 #include "http2/logger.hpp"
 
+#include <kelcoro/algorithm.hpp>
+
 using namespace std::chrono_literals;
 
 namespace http2::fuzzing {
@@ -90,25 +92,6 @@ dd::task<void> send_echo_request_connect(fuzzer& fuz, http2_client& c, hreq req,
   REQUIRE(x == 200);
 }
 
-// precondition: tasks not empty
-template <std::invocable<> U>
-auto chain(dd::task<void> t1, U t2) -> dd::task<std::invoke_result_t<U>> {
-  assert(t1);
-  co_await t1;
-  if constexpr (std::is_void_v<std::invoke_result_t<U>>) {
-    t2();
-    co_return;
-  } else {
-    co_return t2();
-  }
-}
-
-template <typename T, std::invocable<T> U>
-auto chain(dd::task<T> t1, U t2) -> dd::task<std::invoke_result_t<U, T>> {
-  assert(t1);
-  co_return t2(co_await t1);
-}
-
 // TODO run context fuzzer + client + stats + etc?
 dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem tem, size_t request_count,
                                 size_t max_active_streams, req_weights weights) {
@@ -135,7 +118,10 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
               send_echo_request_connect(fuz, client, tem.generate_request(fuz), /*websocket=*/fuz.rbool(0.3));
           break;
       }
-      chain(std::move(task), [&] { --request_count; }).start_and_detach();
+      chain(std::move(task), [&](auto&&...) {
+        --request_count;
+        return std::suspend_never{};
+      }).start_and_detach();
     }
     co_await dd::suspend_and_t([&](std::coroutine_handle<> h) { asio::post(client.ioctx(), h); });
   }
@@ -146,15 +132,14 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
 
 dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem, duration_t dur,
                               size_t max_active_streams, req_weights weights) {
-  size_t done = 0;
+  size_t done = 0;  // TODO use
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
   asio::steady_timer timer(client.ioctx());
-  deadline_t deadline = deadline_after(dur);
   io_error_code ec;
+  deadline_t deadline = deadline_after(dur);
   // receive server settings before (to get correct max_count_requests_allowed)
   bool b = co_await client.tryConnect();
   REQUIRE(b);
-  // TODO клиент должен давать информацию о том сколько разрешает сервер, сколько сейчас активно
   while (!deadline.isReached()) {
     while (!deadline.isReached() && client.count_active_requests() < client.max_count_requests_allowed() &&
            client.count_active_requests() < max_active_streams) {
@@ -171,9 +156,12 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
               send_echo_request_connect(fuz, client, tem.generate_request(fuz), /*websocket=*/fuz.rbool(0.3));
           break;
       }
-      chain(std::move(task), [&] { ++done; }).start_and_detach();
+      chain(std::move(task), [&](auto&&...) {
+        ++done;
+        return std::suspend_never{};
+      }).start_and_detach();
     }
-    co_await net.sleep(timer, std::chrono::microseconds(100), ec);
+    co_await dd::suspend_and_t([&](std::coroutine_handle<> h) { asio::post(client.ioctx(), h); });
   }
   // TODO print stats (done etc)
   co_await client.coStop();
