@@ -1,11 +1,12 @@
 #pragma once
 
-// TODO separate target + fuzzing separate target
-
 #include "http2/http2_server.hpp"
 
-namespace http2::fuzzing {
+namespace http2 {
 
+// TODO также проверять в тестах expected SERVER settings
+// и на стороне сервера проверять что expected CLIENT settings
+//
 struct echo_server : http2_server {
   using http2_server::http2_server;
 
@@ -25,4 +26,4 @@ struct echo_server : http2_server {
   }
 };
 
-}  // namespace http2::fuzzing
+}  // namespace http2

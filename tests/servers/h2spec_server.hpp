@@ -1,24 +1,29 @@
+#pragma once
+
 #include <http2/http2_server.hpp>
-#include <iostream>
 #include <http2/asio/awaiters.hpp>
 #include <charconv>
 
-using namespace http2;
+namespace http2 {
 
-dd::channel<std::span<const byte_t>> streambody() {
+inline dd::channel<std::span<const byte_t>> streambody() {
   std::string_view answer = "hello world";
   for (char const& c : answer) {
     co_yield {(const byte_t*)&c, 1};
   }
 }
 
-struct bench_server : http2_server {
+struct h2spec_server : http2_server {
   using http2_server::http2_server;
   asio::steady_timer t;
-  io_error_code ec;
   bool answer_stream = false;
 
-  bench_server(http2_server_options o) : http2_server(o), t(ioctx()) {
+  h2spec_server()
+      : http2_server(http2_server_options{
+            .maxReceiveFrameSize = 15'000,
+            .maxConcurrentStreams = 10,  // enables h2spec test for it
+        }),
+        t(ioctx()) {
   }
 
   dd::task<http_response> handle_request(http_request r, request_context ctx) override {
@@ -41,24 +46,8 @@ struct bench_server : http2_server {
     std::string_view answer = "hello world";
     auto* in = answer.data();
     rsp.body.assign(in, in + answer.size());
-    co_await net.sleep(t, std::chrono::milliseconds(100), ec);
     co_return rsp;
   }
 };
 
-int main() try {
-  // several h2spec tests require small max frame size
-  http2_server_options options{
-      .maxReceiveFrameSize = 15'000,
-      .maxConcurrentStreams = 10,  // enables h2spec test for it
-      .singlethread = true,
-  };
-  bench_server server(options);
-
-  asio::ip::tcp::endpoint ipv4_endpoint(asio::ip::address_v4::loopback(), 3000);
-  server.listen({ipv4_endpoint});
-
-  server.ioctx().run();
-} catch (std::exception& e) {
-  std::cout << e.what() << std::endl;
-}
+}  // namespace http2

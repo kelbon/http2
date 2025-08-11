@@ -6,7 +6,7 @@ option(KELHTTP2_ENABLE_TESTING  "Set to ON to enable tests"      OFF)
 option(KELHTTP2_USE_CPM "Set to ON to enable use CPM for get dependencies" ON)
 
 if (KELHTTP2_USE_CPM)
-  include (cmake/deps.cmake)
+  include(cmake/deps.cmake)
 endif()
 
 add_library(http2lib ${CMAKE_CURRENT_SOURCE_DIR}/src/http_base.cpp
@@ -56,18 +56,8 @@ endif()
 if (KELHTTP2_ENABLE_TESTING)
     include(CTest)
     add_subdirectory(tests)
+    add_subdirectory(tests/servers)
 endif()
-
-add_library(kelecholib ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/echo_server.cpp)
-
-target_include_directories(kelecholib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(kelecholib PUBLIC http2lib)
-
-set_target_properties(kelecholib PROPERTIES
-	CMAKE_CXX_EXTENSIONS OFF
-	LINKER_LANGUAGE CXX
-	CMAKE_CXX_STANDARD_REQUIRED ON
-	CXX_STANDARD 20)
 
 add_library(http2_fuzzinglib   ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/any_request_template.cpp
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/emulated_client.cpp
@@ -82,3 +72,7 @@ set_target_properties(http2_fuzzinglib PROPERTIES
 	LINKER_LANGUAGE CXX
 	CMAKE_CXX_STANDARD_REQUIRED ON
 	CXX_STANDARD 20)
+
+include(cmake/visit_targets.cmake)
+
+generate_launch_json_file()

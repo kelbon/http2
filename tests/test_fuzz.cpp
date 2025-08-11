@@ -1,7 +1,7 @@
 #include <thread>
 
 #include <http2/http2_client.hpp>
-#include <http2/fuzzing/echo_server.hpp>
+#include "servers/echo_server.hpp"
 #include "http2/fuzzing/any_request_template.hpp"
 #include "http2/fuzzing/emulated_client.hpp"
 #include "http2/fuzzing/fuzzer.hpp"
@@ -30,7 +30,7 @@ int main() try {
   fuzzer fuz;
   http2::http2_server_options opts;
   opts.maxConcurrentStreams = 10;
-  echo_server server(opts);
+  http2::echo_server server(opts);
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 80);
   server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
