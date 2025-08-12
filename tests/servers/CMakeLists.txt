@@ -29,3 +29,13 @@ set_target_properties(benchmark_server PROPERTIES
   LINKER_LANGUAGE CXX
   CMAKE_CXX_STANDARD_REQUIRED ON
   CXX_STANDARD 20)
+
+add_executable(benchmark_server_tls ${CMAKE_CURRENT_SOURCE_DIR}/bench_server_tls.cpp)
+target_link_libraries(benchmark_server_tls PUBLIC http2lib)
+
+set_target_properties(benchmark_server_tls PROPERTIES
+  CMAKE_CXX_EXTENSIONS OFF
+  LINKER_LANGUAGE CXX
+  CMAKE_CXX_STANDARD_REQUIRED ON
+  CXX_STANDARD 20)
+target_compile_definitions(benchmark_server_tls PRIVATE HTTP2_TLS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")

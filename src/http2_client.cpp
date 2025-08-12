@@ -443,8 +443,9 @@ http2_client::~http2_client() {
   assert(m_requestsInProgress == 0);
 }
 
-http2_client::http2_client(endpoint_t host, http2_client_options opts, any_transport_factory tf)
-    : m_host(std::move(host)), m_options(opts), m_factory(std::move(tf)) {
+http2_client::http2_client(endpoint_t host, http2_client_options opts,
+                           move_only_fn<any_transport_factory(asio::io_context&)> tf)
+    : m_host(std::move(host)), m_options(opts), m_factory(tf(m_ioctx)) {
   assert(m_factory);
   m_name.set_prefix(CLIENT_PREFIX);
   m_options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, m_options.maxReceiveFrameSize);

@@ -7,6 +7,7 @@
 #include "http2/logger.hpp"
 
 #include <filesystem>
+#include <optional>
 
 #include <kelcoro/task.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -37,14 +38,15 @@ struct tcp_connection_options {
   bool merge_small_requests = false;
   bool is_primal_connection = true;
   /*
-    default true, because in most cases (windows...) it will produce errors until you set
+    if unset, SSL host name verification disabled.
+    On windows it (likely) will produce errors until you set
     'additional_ssl_certificates'
 
     if you are receiving error with ssl hanfshake,
     add verify path for your certificate, specially on windows, where default path may be unreachable
     you can download default cerifiers here: (https://curl.se/docs/caextract.html)
   */
-  bool disable_ssl_certificate_verify = true;
+  std::optional<std::string> host_for_name_verification = std::nullopt;
 
   template <typename E>
   void apply(asio::basic_socket<asio::ip::tcp, E>& tcp_sock) {
@@ -73,5 +75,8 @@ struct tcp_connection_options {
 };
 
 any_transport_factory default_transport_factory(boost::asio::io_context&);
+
+any_transport_factory default_tls_transport_factory(
+    boost::asio::io_context&, std::vector<std::filesystem::path> additional_tls_certificates = {});
 
 }  // namespace http2

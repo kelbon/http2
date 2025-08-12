@@ -66,7 +66,14 @@ void asio_connection::shutdown() noexcept {
 }
 
 any_transport_factory default_transport_factory(boost::asio::io_context& ctx) {
-  return any_transport_factory(new asio_factory(ctx, {}));  // TODO обратно tls
+  return any_transport_factory(new asio_factory(ctx, {}));
+}
+
+any_transport_factory default_tls_transport_factory(boost::asio::io_context& ctx,
+                                                    std::vector<std::filesystem::path> certs) {
+  tcp_connection_options options;
+  options.additional_ssl_certificates = std::move(certs);
+  return any_transport_factory(new asio_tls_factory(ctx, std::move(options)));
 }
 
 asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options opts)
@@ -120,7 +127,9 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint_t endpoint, d
 }
 
 asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts)
-    : ioctx(ioctx), options(std::move(opts)) {
+    : ioctx(ioctx),
+      options(std::move(opts)),
+      sslctx(make_ssl_context_for_http2(options.additional_ssl_certificates)) {
 }
 
 dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint_t endpoint, deadline_t deadline) {
@@ -168,15 +177,14 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint_t endpoin
     throw network_exception(ec);
   }
   options.apply(tcp_sock);
-
-  std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(
-      std::move(tcp_sock), make_ssl_context_for_http2(options.additional_ssl_certificates)));
-  res->sock.set_verify_mode(options.disable_ssl_certificate_verify ? ssl::verify_none : ssl::verify_peer);
-  res->sock.set_verify_callback(asio::ssl::host_name_verification(endpoint.address().to_string()));
-  // TODO нужно либо из днс брать по известному адресу host name, либо просить пользователя передать хост нейм
-  // (для тг видимо api.telegram.org?)
-  //  set_verify_mode(options.disable_ssl_certificate_verify ? ssl::verify_none : ssl::verify_peer);
-  //  socket.set_verify_callback(ssl::host_name_verification(???));
+  assert(sslctx);
+  std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), sslctx));
+  if (options.host_for_name_verification) {
+    res->sock.set_verify_mode(ssl::verify_peer);
+    res->sock.set_verify_callback(asio::ssl::host_name_verification(*options.host_for_name_verification));
+  } else {
+    res->sock.set_verify_mode(ssl::verify_none);
+  }
   if (!options.is_primal_connection)
     SSL_set_mode(res->sock.native_handle(), SSL_MODE_RELEASE_BUFFERS);
   co_await net.handshake(res->sock, ssl::stream_base::handshake_type::client, ec);

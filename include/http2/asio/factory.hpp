@@ -50,8 +50,9 @@ struct asio_tls_connection : connection_i {
 struct asio_tls_factory : transport_factory_i {
   asio::io_context& ioctx;
   tcp_connection_options options;
+  ssl_context_ptr sslctx;  // never null
 
-  explicit asio_tls_factory(boost::asio::io_context&, tcp_connection_options = {});
+  explicit asio_tls_factory(asio::io_context&, tcp_connection_options = {});
   dd::task<any_connection_t> createConnection(endpoint_t, deadline_t) override;
 };
 

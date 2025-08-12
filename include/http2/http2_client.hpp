@@ -135,9 +135,11 @@ struct http2_client {
   //  but 'host' header in requests may differ
   // note: same as :authority for HTTP2
   explicit http2_client(endpoint_t host, http2_client_options opts = {})
-      : http2_client(std::move(host), std::move(opts), default_transport_factory(m_ioctx)) {
+      : http2_client(std::move(host), std::move(opts), &default_transport_factory) {
   }
-  explicit http2_client(endpoint_t host, http2_client_options, any_transport_factory);
+
+  explicit http2_client(endpoint_t host, http2_client_options,
+                        move_only_fn<any_transport_factory(asio::io_context&)>);
 
   http2_client(http2_client&&) = delete;
   void operator=(http2_client&&) = delete;

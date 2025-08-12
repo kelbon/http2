@@ -127,7 +127,15 @@ struct http2_server::impl {
     try {
       if (sslctx) {
         HTTP2_LOG(TRACE, "start TLS session", name);
+
         any_connection_t tcpcon(new asio_tls_connection(std::move(socket), sslctx));
+        io_error_code ec;
+        co_await net.handshake(static_cast<asio_tls_connection*>(tcpcon.get())->sock,
+                               asio::ssl::stream_base::server, ec);
+        if (ec) {
+          HTTP2_LOG(ERROR, "error during ssl handshake: {}", ec.message(), name);
+          co_return nullptr;
+        }
         co_return new http2_connection(std::move(tcpcon), ioctx());
       } else {
         HTTP2_LOG(TRACE, "start non-tls session", name);

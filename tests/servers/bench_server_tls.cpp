@@ -22,8 +22,8 @@ struct bench_server : http2_server {
 };
 
 int main() try {
-  bench_server server;
-
+  bench_server server(HTTP2_TLS_DIR "/test_server.crt", HTTP2_TLS_DIR "/test_server.key");
+  std::cout << "benchmark server tls run" << std::endl;
   asio::ip::tcp::endpoint ipv4_endpoint(asio::ip::address_v4::loopback(), 3000);
   server.listen({ipv4_endpoint});
 

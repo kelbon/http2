@@ -55,8 +55,6 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
 static streaming_body_t handle_connect_request(memory_queue_ptr q) {
   for (;;) {
     bytes_t bytes = co_await q->read();
-    std::cout << "server receives data: " << '"' << std::string_view((char*)bytes.data(), bytes.size()) << '"'
-              << std::endl;
     if (bytes.empty())
       co_return;
     co_yield bytes;
@@ -167,8 +165,6 @@ int main() try {
   namespace asio = boost::asio;
 
   http2::http2_client_options opts{};
-  // TODO нужно чёт сделать с тем что клиент по дефолту https, а сервер http
-  // TODO http клиент (дефолт заменить)
   http2::http2_client client(http2::endpoint_t(asio::ip::address_v6::loopback(), 80), std::move(opts));
 
   test_server server(nullptr /*no https*/, {});
