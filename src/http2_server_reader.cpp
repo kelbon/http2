@@ -75,14 +75,16 @@ static bool server_handle_utility_frame(http2_frame_t frame, server_session& ses
   http2_connection& con = *session.connection;
 
   assert(con.localSettings.deprecatedPriorityDisabled);
-  if (frame.header.streamId == 0) {
+  if (frame.header.streamId == 0) {  // TODO throw protocl error
     return false;
   }
   if (!frame.removePadding()) {
+    // TODO throw protocol error
     return false;
   }
   session.connection->validateDataOrHeadersFrameSize(frame.header);
   if ((frame.header.streamId % 2) == 0) [[unlikely]] {
+    // TODO combine with == 0, validate in http2_frame, throw protocol error
     HTTP2_LOG(ERROR, "client tries to initiate stream with even stream id", session.name());
     return false;
   }
@@ -150,79 +152,74 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   reusable_buffer buffer;
   http2_frame_t frame;
 
-  try {
-    for (;;) {
-      if (con.isDropped()) {
-        co_return reqerr_e::DONE;
-      }
-
-      // read frame header
-
-      frame.data = buffer.getExactly(http2::FRAME_HEADER_LEN);
-
-      co_await con.read(frame.data, ec);
-
-      if (ec) {
-        co_return reqerr_e::NETWORK_ERR;
-      }
-      if (con.isDropped()) {
-        co_return reqerr_e::DONE;
-      }
-
-      // parse frame header
-
-      frame.header = frame_header::parse(frame.data);
-      if (!frame.validateHeader()) {
-        co_return reqerr_e::PROTOCOL_ERR;
-      }
-
-      // read frame data
-
-      frame.data = buffer.getExactly(frame.header.length);
-      co_await con.read(frame.data, ec);
-      if (ec) {
-        co_return reqerr_e::NETWORK_ERR;
-      }
-      if (con.isDropped()) {
-        co_return reqerr_e::DONE;
-      }
-      ++session.framecount;
-      if (session.connection->pingdeadlinetimer.armed()) [[unlikely]] {  // client not idle
-        session.connection->pingdeadlinetimer.cancel();
-      }
-      // handle frame
-
-      if (!server_handle_frame(frame, session)) {
-        co_return reqerr_e::PROTOCOL_ERR;
-      }
-      // connection control flow (streamlevel in server_handle_frame)
-      if (con.myWindowSize < http2::MAX_WINDOW_SIZE / 2) {
-        co_await update_window_to_max(con.myWindowSize, 0, &con);
-      }
+  for (;;) {
+    if (con.isDropped()) {
+      co_return reqerr_e::DONE;
     }
-  } catch (hpack::protocol_error& e) {
-    HTTP2_LOG(ERROR, "hpack error happens in reader, err: {}", e.what(), session.name());
-    send_goaway(&con, con.lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
-    goto hpack_error;
-  } catch (protocol_error& e) {
-    HTTP2_LOG(ERROR, "exception in reader. err: {}", e.what(), session.name());
-    send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
-    co_return reqerr_e::PROTOCOL_ERR;
-  } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), session.name());
-    co_return reqerr_e::CANCELLED;
-  } catch (std::exception& se) {
-    HTTP2_LOG(INFO, "unexpected exception in reader {}", se.what(), session.name());
-    co_return reqerr_e::UNKNOWN_ERR;
-  } catch (...) {
-    HTTP2_LOG(INFO, "unknown exception happens in reader", session.name());
-    co_return reqerr_e::UNKNOWN_ERR;
+
+    // read frame header
+
+    frame.data = buffer.getExactly(http2::FRAME_HEADER_LEN);
+
+    co_await con.read(frame.data, ec);
+
+    if (ec) {
+      co_return reqerr_e::NETWORK_ERR;
+    }
+    if (con.isDropped()) {
+      co_return reqerr_e::DONE;
+    }
+
+    // parse frame header
+
+    frame.header = frame_header::parse(frame.data);
+    if (!frame.validateHeader()) {
+      co_return reqerr_e::PROTOCOL_ERR;
+    }
+
+    // read frame data
+
+    frame.data = buffer.getExactly(frame.header.length);
+    co_await con.read(frame.data, ec);
+    if (ec) {
+      co_return reqerr_e::NETWORK_ERR;
+    }
+    if (con.isDropped()) {
+      co_return reqerr_e::DONE;
+    }
+    ++session.framecount;
+    if (session.connection->pingdeadlinetimer.armed()) [[unlikely]] {  // client not idle
+      session.connection->pingdeadlinetimer.cancel();
+    }
+    // handle frame
+
+    if (!server_handle_frame(frame, session)) {
+      co_return reqerr_e::PROTOCOL_ERR;
+    }
+    // connection control flow (streamlevel in server_handle_frame)
+    if (con.myWindowSize < http2::MAX_WINDOW_SIZE / 2) {
+      co_await update_window_to_max(con.myWindowSize, 0, &con);
+    }
   }
   unreachable();
-hpack_error:
+} catch (hpack::protocol_error& e) {
+  HTTP2_LOG(ERROR, "hpack error happens in reader, err: {}", e.what(), session.name());
+  send_goaway(session.connection, session.connection->lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR,
+              e.what())
+      .start_and_detach();
   co_return reqerr_e::PROTOCOL_ERR;
-} catch (std::exception& e) {
-  HTTP2_LOG(ERROR, "reader ended with exception: {}", e.what(), session.name());
+} catch (protocol_error& e) {
+  HTTP2_LOG(ERROR, "exception in reader. err: {}", e.what(), session.name());
+  send_goaway(session.connection, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
+  co_return reqerr_e::PROTOCOL_ERR;
+} catch (goaway_exception& gae) {
+  HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), session.name());
+  co_return reqerr_e::CANCELLED;
+} catch (std::exception& se) {
+  HTTP2_LOG(INFO, "unexpected exception in reader {}", se.what(), session.name());
+  co_return reqerr_e::UNKNOWN_ERR;
+} catch (...) {
+  HTTP2_LOG(INFO, "unknown exception happens in reader", session.name());
   co_return reqerr_e::UNKNOWN_ERR;
 }
 

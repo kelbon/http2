@@ -391,6 +391,7 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
     }
   } catch (protocol_error& e) {
     HTTP2_LOG(INFO, "exception: {}", e.what(), c->name);
+    // TODO? странно что поведение разное для goto protocol error и этого бранча кетч
     reason = reqerr_e::PROTOCOL_ERR;
     send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
     goto dropConnection;
