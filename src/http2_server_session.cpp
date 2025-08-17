@@ -327,7 +327,6 @@ void server_session::receive_headers(http2_frame_t frame) {
   assert(frame.header.type == frame_e::HEADERS);
   frame.validate_streamid();
   frame.removePadding();
-  connection->validateDataOrHeadersFrameSize(frame.header);
   frame.ignoreDeprecatedPriority();
   if (newRequestsForbiden) [[unlikely]] {
     connection->ignoreFrame(frame);
@@ -341,7 +340,6 @@ void server_session::receive_data(http2_frame_t frame) {
   assert(frame.header.type == frame_e::DATA);
   frame.validate_streamid();
   frame.removePadding();
-  connection->validateDataOrHeadersFrameSize(frame.header);
   request_node* node = connection->findResponseByStreamid(frame.header.streamId);
   if (!node) {
     connection->ignoreFrame(frame);

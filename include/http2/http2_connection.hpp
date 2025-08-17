@@ -32,9 +32,9 @@ struct http2_frame_t {
   frame_header header;
   std::span<byte_t> data;
 
-  // returns false if incorrect header
-  [[nodiscard]] bool validateHeader() const noexcept {
-    return header.length <= FRAME_LEN_MAX && header.streamId <= MAX_STREAM_ID;
+  void validateHeader() const {
+    if (header.length > FRAME_LEN_MAX || header.streamId > MAX_STREAM_ID)
+      throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid frame header {}", header));
   }
 
   void validate_streamid() const {
@@ -492,11 +492,10 @@ struct http2_connection {
     }
   }
 
-  // precondition: h.type is DATA / HEADERS / CONTINUATION
-  void validateDataOrHeadersFrameSize(const frame_header& h) {
+  // работает для всех фреймов, но проверяет только максимальное ограничение размера
+  void validate_frame_max_size(const frame_header& h) {
     using enum frame_e;
     assert(localSettings.maxFrameSize >= MIN_MAX_FRAME_LEN);
-    assert(h.type == DATA || h.type == HEADERS || h.type == CONTINUATION);
     if (h.length > localSettings.maxFrameSize) {
       throw protocol_error(errc_e::FRAME_SIZE_ERROR,
                            std::format("{} frame too big, max size: {}, frame size: {}", e2str(h.type),
@@ -524,6 +523,12 @@ struct http2_connection {
       encoder.encode_dynamic_table_size_update(0, std::back_inserter(hdrs));
     }
   }
+
+  // collects HEADERS from many CONTINUATIONS and first HEADERS frame without END_HEADERS and passes it into
+  // `when_done` invokes `oneachframe` when receives new frame header
+  dd::task<void> receive_headers_with_continuation(http2_frame_t frame, io_error_code& ec,
+                                                   move_only_fn<void()> oneachframe,
+                                                   move_only_fn<void(http2_frame_t)> whendone);
 
   void client_receive_headers(http2_frame_t frame);
 

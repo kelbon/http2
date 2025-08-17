@@ -99,11 +99,10 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     }
 
     // parse frame header
-
+    session.received_frame();
     frame.header = frame_header::parse(frame.data);
-    if (!frame.validateHeader()) {
-      co_return reqerr_e::PROTOCOL_ERR;
-    }
+    frame.validateHeader();
+    con.validate_frame_max_size(frame.header);
 
     // read frame data
 
@@ -115,17 +114,25 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     if (con.isDropped()) {
       co_return reqerr_e::DONE;
     }
-    ++session.framecount;
-    if (session.connection->pingdeadlinetimer.armed()) [[unlikely]] {  // client not idle
-      session.connection->pingdeadlinetimer.cancel();
-    }
 
     // handle frame
 
     try {
       switch (frame.header.type) {
         case HEADERS:
-          session.receive_headers(frame);
+          if (frame.header.flags & flags::END_HEADERS) [[likely]] {
+            session.receive_headers(frame);
+          } else {
+            co_await session.connection->receive_headers_with_continuation(
+                frame, ec, [&] { session.received_frame(); },
+                [&](http2_frame_t frame) { session.receive_headers(frame); });
+            if (ec) {
+              co_return reqerr_e::NETWORK_ERR;
+            }
+            if (con.isDropped()) {
+              co_return reqerr_e::DONE;
+            }
+          }
           break;
         case DATA:
           session.receive_data(frame);

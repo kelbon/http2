@@ -573,17 +573,85 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
     adjust_stream(x);
 }
 
-void http2_connection::client_receive_headers(http2_frame_t frame) {
+dd::task<void> http2_connection::receive_headers_with_continuation(
+    http2_frame_t frame, io_error_code& ec, move_only_fn<void()> oneachframe,
+    move_only_fn<void(http2_frame_t)> whendone) {
   assert(frame.header.type == frame_e::HEADERS);
-  validateDataOrHeadersFrameSize(frame.header);
+  assert(!(frame.header.flags & flags::END_HEADERS));
+  assert(oneachframe && whendone);
+  bytes_t bytes(frame.data.begin(), frame.data.end());
+  // TODO потоковое получение здесь?
   frame.validate_streamid();
   frame.removePadding();
+  frame.ignoreDeprecatedPriority();
+  frame_header startheader = frame.header;
+
+  on_scope_failure(decode_anyway) {
+    // maintain dyntab
+    try {
+      hpack::decode_headers_block(decoder, bytes, [](std::string_view, std::string_view) {});
+    } catch (std::exception& e) {
+      // may be part of data only received, error expectable
+      HTTP2_LOG(WARN, "error while decoding CONTINUATIONS: {}", e.what(), name);
+    }
+  };
+  byte_t hdr[FRAME_HEADER_LEN];
+  for (;;) {
+    frame.data = hdr;
+
+    co_await read(hdr, ec);
+
+    if (ec || isDropped())
+      co_return;
+
+    // parse frame header
+
+    frame.header = frame_header::parse(hdr);
+    frame.validateHeader();
+    validate_frame_max_size(frame.header);
+    oneachframe();
+
+    if (frame.header.type != frame_e::CONTINUATION || frame.header.streamId != startheader.streamId) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("expected CONTINUATION for stream {}, got {}", startheader.streamId,
+                                       e2str(frame.header.type)));
+    }
+    if (frame.header.length + bytes.size() > MAX_CONTINUATION_LEN) {
+      throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
+                         std::format("CONTINUATION too big, limit: {} bytes", MAX_CONTINUATION_LEN));
+    }
+    // read frame data
+    bytes.resize(bytes.size() + frame.header.length);
+    co_await read(suffix(std::span(bytes), frame.header.length), ec);
+    if (ec || isDropped())
+      co_return;
+    if (frame.header.flags & flags::END_HEADERS) {
+      // будто пришёл просто огромный HEADERS
+      static_assert(std::numeric_limits<uint32_t>::max() > MAX_CONTINUATION_LEN);
+      frame.data = bytes;
+      frame.header = startheader;
+      frame.header.flags |= flags::END_HEADERS;
+      frame.header.length = bytes.size();
+      decode_anyway.no_longer_needed();
+      whendone(frame);
+      co_return;
+    }
+  }
+  unreachable();
+}
+
+void http2_connection::client_receive_headers(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::HEADERS);
+  frame.validate_streamid();
+  frame.removePadding();
+  frame.ignoreDeprecatedPriority();
+
   node_ptr node = findResponseByStreamid(frame.header.streamId);
   if (!node) {
     ignoreFrame(frame);
     return;
   }
-  frame.ignoreDeprecatedPriority();
+
   try {
     node->receiveResponseHeaders(decoder, frame);
   } catch (hpack::protocol_error&) {
@@ -611,7 +679,6 @@ void http2_connection::client_receive_headers(http2_frame_t frame) {
 void http2_connection::client_receive_data(http2_frame_t frame) {
   assert(frame.header.type == frame_e::DATA);
 
-  validateDataOrHeadersFrameSize(frame.header);
   frame.validate_streamid();
   frame.removePadding();
   node_ptr node = findResponseByStreamid(frame.header.streamId);

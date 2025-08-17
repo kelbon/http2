@@ -281,10 +281,8 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
       // parse frame header
 
       frame.header = frame_header::parse(frame.data);
-      if (!frame.validateHeader()) {
-        goto protocol_error;
-      }
-
+      frame.validateHeader();
+      con.validate_frame_max_size(frame.header);
       // read frame data
 
       frame.data = buffer.getExactly(frame.header.length);
@@ -301,7 +299,18 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
       try {
         switch (frame.header.type) {
           case HEADERS:
-            con.client_receive_headers(frame);
+            if (frame.header.flags & flags::END_HEADERS) [[likely]] {
+              con.client_receive_headers(frame);
+            } else {
+              co_await con.receive_headers_with_continuation(
+                  frame, ec, [] {}, [&](http2_frame_t frame) { con.client_receive_headers(frame); });
+              if (ec) {
+                goto network_error;
+              }
+              if (con.isDropped()) {
+                goto connection_dropped;
+              }
+            }
             break;
           case DATA:
             con.client_receive_data(frame);

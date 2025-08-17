@@ -78,6 +78,14 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // precondition: `frame` is DATA
   void receive_data(http2_frame_t frame);
 
+  // marks client as not idle
+  void received_frame() {
+    ++framecount;
+    if (connection->pingdeadlinetimer.armed()) [[unlikely]] {  // client not idle
+      connection->pingdeadlinetimer.cancel();
+    }
+  }
+
   // creates new stream node, then server reader will collect request parts
   // until its ready then server will handle request and send response returns
   // reference to newly created node, which is alive until response sent /
