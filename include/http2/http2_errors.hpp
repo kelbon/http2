@@ -79,6 +79,7 @@ struct protocol_error : std::exception {
   errc_e errc = errc_e::PROTOCOL_ERROR;
   std::string dbginfo;
 
+  protocol_error() = default;
   explicit protocol_error(errc_e merrc) noexcept : errc(merrc) {
   }
 

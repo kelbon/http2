@@ -557,17 +557,16 @@ inline void decrease_window_size(cfint_t& size, int32_t decrease) {
 }
 
 // removes padding for DATA/HEADERS with PADDED flag
-inline bool strip_padding(std::span<byte_t>& bytes) {
+inline void strip_padding(std::span<byte_t>& bytes) {
   if (bytes.empty()) {
-    return false;
+    throw protocol_error(errc_e::PROTOCOL_ERROR, "empty frame with PADDED flag");
   }
   size_t padlen = bytes[0];
-  if (padlen + 1 > bytes.size()) {
-    return false;
+  if (padlen >= bytes.size()) {
+    throw protocol_error(errc_e::PROTOCOL_ERROR, "padding len > frame len");
   }
   remove_prefix(bytes, 1);
   remove_suffix(bytes, padlen);
-  return true;
 }
 
 // разбирает все пришедшие хедера, обрабатывая некорретные значения :path,

@@ -573,4 +573,69 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
     adjust_stream(x);
 }
 
+void http2_connection::client_receive_headers(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::HEADERS);
+  validateDataOrHeadersFrameSize(frame.header);
+  frame.validate_streamid();
+  frame.removePadding();
+  node_ptr node = findResponseByStreamid(frame.header.streamId);
+  if (!node) {
+    ignoreFrame(frame);
+    return;
+  }
+  frame.ignoreDeprecatedPriority();
+  try {
+    node->receiveResponseHeaders(decoder, frame);
+  } catch (hpack::protocol_error&) {
+    throw;
+  } catch (protocol_error&) {
+    throw;
+  } catch (...) {
+    // user-handling exception, do not drop connection
+    finishRequestWithUserException(*node, std::current_exception());
+    return;
+  }
+  if (node->is_connect_request()) [[unlikely]] {
+    if (frame.header.flags & flags::END_STREAM) {
+      return finishRequest(*node, reqerr_e::SERVER_CANCELLED_REQUEST);
+    }
+    assert(node->task);
+    std::exchange(node->task, nullptr).resume();
+    return;
+  }
+  if (frame.header.flags & flags::END_STREAM) {
+    finishRequest(*node, node->status);
+  }
+}
+
+void http2_connection::client_receive_data(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::DATA);
+
+  validateDataOrHeadersFrameSize(frame.header);
+  frame.validate_streamid();
+  frame.removePadding();
+  node_ptr node = findResponseByStreamid(frame.header.streamId);
+  if (!node) {
+    ignoreFrame(frame);
+    return;
+  }
+  // applicable only to data
+  // Note: includes padding!
+  decrease_window_size(myWindowSize, frame.header.length);
+  try {
+    node->receiveResponseData(frame);
+  } catch (hpack::protocol_error&) {
+    throw;
+  } catch (protocol_error&) {
+    throw;
+  } catch (...) {
+    // user-handling exception, do not drop connection
+    finishRequestWithUserException(*node, std::current_exception());
+    return;
+  }
+  if (frame.header.flags & flags::END_STREAM) {
+    finishRequest(*node, node->status);
+  }
+}
+
 }  // namespace http2

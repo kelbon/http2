@@ -36,19 +36,24 @@ struct http2_frame_t {
   [[nodiscard]] bool validateHeader() const noexcept {
     return header.length <= FRAME_LEN_MAX && header.streamId <= MAX_STREAM_ID;
   }
+
+  void validate_streamid() const {
+    // SERVER_PUSH disabled always, so stream id must be odd
+    if (header.streamId == 0 || (header.streamId % 2) == 0)
+      throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid streamid, header: {}", header));
+  }
+
   // returns false if incorrect frame
   // Note: not changes header.length, instead changes .data span. Its important
   // for control flow
-  [[nodiscard]] bool removePadding() noexcept {
+  // makes sense only for DATA/HEADERS (they can be padded)
+  void removePadding() {
     if (header.flags & flags::PADDED) [[unlikely]] {
       // padding len in first data byte
-      if (!strip_padding(data)) {
-        return false;
-      }
+      strip_padding(data);
       // set flag to 0, so next 'removePadding' will not break frame
       header.flags &= flags_t(~flags::PADDED);
     }
-    return true;
   }
 
   // precondition: frame is HEADERS
@@ -519,6 +524,10 @@ struct http2_connection {
       encoder.encode_dynamic_table_size_update(0, std::back_inserter(hdrs));
     }
   }
+
+  void client_receive_headers(http2_frame_t frame);
+
+  void client_receive_data(http2_frame_t frame);
 };
 
 #ifdef HTTP2_ENABLE_TRACE
