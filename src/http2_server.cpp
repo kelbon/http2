@@ -301,6 +301,8 @@ http2_server::~http2_server() {
   on_scope_exit {
     h.destroy();
   };
+  if (ioctx().stopped())
+    ioctx().restart();
   // assume 'h' is suspended here every time when we check h.done()
   while (!h.done() && ioctx().run_one() != 0)
     ;

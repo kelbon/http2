@@ -20,6 +20,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install ninja-build lld gcc-13 clang-18
           sudo ln -sf /usr/local/bin/ld /usr/bin/lld
+      - name: Install h2spec
+        run: |
+          wget https://github.com/summerwind/h2spec/releases/latest/download/h2spec_linux_amd64.tar.gz
+          tar -xzf h2spec_linux_amd64.tar.gz
+          sudo mv h2spec /usr/local/bin/
       - name: Configure CMake
         run: |
           cmake . -DKELHTTP2_ENABLE_TESTING=ON               \

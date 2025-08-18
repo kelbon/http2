@@ -26,7 +26,7 @@ CPMAddPackage(
 
 # BEFORE hpack, so dependency with name 'Boost' will contain
 # both intrusive required for HPACK and other deps, required for HTTP2
-set(BOOST_INCLUDE_LIBRARIES intrusive system smart_ptr asio)
+set(BOOST_INCLUDE_LIBRARIES intrusive system smart_ptr asio process)
 CPMAddPackage(
   NAME Boost
   VERSION 1.87.0

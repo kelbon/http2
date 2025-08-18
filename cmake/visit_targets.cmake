@@ -80,7 +80,7 @@ function(generate_launch_json_file)
     \"program\": \"${exec_path}\",
     \"args\": [],
     \"stopAtEntry\": false,
-    \"cwd\": \"\${fileDirname}\",
+    \"cwd\": \"${binary_dir_clean}\",
     \"environment\": [],
     \"console\": \"externalTerminal\"
 }"
@@ -94,7 +94,7 @@ function(generate_launch_json_file)
     \"program\": \"${exec_path}\",
     \"args\": [],
     \"stopAtEntry\": false,
-    \"cwd\": \"\${fileDirname}\",
+    \"cwd\": \"${binary_dir_clean}\",
     \"environment\": [],
     \"externalConsole\": false,
     \"MIMode\": \"gdb\",
