@@ -90,12 +90,11 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   // Note: здесь неявное предположение о том, что пользовательский калбек
   // не будет ждать .stop сервера (нарушение ведёт к вечному ожиданию)
   // и вернёт хоть когда-нибудь response (нарушение ведёт к зависанию стрима)
-  // Note: callback accepts Request by reference, need to handle it here...
   http_response rsp;
   try {
     rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
     // here node->is_streaming() possible if ctx.streaming_response was called
-    assert((!node->is_streaming() || rsp.body.empty()) && "streaming response must be with empty body");
+    assert(!(node->is_streaming() && !rsp.body.empty()) && "streaming response must be with empty body");
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what(),
               session.name());
@@ -321,6 +320,39 @@ void server_session::finishServerRequest(request_node& n) noexcept {
     if (orphan) {
       onResponseDone();
     }
+  }
+}
+
+void server_session::receive_headers(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::HEADERS);
+  frame.validate_streamid();
+  frame.removePadding();
+  frame.ignoreDeprecatedPriority();
+  if (newRequestsForbiden) [[unlikely]] {
+    connection->ignoreFrame(frame);
+    send_rst_stream(connection, frame.header.streamId, errc_e::REFUSED_STREAM).start_and_detach();
+    return;
+  }
+  startRequestAssemble(frame);
+}
+
+void server_session::receive_data(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::DATA);
+  frame.validate_streamid();
+  frame.removePadding();
+  request_node* node = connection->findResponseByStreamid(frame.header.streamId);
+  if (!node) {
+    connection->ignoreFrame(frame);
+    return;
+  }
+  // applicable only to data
+  // Note: includes padding!
+  // https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2-1
+  decrease_window_size(connection->myWindowSize, int32_t(frame.header.length));
+  node->receiveRequestData(frame);
+  if (frame.header.flags & flags::END_STREAM) {
+    // Note: manages 'node' lifetime
+    onRequestReady(*node);
   }
 }
 

@@ -359,6 +359,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   assert(status >= 100 && status <= 199);
   if (!node->connection)
     co_return;
+  HTTP2_LOG(TRACE, "sending interim response with status {}", status, node->connection->name);
   bytes_t bytes;
   node->connection->start_headers_block(*node, /*force_disable_hpack=(unknown here)*/ false, bytes);
   auto out = std::back_inserter(bytes);
@@ -367,6 +368,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   for (auto& h : hdrs) {
     encoder.encode_with_cache(h.name(), h.value(), out);
   }
+  HTTP2_WAIT_WRITE(*node->connection);
   io_error_code ec;
   co_await node->connection->write(bytes, ec);
   if (ec) {

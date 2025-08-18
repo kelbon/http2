@@ -185,9 +185,8 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
   }
 }
 
-// handles only utility frames (not DATA / HEADERS), returns false on protocol
-// error (may throw it too)
-static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
+// handles only utility frames (not DATA / HEADERS)
+static void handle_utility_frame(http2_frame_t frame, http2_connection& con) {
   using enum frame_e;
 
   switch (frame.header.type) {
@@ -196,129 +195,46 @@ static bool handle_utility_frame(http2_frame_t frame, http2_connection& con) {
       unreachable();
     case SETTINGS:
       con.serverSettingsChanged(frame);
-      return true;
+      return;
     case PING:
       handle_ping(ping_frame::parse(frame.header, frame.data), &con).start_and_detach();
-      return true;
+      return;
     case RST_STREAM:
       if (!con.finishStreamWithError(rst_stream::parse(frame.header, frame.data))) {
         HTTP2_LOG(INFO, "server finished stream (id: {}) which is not exists (maybe timeout or canceled)",
                   frame.header.streamId, con.name);
       }
-      return true;
+      return;
     case GOAWAY: {
       goaway_frame f = goaway_frame::parse(frame.header, frame.data);
       if (f.errorCode != errc_e::NO_ERROR) {
         throw goaway_exception(f.lastStreamId, f.errorCode, std::move(f.debugInfo));
       } else {
         con.serverRequestsGracefulShutdown(f);
-        return true;
+        return;
       }
     }
     case WINDOW_UPDATE:
       con.windowUpdate(window_update_frame::parse(frame.header, frame.data));
-      return true;
+      return;
     case PUSH_PROMISE:
       // https://datatracker.ietf.org/doc/html/rfc9113#section-6.6-9
       assert(!con.localSettings.enablePush);  // always setted to 0
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            "PUSH_PROMISE must not be sent, SETTINGS_ENABLE_PUSH is 0");
     case CONTINUATION:
-      HTTP2_LOG(INFO, "received CONTINUATION, not supported", con.name);
-      return false;
+      // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.10-8
+      throw protocol_error(
+          errc_e::PROTOCOL_ERROR,
+          "CONTINUATION frame received without a preceding HEADERS without END_HEADERS flag");
     case PRIORITY:
       con.validatePriorityFrameHeader(frame);
       [[fallthrough]];
     case PRIORITY_UPDATE:
     default:
       // ignore
-      return true;
+      return;
   }
-}
-
-// handles DATA or HEADERS, returns false on protocol error
-[[nodiscard]] static bool handle_headers_or_data(http2_frame_t frame, http2_connection& con) {
-  using enum frame_e;
-
-  assert(con.localSettings.deprecatedPriorityDisabled);
-  if (frame.header.streamId == 0) {
-    return false;
-  }
-  if (!frame.removePadding()) {
-    return false;
-  }
-  con.validateDataOrHeadersFrameSize(frame.header);
-  request_node* node = con.findResponseByStreamid(frame.header.streamId);
-  if (!node) {
-    con.ignoreFrame(frame);
-    return true;
-  }
-  try {
-    switch (frame.header.type) {
-      case HEADERS:
-        frame.ignoreDeprecatedPriority();
-        node->receiveResponseHeaders(con.decoder, frame);
-        if (node->is_connect_request()) [[unlikely]] {
-          assert(node->task);
-          std::exchange(node->task, nullptr).resume();
-          return true;
-        }
-        break;
-      case DATA:
-        // applicable only to data
-        // Note: includes padding!
-        decrease_window_size(con.myWindowSize, frame.header.length);
-        node->receiveResponseData(frame);
-        break;
-      default:
-        unreachable();
-    }
-  } catch (hpack::protocol_error& e) {
-    HTTP2_LOG(ERROR, "exception while decoding headers block (HPACK), err: {}", e.what(), con.name);
-    // To avoid ambiguity just send max_stream_id every time. Server did not
-    // initiate streams (SERVER_PUSH disabled) and nghttp2 for example answers
-    // with protocol error for some values
-    //
-    // Rfc:
-    // If a connection terminates without a GOAWAY frame,
-    // the last stream identifier is effectively the highest possible stream
-    // identifier
-    send_goaway(&con, MAX_STREAM_ID, errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
-    return false;
-  } catch (protocol_error&) {
-    throw;
-  } catch (...) {
-    // user-handling exception, do not drop connection
-    con.finishRequestWithUserException(*node, std::current_exception());
-    return true;
-  }
-
-  if (frame.header.flags & flags::END_STREAM) {
-    con.finishRequest(*node, node->status);
-  }
-  return true;
-}
-
-// returns false on protocol error
-[[nodiscard]] static bool handle_frame(http2_frame_t frame, http2_connection& con) try {
-  using enum frame_e;
-  switch (frame.header.type) {
-    case HEADERS:
-    case DATA:
-      return handle_headers_or_data(frame, con);
-    default:
-      return handle_utility_frame(frame, con);
-  }
-} catch (stream_error& e) {
-  // reuse finish request with 'user' exception to make sure user will know about error
-  request_node* node = con.findResponseByStreamid(e.streamid);
-  if (node) {
-    con.finishRequestWithUserException(*node, std::current_exception());
-  } else {
-    // may be request ended by timeout
-    send_rst_stream(&con, e.streamid, e.errc).start_and_detach();
-  }
-  return true;  // do not require connection close
 }
 
 // writer works on node with reader (window_update / rst_stream possible)
@@ -340,7 +256,8 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
   io_error_code ec;
   reusable_buffer buffer;
   http2_frame_t frame;
-  int reason = reqerr_e::UNKNOWN_ERR;
+  reqerr_e::values_e reason = reqerr_e::UNKNOWN_ERR;
+  protocol_error goaway_info;
 
   try {
     while (!con.isDoneCompletely()) {
@@ -364,10 +281,8 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
       // parse frame header
 
       frame.header = frame_header::parse(frame.data);
-      if (!frame.validateHeader()) {
-        goto protocol_error;
-      }
-
+      frame.validateHeader();
+      con.validate_frame_max_size(frame.header);
       // read frame data
 
       frame.data = buffer.getExactly(frame.header.length);
@@ -381,19 +296,61 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
 
       // handle frame
 
-      if (!handle_frame(frame, con)) {
-        goto protocol_error;
+      try {
+        switch (frame.header.type) {
+          case HEADERS:
+            if (frame.header.flags & flags::END_HEADERS) [[likely]] {
+              con.client_receive_headers(frame);
+            } else {
+              co_await con.receive_headers_with_continuation(
+                  frame, ec, [] {}, [&](http2_frame_t frame) { con.client_receive_headers(frame); });
+              if (ec) {
+                goto network_error;
+              }
+              if (con.isDropped()) {
+                goto connection_dropped;
+              }
+            }
+            break;
+          case DATA:
+            con.client_receive_data(frame);
+            break;
+          default:
+            handle_utility_frame(frame, con);
+            break;
+        }
+      } catch (stream_error& e) {
+        // reuse finish request with 'user' exception to make sure user will know about error
+        request_node* node = con.findResponseByStreamid(e.streamid);
+        if (node) {
+          con.finishRequestWithUserException(*node, std::current_exception());
+        } else {
+          // may be request ended by timeout
+          send_rst_stream(&con, e.streamid, e.errc).start_and_detach();
+        }
+        // do not require connection close
       }
+
       // connection control flow (streamlevel in handle_frame)
       if (con.myWindowSize < MAX_WINDOW_SIZE / 2) {
         co_await update_window_to_max(con.myWindowSize, 0, c);
       }
     }
+  } catch (hpack::protocol_error& e) {
+    HTTP2_LOG(ERROR, "exception while decoding headers block (HPACK), err: {}", e.what(), con.name);
+    // To avoid ambiguity just send max_stream_id every time. Server did not
+    // initiate streams (SERVER_PUSH disabled) and nghttp2 for example answers
+    // with protocol error for some values
+    //
+    // Rfc:
+    // If a connection terminates without a GOAWAY frame,
+    // the last stream identifier is effectively the highest possible stream
+    // identifier
+    send_goaway(&con, MAX_STREAM_ID, errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
   } catch (protocol_error& e) {
     HTTP2_LOG(INFO, "exception: {}", e.what(), c->name);
-    reason = reqerr_e::PROTOCOL_ERR;
-    send_goaway(&con, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
-    goto dropConnection;
+    goaway_info = std::move(e);
+    goto protocol_error;
   } catch (goaway_exception& gae) {
     HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), c->name);
     reason = reqerr_e::SERVER_CANCELLED_REQUEST;
@@ -414,6 +371,7 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
   goto dropConnection;
 protocol_error:
   reason = reqerr_e::PROTOCOL_ERR;
+  send_goaway(&con, MAX_STREAM_ID, goaway_info.errc, std::move(goaway_info.dbginfo)).start_and_detach();
   goto dropConnection;
 network_error:
   reason = ec == boost::asio::error::operation_aborted ? reqerr_e::CANCELLED : reqerr_e::NETWORK_ERR;
@@ -421,7 +379,7 @@ network_error:
     HTTP2_LOG(TRACE, "reader drops connection after network err: {}", ec.what(), con.name);
   }
 dropConnection:
-  self->dropConnection(static_cast<reqerr_e::values_e>(reason));
+  self->dropConnection(reason);
 connection_dropped:
   if (!self->m_connectionWaiters.empty() && !self->alreadyConnecting()) {
     HTTP2_LOG(TRACE, "client initiates reconnect after graceful shutdown or out of streams", con.name);

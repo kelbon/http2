@@ -6,6 +6,7 @@
 #include <string_view>
 #include <ranges>
 #include <cassert>
+#include <algorithm>
 
 #include <kelcoro/generator.hpp>
 #include "http2/errors.hpp"

@@ -6,6 +6,7 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_errors.hpp"
 #include "http2/http2_protocol.hpp"
+#include "http2/http2_send_frames.hpp"
 #include "http2/signewaiter_signal.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/gate.hpp"
@@ -71,6 +72,19 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
 
   // invoked when session completely done
   void onSessionDone() noexcept;
+
+  void receive_headers(http2_frame_t frame);
+
+  // precondition: `frame` is DATA
+  void receive_data(http2_frame_t frame);
+
+  // marks client as not idle
+  void received_frame() {
+    ++framecount;
+    if (connection->pingdeadlinetimer.armed()) [[unlikely]] {  // client not idle
+      connection->pingdeadlinetimer.cancel();
+    }
+  }
 
   // creates new stream node, then server reader will collect request parts
   // until its ready then server will handle request and send response returns

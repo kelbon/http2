@@ -30,9 +30,11 @@ int main() try {
   fuzzer fuz;
   http2::http2_server_options opts;
   opts.maxConcurrentStreams = 10;
+  // make CONTINUATIONS possible
+  opts.maxReceiveFrameSize = http2::MIN_MAX_FRAME_LEN;
   http2::echo_server server(opts);
 
-  asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
+  asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 80);
   server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
   http2::http2_client client1(
@@ -46,7 +48,10 @@ int main() try {
   r.trailers = {};
   auto& rr = tem.req.request;
   rr.path = "/abc";
-  rr.headers = {{"header1", "value1"}};
+  for (int i = 0; i < 5; ++i) {
+    std::string bigstr = fuz.rstring(http2::MIN_MAX_FRAME_LEN + fuz.rint(1, 100));
+    rr.headers.emplace_back(http2::http_header_t(std::format("header{}", i), std::move(bigstr)));
+  }
   std::string bd = "hello world";
   rr.body.contentType = "text/plain";
   rr.body.data.assign(bd.begin(), bd.end());

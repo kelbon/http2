@@ -12,6 +12,7 @@
 #include "http2/utils/fn_ref.hpp"
 #include "http2/utils/timer.hpp"
 #include "http2/utils/merged_segments.hpp"
+#include "http2/utils/gateway.hpp"
 
 #include <boost/asio/io_context.hpp>
 
@@ -32,23 +33,28 @@ struct http2_frame_t {
   frame_header header;
   std::span<byte_t> data;
 
-  // returns false if incorrect header
-  [[nodiscard]] bool validateHeader() const noexcept {
-    return header.length <= FRAME_LEN_MAX && header.streamId <= MAX_STREAM_ID;
+  void validateHeader() const {
+    if (header.length > FRAME_LEN_MAX || header.streamId > MAX_STREAM_ID)
+      throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid frame header {}", header));
   }
+
+  void validate_streamid() const {
+    // SERVER_PUSH disabled always, so stream id must be odd
+    if (header.streamId == 0 || (header.streamId % 2) == 0)
+      throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid streamid, header: {}", header));
+  }
+
   // returns false if incorrect frame
   // Note: not changes header.length, instead changes .data span. Its important
   // for control flow
-  [[nodiscard]] bool removePadding() noexcept {
+  // makes sense only for DATA/HEADERS (they can be padded)
+  void removePadding() {
     if (header.flags & flags::PADDED) [[unlikely]] {
       // padding len in first data byte
-      if (!strip_padding(data)) {
-        return false;
-      }
+      strip_padding(data);
       // set flag to 0, so next 'removePadding' will not break frame
       header.flags &= flags_t(~flags::PADDED);
     }
-    return true;
   }
 
   // precondition: frame is HEADERS
@@ -241,6 +247,8 @@ struct http2_connection {
   uint32_t refcount = 0;
   cfint_t myWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   cfint_t receiverWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
+  // no one frame must be between CONTINUATION frames
+  gateway continuationGateway;
   // setted only when writer is suspended and nullptr when works
   dd::job writer = {};
   requests_t requests;
@@ -263,6 +271,7 @@ struct http2_connection {
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;
   unique_name name;
+  boost::asio::io_context& ioctx;
 
   explicit http2_connection(any_connection_t&& c, boost::asio::io_context&);
 
@@ -270,6 +279,13 @@ struct http2_connection {
   void operator=(http2_connection&&) = delete;
 
   ~http2_connection();
+
+  // not coroutine, for perf. waits until its possible to write (not sending CONTINUATION)
+#define HTTP2_WAIT_WRITE(CON)                               \
+  {                                                         \
+    while (!co_await (CON).continuationGateway.wait_open()) \
+      [[unlikely]];                                         \
+  }
 
   void mark_stream_closed(stream_id_t id) noexcept {
     closed_streams.add_point(id / 2);
@@ -487,11 +503,10 @@ struct http2_connection {
     }
   }
 
-  // precondition: h.type is DATA / HEADERS / CONTINUATION
-  void validateDataOrHeadersFrameSize(const frame_header& h) {
+  // работает для всех фреймов, но проверяет только максимальное ограничение размера
+  void validate_frame_max_size(const frame_header& h) {
     using enum frame_e;
     assert(localSettings.maxFrameSize >= MIN_MAX_FRAME_LEN);
-    assert(h.type == DATA || h.type == HEADERS || h.type == CONTINUATION);
     if (h.length > localSettings.maxFrameSize) {
       throw protocol_error(errc_e::FRAME_SIZE_ERROR,
                            std::format("{} frame too big, max size: {}, frame size: {}", e2str(h.type),
@@ -519,6 +534,16 @@ struct http2_connection {
       encoder.encode_dynamic_table_size_update(0, std::back_inserter(hdrs));
     }
   }
+
+  // collects HEADERS from many CONTINUATIONS and first HEADERS frame without END_HEADERS and passes it into
+  // `when_done` invokes `oneachframe` when receives new frame header
+  dd::task<void> receive_headers_with_continuation(http2_frame_t frame, io_error_code& ec,
+                                                   move_only_fn<void()> oneachframe,
+                                                   move_only_fn<void(http2_frame_t)> whendone);
+
+  void client_receive_headers(http2_frame_t frame);
+
+  void client_receive_data(http2_frame_t frame);
 };
 
 #ifdef HTTP2_ENABLE_TRACE

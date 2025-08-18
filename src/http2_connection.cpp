@@ -114,10 +114,8 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   // Note: this code decodes headers block or fails with protocol_error (ends connection)
   // thats why we dont care about `decode_headers_block` in fail branckes
 
-  if (!(frame.header.flags & flags::END_HEADERS)) {
-    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
-    throw unimplemented_feature("END_HEADERS == 0");
-  }
+  assert(frame.header.flags & flags::END_HEADERS);
+
   // 199 - last informational status. Informational responses are interim and cannot have trailer section
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.1-4
   // Note: ignores END_STREAM flag for interim responses, not marks it as error
@@ -155,10 +153,8 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
             name());
-  if (!(frame.header.flags & flags::END_HEADERS)) {
-    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
-    throw unimplemented_feature("END_HEADERS == 0");
-  }
+  assert(frame.header.flags & flags::END_HEADERS);
+
   assert(req.headers.empty());
   parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
 #ifdef HTTP2_ENABLE_TRACE
@@ -200,7 +196,8 @@ http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context
       responses({buckets.data(), buckets.size()}),
       pingtimer(ctx),
       pingdeadlinetimer(ctx),
-      timeoutWardenTimer(ctx) {
+      timeoutWardenTimer(ctx),
+      ioctx(ctx) {
 }
 
 http2_connection::~http2_connection() {
@@ -571,6 +568,138 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
     adjust_stream(x);
   for (request_node& x : responses)
     adjust_stream(x);
+}
+
+dd::task<void> http2_connection::receive_headers_with_continuation(
+    http2_frame_t frame, io_error_code& ec, move_only_fn<void()> oneachframe,
+    move_only_fn<void(http2_frame_t)> whendone) {
+  assert(frame.header.type == frame_e::HEADERS);
+  assert(!(frame.header.flags & flags::END_HEADERS));
+  assert(oneachframe && whendone);
+  bytes_t bytes(frame.data.begin(), frame.data.end());
+  // TODO потоковое получение здесь?
+  frame.validate_streamid();
+  frame.removePadding();
+  frame.ignoreDeprecatedPriority();
+  frame_header startheader = frame.header;
+
+  on_scope_failure(decode_anyway) {
+    // maintain dyntab
+    try {
+      hpack::decode_headers_block(decoder, bytes, [](std::string_view, std::string_view) {});
+    } catch (std::exception& e) {
+      // may be part of data only received, error expectable
+      HTTP2_LOG(WARN, "error while decoding CONTINUATIONS: {}", e.what(), name);
+    }
+  };
+  byte_t hdr[FRAME_HEADER_LEN];
+  for (;;) {
+    frame.data = hdr;
+
+    co_await read(hdr, ec);
+
+    if (ec || isDropped())
+      co_return;
+
+    // parse frame header
+
+    frame.header = frame_header::parse(hdr);
+    frame.validateHeader();
+    validate_frame_max_size(frame.header);
+    oneachframe();
+
+    if (frame.header.type != frame_e::CONTINUATION || frame.header.streamId != startheader.streamId) {
+      throw protocol_error(errc_e::PROTOCOL_ERROR,
+                           std::format("expected CONTINUATION for stream {}, got {}", startheader.streamId,
+                                       e2str(frame.header.type)));
+    }
+    if (frame.header.length + bytes.size() > MAX_CONTINUATION_LEN) {
+      throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
+                         std::format("CONTINUATION too big, limit: {} bytes", MAX_CONTINUATION_LEN));
+    }
+    // read frame data
+    bytes.resize(bytes.size() + frame.header.length);
+    co_await read(suffix(std::span(bytes), frame.header.length), ec);
+    if (ec || isDropped())
+      co_return;
+    if (frame.header.flags & flags::END_HEADERS) {
+      // будто пришёл просто огромный HEADERS
+      static_assert(std::numeric_limits<uint32_t>::max() > MAX_CONTINUATION_LEN);
+      frame.data = bytes;
+      frame.header = startheader;
+      frame.header.flags |= flags::END_HEADERS;
+      frame.header.length = bytes.size();
+      decode_anyway.no_longer_needed();
+      whendone(frame);
+      co_return;
+    }
+  }
+  unreachable();
+}
+
+void http2_connection::client_receive_headers(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::HEADERS);
+  frame.validate_streamid();
+  frame.removePadding();
+  frame.ignoreDeprecatedPriority();
+
+  node_ptr node = findResponseByStreamid(frame.header.streamId);
+  if (!node) {
+    ignoreFrame(frame);
+    return;
+  }
+
+  try {
+    node->receiveResponseHeaders(decoder, frame);
+  } catch (hpack::protocol_error&) {
+    throw;
+  } catch (protocol_error&) {
+    throw;
+  } catch (...) {
+    // user-handling exception, do not drop connection
+    finishRequestWithUserException(*node, std::current_exception());
+    return;
+  }
+  if (node->is_connect_request()) [[unlikely]] {
+    if (frame.header.flags & flags::END_STREAM) {
+      return finishRequest(*node, reqerr_e::SERVER_CANCELLED_REQUEST);
+    }
+    assert(node->task);
+    std::exchange(node->task, nullptr).resume();
+    return;
+  }
+  if (frame.header.flags & flags::END_STREAM) {
+    finishRequest(*node, node->status);
+  }
+}
+
+void http2_connection::client_receive_data(http2_frame_t frame) {
+  assert(frame.header.type == frame_e::DATA);
+
+  frame.validate_streamid();
+  frame.removePadding();
+  node_ptr node = findResponseByStreamid(frame.header.streamId);
+  if (!node) {
+    ignoreFrame(frame);
+    return;
+  }
+  // applicable only to data
+  // Note: includes padding!
+  decrease_window_size(myWindowSize, frame.header.length);
+  try {
+    node->receiveResponseData(frame);
+  } catch (hpack::protocol_error&) {
+    throw;
+  } catch (protocol_error&) {
+    throw;
+  } catch (...) {
+    // user-handling exception, do not drop connection
+    finishRequestWithUserException(*node, std::current_exception());
+    return;
+  }
+  if (frame.header.flags & flags::END_STREAM) {
+    finishRequest(*node, node->status);
+  }
 }
 
 }  // namespace http2

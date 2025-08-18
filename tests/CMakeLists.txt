@@ -27,3 +27,10 @@ target_link_libraries(test_fuzz PUBLIC http2_fuzzinglib echoserverlib)
 set_target_properties(test_fuzz PROPERTIES CXX_STANDARD 20)
 
 add_test(test_fuzz test_fuzz)
+
+add_executable(test_fuzz_continuations ${CMAKE_CURRENT_SOURCE_DIR}/test_fuzz_continuations.cpp)
+target_link_libraries(test_fuzz_continuations PUBLIC http2_fuzzinglib echoserverlib)
+
+set_target_properties(test_fuzz_continuations PROPERTIES CXX_STANDARD 20)
+
+add_test(test_fuzz_continuations test_fuzz_continuations)

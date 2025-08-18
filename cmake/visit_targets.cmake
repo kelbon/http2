@@ -70,7 +70,8 @@ function(generate_launch_json_file)
         else()
           set(exec_path "${binary_dir_clean}/${name}")
         endif()
-
+        
+    if(WIN32)
         set(config_json
 "{
     \"name\": \"${name} (${CMAKE_BUILD_TYPE})\",
@@ -84,6 +85,34 @@ function(generate_launch_json_file)
     \"console\": \"externalTerminal\"
 }"
         )
+    else()
+        set(config_json
+"{
+    \"name\": \"${name} (${CMAKE_BUILD_TYPE})\",
+    \"type\": \"cppdbg\",
+    \"request\": \"launch\",
+    \"program\": \"${exec_path}\",
+    \"args\": [],
+    \"stopAtEntry\": false,
+    \"cwd\": \"\${fileDirname}\",
+    \"environment\": [],
+    \"externalConsole\": false,
+    \"MIMode\": \"gdb\",
+    \"setupCommands\": [
+        {
+            \"description\": \"Enable pretty-printing for gdb\",
+            \"text\": \"-enable-pretty-printing\",
+            \"ignoreFailures\": true
+        },
+        {
+            \"description\": \"Set Disassembly Flavor to Intel\",
+            \"text\": \"-gdb-set disassembly-flavor intel\",
+            \"ignoreFailures\": true
+        }
+    ]
+}"
+        )
+    endif()
 
         list(APPEND new_configs "${config_json}")
     endif()
