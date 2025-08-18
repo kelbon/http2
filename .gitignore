@@ -16,8 +16,6 @@ cmake-build-*
 cmake_build
 .cache
 
-src/api_types_cmp.cpp
-
 .vs/
 .vscode/
 .trash/
@@ -25,7 +23,10 @@ build/
 out/
 
 
-build*
+build/*
+build_reldbg/*
+build_release/*
+
 test.log
 
 .DS_Store
