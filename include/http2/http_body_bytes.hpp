@@ -39,7 +39,8 @@ struct allocator_p9 {
   using value_type = T;
   using size_type = size_t;
   using difference_type = ptrdiff_t;
-  using propagate_on_container_move_assignment = std::false_type;
+  using propagate_on_container_move_assignment = std::true_type;
+  using is_always_equal = std::true_type;
 
   static value_type* allocate(std::size_t n) {
     // FRAME_HEADER_LEN == 9, not include http2_protocol.hpp here
@@ -48,6 +49,10 @@ struct allocator_p9 {
   }
   static void deallocate(value_type* p, std::size_t) noexcept {
     delete[] (p - 9);
+  }
+
+  bool operator==(const allocator_p9&) const {
+    return true;
   }
 };
 

@@ -165,11 +165,11 @@ int main() try {
   namespace asio = boost::asio;
 
   http2::http2_client_options opts{};
-  http2::http2_client client(http2::endpoint_t(asio::ip::address_v6::loopback(), 80), std::move(opts));
+  http2::http2_client client(http2::endpoint_t(asio::ip::address_v6::loopback(), 8080), std::move(opts));
 
   test_server server(nullptr /*no https*/, {});
 
-  asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 80);
+  asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
   server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
   main_coro(client).start_and_detach();
@@ -180,7 +180,7 @@ int main() try {
   }
 
   return 0;
-} catch (...) {
-  HTTP2_LOG_ERROR("unknown error");
+} catch (std::exception& e) {
+  HTTP2_LOG_ERROR("{}", e.what());
   return 9;
 }

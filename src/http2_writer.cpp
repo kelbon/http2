@@ -155,7 +155,8 @@ static dd::task<void> write_data(node_ptr work, http2_connection_ptr_t con, writ
   http_body_bytes& data = work->req.body.data;
 
   // uses guarantee about FRAME_LEN_BYTES before .data()
-  static_assert(std::is_same_v<decltype(work->req.body.data)::allocator_type, detail::allocator_p9<byte_t>>);
+  static_assert(
+      std::is_same_v<typename decltype(work->req.body.data)::allocator_type, detail::allocator_p9<byte_t>>);
 
   cfint_t framelen = 0;
   byte_t* in = data.data();
@@ -291,7 +292,7 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   // if !IS_CLIENT request finished on each code path
   // create 'b' before loop to handle exception after loop
   auto b = co_await chan.begin();
-  for (; b != chan.end(); (co_await (++b))) {
+  for (; b != chan.end(); (void)(co_await (++b))) {
     std::span<const byte_t> chunk = *b;
     if (snode.finished() || con->isDropped())
       co_return;

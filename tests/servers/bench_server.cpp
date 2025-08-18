@@ -8,7 +8,7 @@ using namespace http2;
 struct bench_server : http2_server {
   using http2_server::http2_server;
 
-  bench_server(http2_server_options o) : http2_server(http2_server_options{.singlethread = true}) {
+  bench_server(http2_server_options o = {}) : http2_server(http2_server_options{.singlethread = true}) {
   }
 
   dd::task<http_response> handle_request(http_request r, request_context) override {

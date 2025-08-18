@@ -32,7 +32,7 @@ int main() try {
   opts.maxConcurrentStreams = 10;
   http2::echo_server server(opts);
 
-  asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 80);
+  asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
   server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
   http2::http2_client client1(
