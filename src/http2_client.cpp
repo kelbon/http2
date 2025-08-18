@@ -730,6 +730,8 @@ void http2_client::stop() {
   on_scope_exit {
     h.destroy();
   };
+  if (ioctx().stopped())
+    ioctx().restart();
   while (!h.done() && ioctx().run_one() != 0)
     ;
 }

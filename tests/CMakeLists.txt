@@ -34,3 +34,9 @@ target_link_libraries(test_fuzz_continuations PUBLIC http2_fuzzinglib echoserver
 set_target_properties(test_fuzz_continuations PROPERTIES CXX_STANDARD 20)
 
 add_test(test_fuzz_continuations test_fuzz_continuations)
+
+add_executable(test_h2spec ${CMAKE_CURRENT_SOURCE_DIR}/test_h2spec.cpp)
+target_link_libraries(test_h2spec PUBLIC http2_fuzzinglib echoserverlib Boost::process)
+
+set_target_properties(test_h2spec PROPERTIES CXX_STANDARD 20)
+add_test(test_h2spec test_h2spec)
