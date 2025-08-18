@@ -4,6 +4,16 @@ project(http2)
 
 option(KELHTTP2_ENABLE_TESTING  "Set to ON to enable tests"      OFF)
 option(KELHTTP2_USE_CPM "Set to ON to enable use CPM for get dependencies" ON)
+option(KELHTTP2_ENABLE_SANITIZERS "build with sanitizers" OFF)
+
+if (KELHTTP2_ENABLE_SANITIZERS)
+  # enable sanitize flags globally, all targets require to be compiled with them
+
+  # fno omit frame pointer to improve trace from sanitizers
+  add_compile_options(-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address -fsanitize=undefined)
+
+endif()
 
 if (KELHTTP2_USE_CPM)
   include(cmake/deps.cmake)
