@@ -62,6 +62,8 @@ struct hreq_template {
   double trailers_prob = 0.1;
   size_t min_trailer_hdrs_count = 1;  // not less then 1!
   size_t max_trailer_hdrs_count = 5;
+  size_t min_one_header_value_size = 0;
+  size_t max_one_header_value_size = 32;
   double deadline_prob = 0.5;  // has deadline or no
 
   [[nodiscard]] hreq generate_request(fuzzer& fuz) const {
@@ -103,10 +105,11 @@ struct hreq_template {
     http_headers_t hdrs;
     size_t count = fuz.rint(min_hdrs_count, max_hdrs_count);
     for (size_t i = 0; i < count; ++i) {
+      std::string value = fuz.rstring(fuz.rint(min_one_header_value_size, max_one_header_value_size));
       if (fuz.rbool(valid_hdr_prob)) {
-        hdrs.push_back(fuz.select(realistic_valid_http2_headers()));
+        hdrs.emplace_back(fuz.select(realistic_valid_http2_headers()).hname, std::move(value));
       } else {
-        hdrs.push_back(fuz.select(realistic_invalid_http2_headers()));
+        hdrs.emplace_back(fuz.select(realistic_invalid_http2_headers()).hname, std::move(value));
         invalid = true;
       }
     }
@@ -119,10 +122,11 @@ struct hreq_template {
     http_headers_t hdrs;
     size_t count = fuz.rint(min_trailer_hdrs_count, max_trailer_hdrs_count);
     for (size_t i = 0; i < count; ++i) {
+      std::string value = fuz.rstring(fuz.rint(min_one_header_value_size, max_one_header_value_size));
       if (fuz.rbool(valid_hdr_prob)) {
-        hdrs.push_back(fuz.select(realistic_valid_http2_headers()));
+        hdrs.emplace_back(fuz.select(realistic_valid_http2_headers()).hname, std::move(value));
       } else {
-        hdrs.push_back(fuz.select(realistic_invalid_http2_headers()));
+        hdrs.emplace_back(fuz.select(realistic_invalid_http2_headers()).hname, std::move(value));
         invalid = true;
       }
     }

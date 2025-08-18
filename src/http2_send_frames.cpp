@@ -21,6 +21,7 @@ dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid, err
   }
   bytes_t bytes;
   goaway_frame::form(streamid, errc, std::move(dbginfo), std::back_inserter(bytes));
+  HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
   co_await con->write(bytes, ec);
   if (ec) {
@@ -40,6 +41,7 @@ dd::task<void> send_rst_stream(http2_connection_ptr_t con, stream_id_t streamid,
   HTTP2_LOG(TRACE, "sending rst stream: id: {}, errc: {}", streamid, e2str(errc), con->name);
   byte_t bytes[rst_stream::LEN];
   rst_stream::form(streamid, errc, bytes);
+  HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
   (void)co_await con->write(bytes, ec);
   if (ec) {
@@ -57,6 +59,7 @@ dd::task<void> send_settings_ack(http2_connection_ptr_t con) {
   HTTP2_LOG(TRACE, "sending settings ack", con->name);
   bytes_t bytes;
   accepted_settings_frame().form(std::back_inserter(bytes));
+  HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
   (void)co_await con->write(bytes, ec);
   if (ec) {
@@ -72,6 +75,7 @@ dd::task<bool> send_ping(http2_connection_ptr_t con, uint64_t data, bool request
   io_error_code ec;
   byte_t buf[ping_frame::LEN];
   ping_frame::form(data, requestPong, buf);
+  HTTP2_WAIT_WRITE(*con);
   (void)co_await con->write(buf, ec);
   co_return !ec;
 }
@@ -98,6 +102,7 @@ dd::task<bool> send_window_update(http2_connection_ptr_t con, stream_id_t id, ui
   byte_t buf[window_update_frame::LEN];
   window_update_frame::form(id, inc, buf);
   HTTP2_LOG(TRACE, "sending window update: stream: {}, inc: {}", id, inc, con->name);
+  HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
   (void)co_await con->write(std::span(buf), ec);
   co_return !ec;

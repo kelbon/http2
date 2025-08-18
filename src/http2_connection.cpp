@@ -114,10 +114,8 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   // Note: this code decodes headers block or fails with protocol_error (ends connection)
   // thats why we dont care about `decode_headers_block` in fail branckes
 
-  if (!(frame.header.flags & flags::END_HEADERS)) {
-    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
-    throw unimplemented_feature("END_HEADERS == 0");
-  }
+  assert(frame.header.flags & flags::END_HEADERS);
+
   // 199 - last informational status. Informational responses are interim and cannot have trailer section
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.1-4
   // Note: ignores END_STREAM flag for interim responses, not marks it as error
@@ -155,10 +153,8 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
             name());
-  if (!(frame.header.flags & flags::END_HEADERS)) {
-    HTTP2_LOG(ERROR, "protocol error: unsupported not END_HEADERS headers frame", name());
-    throw unimplemented_feature("END_HEADERS == 0");
-  }
+  assert(frame.header.flags & flags::END_HEADERS);
+
   assert(req.headers.empty());
   parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
 #ifdef HTTP2_ENABLE_TRACE
@@ -200,7 +196,8 @@ http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context
       responses({buckets.data(), buckets.size()}),
       pingtimer(ctx),
       pingdeadlinetimer(ctx),
-      timeoutWardenTimer(ctx) {
+      timeoutWardenTimer(ctx),
+      ioctx(ctx) {
 }
 
 http2_connection::~http2_connection() {

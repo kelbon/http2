@@ -12,6 +12,7 @@
 #include "http2/utils/fn_ref.hpp"
 #include "http2/utils/timer.hpp"
 #include "http2/utils/merged_segments.hpp"
+#include "http2/utils/gateway.hpp"
 
 #include <boost/asio/io_context.hpp>
 
@@ -246,6 +247,8 @@ struct http2_connection {
   uint32_t refcount = 0;
   cfint_t myWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   cfint_t receiverWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
+  // no one frame must be between CONTINUATION frames
+  gateway continuationGateway;
   // setted only when writer is suspended and nullptr when works
   dd::job writer = {};
   requests_t requests;
@@ -268,6 +271,7 @@ struct http2_connection {
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;
   unique_name name;
+  boost::asio::io_context& ioctx;
 
   explicit http2_connection(any_connection_t&& c, boost::asio::io_context&);
 
@@ -275,6 +279,13 @@ struct http2_connection {
   void operator=(http2_connection&&) = delete;
 
   ~http2_connection();
+
+  // not coroutine, for perf. waits until its possible to write (not sending CONTINUATION)
+#define HTTP2_WAIT_WRITE(CON)                               \
+  {                                                         \
+    while (!co_await (CON).continuationGateway.wait_open()) \
+      [[unlikely]];                                         \
+  }
 
   void mark_stream_closed(stream_id_t id) noexcept {
     closed_streams.add_point(id / 2);
