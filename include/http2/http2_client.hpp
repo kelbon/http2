@@ -130,10 +130,7 @@ struct http2_client {
   dd::task<void> sleep(duration_t, io_error_code&);
 
  public:
-  // 'host' used for
-  //   * connecting when required
-  //  but 'host' header in requests may differ
-  // note: same as :authority for HTTP2
+  // 'host' used for connecting when required
   explicit http2_client(endpoint_t host, http2_client_options opts = {})
       : http2_client(std::move(host), std::move(opts), &default_transport_factory) {
   }

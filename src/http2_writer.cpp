@@ -16,7 +16,7 @@
 #include "http2/http2_send_frames.hpp"
 #include "http2/http_base.hpp"
 #include "http2/http_body.hpp"
-#include "http2/utils/asio_executor.hpp"
+#include "http2/asio/asio_executor.hpp"
 
 #include <hpack/encoder.hpp>
 #include <zal/zal.hpp>
@@ -74,7 +74,10 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
   auto out = std::back_inserter(headers);
 
   if constexpr (IS_CLIENT) {
-    // scheme, method, authority, path
+    // Note: order
+    // method, scheme, path, authority
+    // to match grpc Call-Definition https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md
+    // (in case someone will implement grpc over this HTTP/2 impl)
 
     switch (request.method) {
       case http_method_e::GET:
@@ -87,16 +90,18 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
         if constexpr (IS_CLIENT) {
           generate_http2_connect_headers(node, encoder, headers);
           return;
+        } else {
+          [[fallthrough]];
         }
       default:
         encoder.encode_with_cache(hdrs::method_get, e2str(request.method), out);
     }
+    hdrs scheme = request.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
+    encoder.encode_header_fully_indexed(scheme, out);
+    encoder.encode_with_cache(hdrs::path, request.path, out);
     if (!request.authority.empty()) {
       encoder.encode_with_cache(hdrs::authority, request.authority, out);
     }
-    encoder.encode_with_cache(hdrs::path, request.path, out);
-    hdrs scheme = request.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
-    encoder.encode_header_fully_indexed(scheme, out);
   } else {
     // server, required only :status
     assert(node.status > 0);
@@ -291,8 +296,10 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   };
   // if !IS_CLIENT request finished on each code path
   // create 'b' before loop to handle exception after loop
+  HTTP2_ASSUME_THREAD_UNCHANGED_START;
   auto b = co_await chan.begin();
   for (; b != chan.end(); (void)(co_await (++b))) {
+    HTTP2_ASSUME_THREAD_UNCHANGED_END;
     std::span<const byte_t> chunk = *b;
     if (snode.finished() || con->isDropped())
       co_return;
@@ -378,8 +385,6 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
     }
     assert(!con->requests.empty());
 
-    // ignores con->concurrentStreamsNow() (TODO)
-
     while (!con->requests.empty()) {
       node_ptr node = &con->requests.front();
 
@@ -388,7 +393,20 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
 
       // send headers
 
-      // ignores con->concurrent_streams_now()
+      if constexpr (IS_CLIENT) {
+        while (con->concurrentStreamsNow() >= con->remoteSettings.maxConcurrentStreams) {
+          HTTP2_LOG(TRACE, "too many streams, waiting (max is {})", con->remoteSettings.maxConcurrentStreams,
+                    con->name);
+          co_await yield_on_ioctx(con->ioctx);
+          if (ec || con->isDropped()) {
+            if (ec != boost::asio::error::operation_aborted) {
+              con->finishRequest(*node, reqerr_e::NETWORK_ERR);
+            }
+            goto end;
+          }
+        }
+      }
+
       bytes_t headers(H2FHL, 0);  // reserve for frame header
 
       con->start_headers_block(*node, forcedisablehpack, headers);

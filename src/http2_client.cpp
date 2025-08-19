@@ -732,8 +732,12 @@ void http2_client::stop() {
   };
   if (ioctx().stopped())
     ioctx().restart();
-  while (!h.done() && ioctx().run_one() != 0)
-    ;
+  try {
+    while (!h.done() && ioctx().run_one() != 0)
+      ;
+  } catch (std::exception& e) {
+    HTTP2_LOG(ERROR, "error while http2_clienmt::stop: {}", e.what(), name());
+  }
 }
 
 dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {

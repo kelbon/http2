@@ -357,6 +357,7 @@ struct http2_connection {
     return read_awaiter{tcpCon, ec, buf};
   }
 
+  // client side
   [[nodiscard]] size_t concurrentStreamsNow() noexcept {
     return responses.size();
   }

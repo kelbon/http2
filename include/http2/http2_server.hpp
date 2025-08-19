@@ -48,6 +48,8 @@ struct request_context {
 
   // precondition: status is informational (in range [100, 199])
   dd::task<void> send_interim_response(int status, http_headers_t hdrs);
+
+  asio::io_context* owner_ioctx();
 };
 
 // NOTE! this class is made to be used with seastar::sharded<T>
@@ -78,6 +80,7 @@ struct http2_server {
   // if exception thrown from 'handle_request', server will RST_STREAM (PROTOCOL_ERROR)
   // request_context lighweight object, easy to copy. It will be valid while request in progress, even if
   // .stream_response used
+  // if http2::stream_error thrown, its error code used in RST_STREAM
   virtual dd::task<http_response> handle_request(http_request, request_context) = 0;
 
   [[nodiscard]] size_t sessionsCount() const noexcept;

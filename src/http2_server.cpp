@@ -94,7 +94,7 @@ struct http2_server::impl {
   // TODO должен быть один поток принимающий соединения и все остальные обрабатывающие соединения
   // видимо какая то абстракция как получать strand? А мб это на пользователя переложить через отдачу
   // io_context а тут просто делать стренды
-  dd::task<void> acceptConnections(gate::holder, acceptor_t& srv) {
+  dd::task<void> acceptConnections(gate::holder, acceptor_t& srv) try {
     on_scope_exit {
       HTTP2_LOG(TRACE, "stops listening", name);
     };
@@ -121,6 +121,8 @@ struct http2_server::impl {
       }
     }
     HTTP2_LOG(TRACE, "acceptConnections: gate is closed", name);
+  } catch (std::exception& e) {
+    HTTP2_LOG(ERROR, "acceptConnections failed with err {}", e.what(), name);
   }
 
   dd::task<http2_connection_ptr_t> createConnection(asio::ip::tcp::socket socket) {
@@ -215,6 +217,9 @@ struct http2_server::impl {
         return;
       }
       // nothing happens since last call
+      // Note: if server long handling request and client does not send ping/new requests it will be
+      // considered idle and connection will be dropped
+      // Its not easy to handle, so its just expected, that client will use ping if nothing happens
       if (!session.connection->pingdeadlinetimer.armed()) {
         HTTP2_LOG(TRACE, "detect nothing happens, arm idle deadline timer", session.name());
         session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
@@ -303,9 +308,13 @@ http2_server::~http2_server() {
   };
   if (ioctx().stopped())
     ioctx().restart();
-  // assume 'h' is suspended here every time when we check h.done()
-  while (!h.done() && ioctx().run_one() != 0)
-    ;
+  try {
+    // assume 'h' is suspended here every time when we check h.done()
+    while (!h.done() && ioctx().run_one() != 0)
+      ;
+  } catch (std::exception& e) {
+    HTTP2_LOG(ERROR, "error while ~http2_server: {}", e.what(), m_impl->name);
+  }
 }
 
 size_t http2_server::sessionsCount() const noexcept {
@@ -377,6 +386,12 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
     if (ec != asio::error::operation_aborted)
       HTTP2_LOG(ERROR, "cannot send interim response, err: {}", ec.message(), node->connection->name);
   }
+}
+
+asio::io_context* request_context::owner_ioctx() {
+  if (!node || !node->connection)
+    return nullptr;
+  return &node->connection->ioctx;
 }
 
 }  // namespace http2
