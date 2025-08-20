@@ -103,7 +103,6 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
   REQUIRE(b);
   while (request_count != 0) {
     while (request_count >= client.count_active_requests() &&
-           client.count_active_requests() < client.max_count_requests_allowed() &&
            client.count_active_requests() < max_active_streams) {
       dd::task<void> task;
       switch (dist(fuz.g)) {
@@ -141,8 +140,7 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
   bool b = co_await client.tryConnect();
   REQUIRE(b);
   while (!deadline.isReached()) {
-    while (!deadline.isReached() && client.count_active_requests() < client.max_count_requests_allowed() &&
-           client.count_active_requests() < max_active_streams) {
+    while (!deadline.isReached() && client.count_active_requests() < max_active_streams) {
       dd::task<void> task;
       switch (dist(fuz.g)) {
         case 0:

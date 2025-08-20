@@ -6,6 +6,7 @@
 #include "http2/http2_protocol.hpp"
 #include "http2/http2_send_frames.hpp"
 #include "http2/logger.hpp"
+#include "http2/asio/asio_executor.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -91,16 +92,27 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   // не будет ждать .stop сервера (нарушение ведёт к вечному ожиданию)
   // и вернёт хоть когда-нибудь response (нарушение ведёт к зависанию стрима)
   http_response rsp;
+  HTTP2_ASSUME_THREAD_UNCHANGED_START;
   try {
     rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
     // here node->is_streaming() possible if ctx.streaming_response was called
     assert(!(node->is_streaming() && !rsp.body.empty()) && "streaming response must be with empty body");
+  } catch (stream_error& e) {
+    // Note: catching stream error, so user can implement other protocol over HTTP/2 with additional
+    // requirements
+    HTTP2_LOG(ERROR, "handle request failed: {}", e.what(), session.name());
+    HTTP2_ASSUME_THREAD_UNCHANGED_END;
+    assert(e.streamid == node->streamid);
+    send_rst_stream(session.connection, node->streamid, e.errc).start_and_detach();
+    co_return 0;
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what(),
               session.name());
-    send_rst_stream(session.connection, node->streamid, errc_e::PROTOCOL_ERROR).start_and_detach();
+    HTTP2_ASSUME_THREAD_UNCHANGED_END;
+    send_rst_stream(session.connection, node->streamid, errc_e::INTERNAL_ERROR).start_and_detach();
     co_return 0;
   }
+  HTTP2_ASSUME_THREAD_UNCHANGED_END;
   assert(rsp.status > 0);
   node->status = (int)rsp.status;
   node->req = response_bro::torequest(std::move(rsp));

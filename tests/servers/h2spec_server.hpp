@@ -35,7 +35,7 @@ struct h2spec_server : http2_server {
       size_t value;
       auto [ptr, ec] = std::from_chars(len.data(), len.data() + len.size(), value);
       if (ec != std::errc{} || value != r.body.data.size())
-        throw http2::stream_error(errc_e::PROTOCOL_ERROR, /*does not know*/ 1,
+        throw http2::stream_error(errc_e::PROTOCOL_ERROR, ctx.streamid(),
                                   "\"content-length\" does not equal to DATA len");
     }
     if (answer_stream) {
