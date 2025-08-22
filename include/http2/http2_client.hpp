@@ -4,14 +4,12 @@
 #include "http2/http2_client_options.hpp"
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http_base.hpp"
+#include "http2/request_context.hpp"
 #include "http2/transport_factory.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/gate.hpp"
-#include "http2/utils/memory_queue.hpp"
 #include "http2/utils/unique_name.hpp"
-
-#include <memory>
 
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/list_hook.hpp>
@@ -178,9 +176,8 @@ struct http2_client {
   // precondition: 'request.body.data` is empty,
   // makebody.has_value() == true
   // channel MUST NOT go to another thread
-  dd::task<int> send_streaming_request(
-      on_header_fn_ptr, on_data_part_fn_ptr, http_request request,
-      move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody, deadline_t);
+  dd::task<int> send_streaming_request(on_header_fn_ptr, on_data_part_fn_ptr, http_request request,
+                                       stream_body_maker_t makebody, deadline_t);
 
   // `makebody` will be called only once, but will be alive atleast until channel is done.
   // Channel may fill trailers if want to send them
@@ -196,8 +193,7 @@ struct http2_client {
   }
 
   // throws on errors
-  dd::task<http_response> send_streaming_request(
-      http_request, move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody, deadline_t);
+  dd::task<http_response> send_streaming_request(http_request, stream_body_maker_t makebody, deadline_t);
 
   // throws on errors
   dd::task<http_response> send_streaming_request(http_request request, streaming_body_t streambody,
@@ -211,22 +207,22 @@ struct http2_client {
   // precondition: request.method == CONNECT && request.body.data.empty()
   // returns status of first response, < 0 if connection request was failed
   dd::task<int> send_connect_request(
-      http_request request, move_only_fn<streaming_body_t(http_response, memory_queue_ptr)> makestream,
+      http_request request, move_only_fn<streaming_body_t(http_response, request_context)> makestream,
       deadline_t = deadline_t::never());
 
   bool connected() const;
 
   void setHost(endpoint_t) noexcept;
 
-  // returns true if client connected after future resoloves
+  // returns true if client connected
   dd::task<bool> tryConnect(deadline_t);
 
-  // returns true if client connected after future resoloves
+  // returns true if client connected
   dd::task<bool> tryConnect(duration_t d) {
     return tryConnect(deadline_after(d));
   }
 
-  // returns true if client connected after future resoloves
+  // returns true if client connected
   dd::task<bool> tryConnect() {
     return tryConnect(deadline_after(m_options.connectionTimeout));
   }

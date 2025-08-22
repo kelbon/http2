@@ -17,6 +17,7 @@
 #include "http2/http_base.hpp"
 #include "http2/http_body.hpp"
 #include "http2/asio/asio_executor.hpp"
+#include "http2/request_context.hpp"
 
 #include <hpack/encoder.hpp>
 #include <zal/zal.hpp>
@@ -289,7 +290,7 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   http_headers_t trailers;
 
   // Note: order. `chan` destroyed before `makebody` (which destroyed in returnNode)
-  streaming_body_t chan = snode.makebody(trailers);
+  streaming_body_t chan = snode.makebody(trailers, request_context(*node));
 
   on_scope_exit {
     snode.req.body = {};
@@ -471,7 +472,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
         if constexpr (!IS_CLIENT) {
           con->finishRequest(*node, node->status);
         }
-      } else {
+      } else if (!node->is_connect_request()) {
         // stream finished in write_stream-data
         (void)write_stream_data<IS_CLIENT>(node, con, cbs);
       }

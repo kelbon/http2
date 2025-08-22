@@ -250,17 +250,16 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
 
   // if stream already exist, its trailers or error
   if (auto* r = connection->findResponseByStreamid(frame.header.streamId)) [[unlikely]] {
-    if (r->is_half_closed_server()) {
+    if (r->is_half_closed()) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            std::format("client initiates stream, which was already open, streamid: {}",
                                        frame.header.streamId));
     } else {
       // trailer headers received
       r->receiveRequestTrailers(connection->decoder, frame);
-      if (frame.header.flags & flags::END_STREAM) {
-        // Note: manages 'node' lifetime
-        onRequestReady(*r);
-      }
+      assert(r->end_stream_received);  // if not, it must be protocol error
+      // Note: manages 'node' lifetime
+      onRequestReady(*r);
       return;
     }
   }
@@ -276,7 +275,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   }
 
   // Note: before making a decision about a stream, to keep in mind the client's desire to create such stream
-  connection->laststartedstreamid = std::max(connection->laststartedstreamid, frame.header.streamId);
+  connection->laststartedstreamid = frame.header.streamId;
 
   if (connection->is_closed_stream(frame.header.streamId)) {
     throw protocol_error(errc_e::STREAM_CLOSED,
@@ -296,8 +295,12 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   request_node& node = *n.detach();
 
   node.receiveRequestHeaders(connection->decoder, frame);
-  if ((frame.header.flags & flags::END_STREAM) || node.is_connect_request()) {
+  if (node.end_stream_received) {  // setted in receiveRequestHeaders
     // Note: manages 'node' lifetime
+    onRequestReady(node);
+  } else if (server->answer_before_data(node.req)) {
+    // should be setted only if data will be present
+    node.answered_before_data = true;
     onRequestReady(node);
   }
 }
@@ -362,7 +365,7 @@ void server_session::receive_data(http2_frame_t frame) {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2-1
   decrease_window_size(connection->myWindowSize, int32_t(frame.header.length));
   node->receiveRequestData(frame);
-  if (frame.header.flags & flags::END_STREAM) {
+  if (node->end_stream_received) {  // setted in receiveRequestData
     // Note: manages 'node' lifetime
     onRequestReady(*node);
   }

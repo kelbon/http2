@@ -3,6 +3,9 @@
 #include <memory>
 #include <coroutine>
 
+#include <boost/intrusive_ptr.hpp>
+
+#include "http2/http2_connection_fwd.hpp"
 #include "http2/utils/macro.hpp"
 #include "http2/http_body.hpp"
 
@@ -10,8 +13,10 @@ namespace http2 {
 
 struct memory_queue {
  private:
+  size_t refcount = 0;
   bytes_t bytes;
   std::coroutine_handle<> waiter = nullptr;
+  node_ptr node = nullptr;
   bool eof = false;  // true if last data frame was received
   KELHTTP2_PIN;
 
@@ -33,6 +38,11 @@ struct memory_queue {
   };
 
  public:
+  // creates memory queue associated with `n`, it will receive all data for `n`
+  explicit memory_queue(node_ptr n) noexcept;
+
+  ~memory_queue();
+
   bool has_data() const noexcept {
     return !bytes.empty();
   }
@@ -60,8 +70,19 @@ struct memory_queue {
     if (waiter)
       std::exchange(waiter, nullptr).resume();
   }
+
+  friend void intrusive_ptr_add_ref(memory_queue* p) noexcept {
+    ++p->refcount;
+  }
+
+  friend void intrusive_ptr_release(memory_queue* p) noexcept {
+    --p->refcount;
+    if (p->refcount == 0) {
+      delete p;
+    }
+  }
 };
 
-using memory_queue_ptr = std::shared_ptr<memory_queue>;
+using memory_queue_ptr = boost::intrusive_ptr<memory_queue>;
 
 }  // namespace http2

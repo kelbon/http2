@@ -1,9 +1,9 @@
 
-
-#include "http2/http2_client.hpp"
-#include "http2/http2_errors.hpp"
+#include "http2/http_base.hpp"
 
 #include <strswitch/strswitch.hpp>
+#include "http2/request_context.hpp"
+#include "http2/utils/macro.hpp"
 
 // windows)))
 #undef DELETE
@@ -95,6 +95,14 @@ std::string_view e2str(scheme_e e) noexcept {
 void enum_from_string(std::string_view str, scheme_e& s) noexcept {
   using enum scheme_e;
   s = ss::string_switch<scheme_e>(str).case_("http", HTTP).case_("https", HTTPS).orDefault(UNKNOWN);
+}
+
+stream_body_maker_t streaming_body_with_trailers(streaming_body_t body, http_headers_t trailers) {
+  return [b = std::move(body), t = std::move(trailers)](http_headers_t& hdrs,
+                                                        request_context) mutable -> streaming_body_t {
+    co_yield dd::elements_of(std::move(b));
+    hdrs = std::move(t);
+  };
 }
 
 }  // namespace http2

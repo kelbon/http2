@@ -21,6 +21,8 @@ endif()
 
 add_library(http2lib ${CMAKE_CURRENT_SOURCE_DIR}/src/http_base.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_client.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/request_context.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/memory_queue.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_protocol.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_connection.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_connection_establishment.cpp

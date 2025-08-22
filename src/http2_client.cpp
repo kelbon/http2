@@ -489,8 +489,7 @@ dd::task<int> http2_client::sendRequest(on_header_fn_ptr onHeader, on_data_part_
 
 dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
                                                    on_data_part_fn_ptr on_data_part, http_request request,
-                                                   move_only_fn<streaming_body_t(http_headers_t&)> makebody,
-                                                   deadline_t deadline) {
+                                                   stream_body_maker_t makebody, deadline_t deadline) {
   assert(request.body.data.empty());
   assert(makebody);
   if (stopRequested()) [[unlikely]] {
@@ -563,8 +562,9 @@ dd::task<http_response> http2_client::sendRequest(http_request request, deadline
   co_return rsp;
 }
 
-dd::task<http_response> http2_client::send_streaming_request(
-    http_request request, move_only_fn<streaming_body_t(http_headers_t&)> makebody, deadline_t deadline) {
+dd::task<http_response> http2_client::send_streaming_request(http_request request,
+                                                             stream_body_maker_t makebody,
+                                                             deadline_t deadline) {
   assert(makebody);
   http_response rsp;
   auto onHeader = [&](std::string_view name, std::string_view value) {
@@ -583,7 +583,7 @@ dd::task<http_response> http2_client::send_streaming_request(
 }
 
 dd::task<int> http2_client::send_connect_request(
-    http_request request, move_only_fn<streaming_body_t(http_response, memory_queue_ptr)> makestream,
+    http_request request, move_only_fn<streaming_body_t(http_response, request_context)> makestream,
     deadline_t deadline) {
   assert(request.method == http_method_e::CONNECT);
   assert(request.body.data.empty());
@@ -612,11 +612,18 @@ dd::task<int> http2_client::send_connect_request(
   HTTP2_LOG(TRACE, "sending CONNECT request, streamid: {}", streamid, con->name);
 
   http_response rsp;
+
+  node_ptr node = con->newRequestNode(std::move(request), deadline, nullptr, nullptr, streamid);
+
   auto on_header = [&](std::string_view name, std::string_view value) {
     rsp.headers.emplace_back(std::string(name), std::string(value));
   };
-  node_ptr node = con->newRequestNode(std::move(request), deadline, &on_header, nullptr, streamid);
-
+  node->onHeader = &on_header;
+  // marks `node` as streaming, so END_STREAM will not be set in HEADERS
+  node->makebody = [](http_headers_t&, request_context) -> streaming_body_t {
+    assert(false);
+    std::terminate();
+  };
   int status = co_await con->responseReceived(*node);
   if (status < 0) {
     throw_bad_status(status);
@@ -624,10 +631,10 @@ dd::task<int> http2_client::send_connect_request(
   // server accepted connect request
   rsp.status = status;
 
-  memory_queue_ptr q = std::make_shared<memory_queue>();
-  node->onDataPart = &*q;
-  auto makechan = [rsp = std::move(rsp), q = std::move(q), mkstream = std::move(makestream)](
-                      http_headers_t&) mutable { return mkstream(std::move(rsp), q); };
+  auto makechan = [rsp = std::move(rsp), mkstream = std::move(makestream)](http_headers_t&,
+                                                                           request_context ctx) mutable {
+    return mkstream(std::move(rsp), std::move(ctx));
+  };
   node->makebody = std::move(makechan);
 
   auto sleepcb = [this, node](duration_t d, io_error_code& ec) -> dd::task<void> {

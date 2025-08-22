@@ -52,7 +52,8 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   return rsp;
 }
 
-static streaming_body_t handle_connect_request(memory_queue_ptr q) {
+static streaming_body_t handle_connect_request(request_context ctx) {
+  auto q = ctx.get_memory_queue();
   for (;;) {
     bytes_t bytes = co_await q->read();
     if (bytes.empty())
@@ -71,7 +72,7 @@ struct test_server : http2::http2_server {
       error_if(!req.body.data.empty());
       error_if(req.path != "/ada");
       // ignore websocket etc here, just assume its correct
-      co_return ctx.connect_response(200, {{"okay", "accepted"}}, &handle_connect_request);
+      co_return ctx.connect_response(200, {{"okay", "accepted"}}, handle_connect_request(ctx));
     }
     http2::http_response rsp = answer_req(std::move(req));
     co_return rsp;
@@ -112,16 +113,17 @@ dd::task<http2::http_response> make_test_stream_request(http2::http2_client& cli
       .method = http2::http_method_e::PUT,
   };
   req.body.contentType = "text/plain";
-  auto body = [](http2::http_headers_t& trailers) { return makebody(trailers); };
+  auto body = [](http2::http_headers_t& trailers, request_context) { return makebody(trailers); };
   co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
 }
 
-streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q) {
+streaming_body_t websocket_connect_test(http_response rsp, request_context ctx) {
   error_if(!rsp.body.empty());
   error_if(rsp.status != 200);
   error_if(rsp.headers != http_headers_t{{"okay", "accepted"}});
 
   std::string data = "hello world!";
+  auto q = ctx.get_memory_queue();
 
   for (size_t i = 0; i < data.size(); ++i) {
     co_yield {(byte_t*)&data[i], 1};
