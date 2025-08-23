@@ -86,5 +86,4 @@ set_target_properties(http2_fuzzinglib PROPERTIES
 	CXX_STANDARD 20)
 
 include(cmake/visit_targets.cmake)
-
 generate_launch_json_file()

@@ -94,9 +94,20 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   http_response rsp;
   HTTP2_ASSUME_THREAD_UNCHANGED_START;
   try {
-    rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
-    // here node->is_streaming() possible if ctx.streaming_response was called
-    assert(!(node->is_streaming() && !rsp.body.empty()) && "streaming response must be with empty body");
+    if (!node->answered_before_data) {
+      rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
+    } else {
+      auto [brsp, maker] = co_await session.server->handle_request_stream(
+          std::move(node->req), new memory_queue(*node), request_context(*node));
+      assert(brsp.body.empty());            // function contract violated
+      assert(!node->makebody.has_value());  // ctx.stream_response must not be used here
+      rsp = std::move(brsp);
+      node->makebody = [n = &*node, makeout = std::move(maker)](http_headers_t& trailers,
+                                                                request_context) mutable {
+        n->bidir_stream_active = true;
+        return makeout(trailers, request_context(*n));
+      };
+    }
   } catch (stream_error& e) {
     // Note: catching stream error, so user can implement other protocol over HTTP/2 with additional
     // requirements

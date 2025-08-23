@@ -14,8 +14,6 @@ namespace http2 {
 struct request_context {
  private:
   node_ptr node = nullptr;
-  // invariant: if node == nullptr, then q == nullptr too
-  memory_queue_ptr q = nullptr;
 
   friend struct http2_client;
 
@@ -28,8 +26,8 @@ struct request_context {
   }
 
   stream_id_t streamid() const noexcept;
-  // true if client already sent RST_STREAM for this request
-  bool canceled_by_client() const noexcept;
+  // true if remote endpoint already sent RST_STREAM for this request
+  bool canceled() const noexcept;
 
   // must be returned from `handle_request` to send stream response.
   // For example if server want to send big file. Also can send trailers (by settings headers passed into
@@ -43,89 +41,10 @@ struct request_context {
     return stream_response(status, std::move(hdrs), streaming_body_without_trailers(std::move(body)));
   }
 
-  // should be used when `answered_before_data` is true for receiving data and answering request
-  // e.g. websockets / proxy
-  // yield from `outstream` will send data to client, `get_memory_queue` may be used to receive data
-  [[nodiscard("return it")]] http_response connect_response(int status, http_headers_t hdrs,
-                                                            streaming_body_t outstream);
-
   // precondition: status is informational (in range [100, 199])
-  dd::task<void> send_interim_response(int status, http_headers_t hdrs);
+  dd::task<void> send_interim_response(int status, http_headers_t hdrs = {});
 
   boost::asio::io_context* owner_ioctx();
-
-  // true if this request received `server.answer_before_data() == true`
-  // it means, that `handle_request` invoked when only headers received,
-  // to receive data user must use `get_memory_queue()`
-  [[nodiscard]] bool answered_before_data() const noexcept;
-
-  // `handle_request` may use `get_memory_queue` with `answer_before_data` to get client data as stream
-  // and determine status after receiving data
-  // if `answer_before_data` is false, queue useless
-  // example:
-  // TODO
-  [[nodiscard]] memory_queue_ptr get_memory_queue();
-
- private:
-  struct chunk_holder {
-   private:
-    // `data` is valid only until next suspend
-    http_body_bytes* _bytes;
-    std::span<const byte_t> _chunk;
-    bool _islast;
-
-   public:
-    // from body
-    chunk_holder(http_body_bytes& b, bool last) noexcept : _bytes(&b), _islast(last) {
-    }
-    chunk_holder(std::span<const byte_t> chunk, bool last) noexcept
-        : _bytes(nullptr), _chunk(chunk), _islast(last) {
-    }
-    ~chunk_holder() {
-      // if _chunk points to _bytes - mark as handled
-      if (_bytes) {
-        assert(_bytes->data() == _chunk.data());
-        _bytes->clear();
-      }
-    }
-
-    chunk_holder(chunk_holder&&) = delete;
-    void operator=(chunk_holder&&) = delete;
-
-    // Note: chunk may be empty data
-    std::span<const byte_t> data() const noexcept [[clang::lifetimebound]] {
-      return _chunk;
-    }
-    [[nodiscard]] bool last() const noexcept {
-      return _islast;
-    }
-  };
-
-  struct next_chunk_awaiter {
-    request_node& node;
-    on_data_part_fn_ptr prevfn;
-    std::coroutine_handle<> waiter;
-    std::span<const byte_t> received;
-
-    explicit next_chunk_awaiter(request_node& n) noexcept;
-    ~next_chunk_awaiter();
-
-    bool await_ready() noexcept;
-
-    void await_suspend(std::coroutine_handle<>);
-
-    // caller must not ignore is_last_chunk() and must not read if already last received
-    [[nodiscard]] chunk_holder await_resume() noexcept;
-
-    // for using as `on_data_part_fn_ptr`
-    void operator()(std::span<const byte_t>, bool);
-  };
-
- public:
-  next_chunk_awaiter next_chunk() noexcept {
-    assert(node);
-    return next_chunk_awaiter(*node);
-  }
 };
 
 }  // namespace http2

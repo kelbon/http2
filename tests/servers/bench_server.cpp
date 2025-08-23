@@ -5,7 +5,7 @@
 
 using namespace http2;
 
-struct bench_server : http2_server {
+struct bench_server final : http2_server {
   using http2_server::http2_server;
 
   bench_server(http2_server_options o = {}) : http2_server(http2_server_options{.singlethread = true}) {

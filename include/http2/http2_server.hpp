@@ -40,15 +40,25 @@ struct http2_server {
   virtual ~http2_server();
 
   // invoked when only headers for request received and data will be received
-  // if `true` returned, `handle_request` will be invoked without data,
-  // so user can answer with streaming / connect responses
-  // request_context may be used to access info about this call result (ctx.answered_before_data())
+  // if `true` returned, `handle_request_stream` invoked instead of `handle_request`,
   // Note: request.body is empty, but body.contentType may be setted
   virtual bool answer_before_data(http_request const& r) const noexcept {
-    return r.method == http_method_e::CONNECT;
+    return false;
   }
 
-  // precondition: 'handle_request' must not wait for sever shutdown / terminate (deadlock)
+  // invoked only after `answer_before_data` returned true
+  // request body.data.empty() == true
+  // Note: request.body is empty, but body.contentType may be setted
+  // returned response must not contain body data
+  // if returned `stream_body_maker_t` is empty, just sends HEADERS, e.g. unaccepted websocket stream
+  // Note: ctx.stream_response must not be used in this function
+  virtual dd::task<std::pair<http_response, stream_body_maker_t>> handle_request_stream(http_request,
+                                                                                        memory_queue_ptr,
+                                                                                        request_context) {
+    throw std::runtime_error("handle_request_stream not overriden");
+  }
+
+  // precondition: returned coro must not wait for sever shutdown / terminate (deadlock)
   // if exception thrown from 'handle_request', server will RST_STREAM (PROTOCOL_ERROR)
   // request_context lighweight object, easy to copy. It will be valid while request in progress, even if
   // .stream_response used

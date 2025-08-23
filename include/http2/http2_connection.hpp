@@ -5,7 +5,6 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_protocol.hpp"
 #include "http2/http_base.hpp"
-#include "http2/signewaiter_signal.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/unique_name.hpp"
@@ -132,14 +131,18 @@ struct request_node {
   KELHTTP2_PIN;
 
   // connect request returns before END_STREAM when first HEADERS received and not send :path and :authority
+  // client-side
   [[nodiscard]] bool is_connect_request() const noexcept {
     return req.method == http_method_e::CONNECT;
   }
-  [[nodiscard]] bool is_streaming() const noexcept {
+  [[nodiscard]] bool is_output_streaming() const noexcept {
     return makebody.has_value();
   }
+  bool is_input_streaming() const noexcept {
+    return onDataPart != nullptr;
+  }
   [[nodiscard]] bool has_body() const noexcept {
-    return is_streaming() || !req.body.data.empty();
+    return is_output_streaming() || !req.body.data.empty();
   }
 
   // precondition: started

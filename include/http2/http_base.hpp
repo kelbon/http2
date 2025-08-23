@@ -3,6 +3,7 @@
 
 #include "http2/http_body.hpp"
 #include "http2/utils/fn_ref.hpp"
+#include "http2/utils/memory_queue.hpp"
 
 #include <string_view>
 #include <vector>

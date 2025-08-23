@@ -279,7 +279,7 @@ static dd::task<void> write_trailers(http2_connection& con, stream_id_t streamid
 
 template <bool IS_CLIENT>
 dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
-  assert(node && node->is_streaming());
+  assert(node && node->is_output_streaming());
 
   request_node& snode = *node;
   assert(!!snode.makebody);
@@ -294,6 +294,7 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
 
   on_scope_exit {
     snode.req.body = {};
+    snode.makebody = {};
   };
   // if !IS_CLIENT request finished on each code path
   // create 'b' before loop to handle exception after loop
@@ -348,6 +349,10 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
   }
   if constexpr (!IS_CLIENT) {
     con->finishRequest(snode, snode.status);
+  } else {
+    // client sends all what it need, do not want to receive anything
+    if (snode.is_connect_request())
+      con->finishRequest(snode, snode.status);
   }
   co_return;
 end:
@@ -467,14 +472,19 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
         if constexpr (!IS_CLIENT) {
           con->finishRequest(*node, node->status);
         }
-      } else if (!node->is_streaming()) {
+      } else if (!node->is_output_streaming()) {
         // request has no body
         if constexpr (!IS_CLIENT) {
           con->finishRequest(*node, node->status);
         }
-      } else if (!node->is_connect_request()) {
-        // stream finished in write_stream-data
-        (void)write_stream_data<IS_CLIENT>(node, con, cbs);
+      } else {
+        if constexpr (IS_CLIENT) {
+          if (!node->is_connect_request())
+            (void)write_stream_data<IS_CLIENT>(node, con, cbs);
+        } else {
+          // stream finished in write_stream-data
+          (void)write_stream_data<IS_CLIENT>(node, con, cbs);
+        }
       }
     }
   }  // end loop handling requests

@@ -89,7 +89,7 @@ dd::task<void> handle_ping(ping_frame ping, http2_connection_ptr_t con) {
     }
     co_return;
   }
-  if (!co_await send_ping(std::move(con), ping.getData(),
+  if (!co_await send_ping(con, ping.getData(),
                           /*requestPong=*/false)) {
     HTTP2_LOG(ERROR, "cannot handle ping", con->name);
   }

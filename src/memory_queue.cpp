@@ -3,20 +3,12 @@
 
 namespace http2 {
 
-memory_queue::memory_queue(node_ptr n) noexcept : node(std::move(n)) {
-  assert(node);
-  node->onDataPart = this;
-  auto& data = node->req.body.data;
-  if (!data.empty()) {
-    // if was last frame, we cannot be here
-    (*this)(data, /*lastframe=*/false);
-    data.clear();
-  }
-}
-
-memory_queue::~memory_queue() {
-  node->onDataPart = nullptr;
-  assert(this->bytes.empty() && "not all data received!");
+memory_queue::memory_queue(request_node& n) noexcept {
+  assert(!n.onDataPart);
+  n.onDataPart = this;
+  // on server side memory queue must be created after receiving HEADERS, before any DATA
+  // on client side must be created only in send_connect_request, no data is sent for it
+  assert(n.req.body.data.empty());
 }
 
 }  // namespace http2

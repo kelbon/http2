@@ -45,15 +45,15 @@ dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq re
   validate_echo_request(req, std::move(rsp));
 }
 
-static move_only_fn<streaming_body_t(http_response, request_context)> do_makestream(fuzzer& fuz,
-                                                                                    http_headers_t hdrs) {
-  return [&fuz, hdrs = std::move(hdrs)](http_response rsp, request_context ctx) -> streaming_body_t {
+static move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_context)> do_makestream(
+    fuzzer& fuz, http_headers_t hdrs) {
+  return [&fuz, hdrs = std::move(hdrs)](http_response rsp, memory_queue_ptr q,
+                                        request_context ctx) -> streaming_body_t {
     REQUIRE(rsp.status == 200);
     REQUIRE(hdrs == rsp.headers);
     REQUIRE(rsp.body.empty());
     std::string sent;
     std::string received;
-    auto q = ctx.get_memory_queue();
     size_t count = fuz.rindex(200);
     for (size_t i = 0; i < count; ++i) {
       if (fuz.rbool()) {
@@ -61,13 +61,13 @@ static move_only_fn<streaming_body_t(http_response, request_context)> do_makestr
         co_yield {(byte_t*)s.data(), s.size()};
       } else {
         if (received.size() != sent.size()) {
-          std::vector s = co_await q->read();
+          std::vector s = co_await q->next_chunk();
           received.append(s.begin(), s.end());
         }
       }
     }
     while (received.size() != sent.size()) {
-      std::vector s = co_await q->read();
+      std::vector s = co_await q->next_chunk();
       received.append(s.begin(), s.end());
     }
     // echo server

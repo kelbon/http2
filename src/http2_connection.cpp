@@ -195,7 +195,7 @@ void request_node::receiveRequestData(http2_frame_t frame) {
     throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
   }
 
-  if (is_streaming() && onDataPart) {
+  if (is_input_streaming()) {
     (*onDataPart)(frame.data, end_stream_received);
   } else {
     req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
@@ -466,7 +466,7 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   assert(!node->requestsHook.is_linked());
   assert(!node->responsesHook.is_linked());
   assert(!node->timersHook.is_linked());
-  assert(!node->is_streaming());
+  assert(!node->is_output_streaming());
   return node;
 }
 
@@ -680,7 +680,8 @@ void http2_connection::client_receive_headers(http2_frame_t frame) {
     finishRequestWithUserException(*node, std::current_exception());
     return;
   }
-  if (node->is_connect_request()) [[unlikely]] {
+  // ignore interim responses
+  if (node->is_connect_request() && !(node->status > 99 && node->status < 200)) [[unlikely]] {
     if (node->end_stream_received) {
       return finishRequest(*node, reqerr_e::SERVER_CANCELLED_REQUEST);
     }

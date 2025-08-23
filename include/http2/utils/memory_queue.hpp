@@ -16,7 +16,6 @@ struct memory_queue {
   size_t refcount = 0;
   bytes_t bytes;
   std::coroutine_handle<> waiter = nullptr;
-  node_ptr node = nullptr;
   bool eof = false;  // true if last data frame was received
   KELHTTP2_PIN;
 
@@ -39,9 +38,7 @@ struct memory_queue {
 
  public:
   // creates memory queue associated with `n`, it will receive all data for `n`
-  explicit memory_queue(node_ptr n) noexcept;
-
-  ~memory_queue();
+  explicit memory_queue(request_node& n) noexcept;
 
   bool has_data() const noexcept {
     return !bytes.empty();
@@ -56,8 +53,12 @@ struct memory_queue {
   // returns awaiters
   // await returns empty data only in case EOF
   // only one reader at one time allowed
-  auto read() {
+  auto next_chunk() {
     return data_awaiter(this);
+  }
+
+  [[nodiscard]] bool last_chunk_received() const noexcept {
+    return eof;
   }
 
   // for using with function ref

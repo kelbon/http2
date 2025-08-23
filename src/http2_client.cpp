@@ -583,10 +583,12 @@ dd::task<http_response> http2_client::send_streaming_request(http_request reques
 }
 
 dd::task<int> http2_client::send_connect_request(
-    http_request request, move_only_fn<streaming_body_t(http_response, request_context)> makestream,
+    http_request request,
+    move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_context)> makestream,
     deadline_t deadline) {
   assert(request.method == http_method_e::CONNECT);
   assert(request.body.data.empty());
+  assert(makestream);
   if (stopRequested()) [[unlikely]] {
     co_return reqerr_e::CANCELLED;
   }
@@ -633,7 +635,7 @@ dd::task<int> http2_client::send_connect_request(
 
   auto makechan = [rsp = std::move(rsp), mkstream = std::move(makestream)](http_headers_t&,
                                                                            request_context ctx) mutable {
-    return mkstream(std::move(rsp), std::move(ctx));
+    return mkstream(std::move(rsp), new memory_queue(*ctx.node), ctx);
   };
   node->makebody = std::move(makechan);
 

@@ -52,29 +52,35 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   return rsp;
 }
 
-static streaming_body_t handle_connect_request(request_context ctx) {
-  auto q = ctx.get_memory_queue();
-  for (;;) {
-    bytes_t bytes = co_await q->read();
-    if (bytes.empty())
-      co_return;
-    co_yield bytes;
+static streaming_body_t handle_connect_request(memory_queue_ptr q, http_headers_t& trailers,
+                                               request_context ctx) {
+  while (!q->last_chunk_received()) {
+    auto chunk = co_await q->next_chunk();
+    co_yield chunk;
   }
 }
 
-struct test_server : http2::http2_server {
-  using http2::http2_server::http2_server;
+struct test_server : http2_server {
+  using http2_server::http2_server;
 
-  dd::task<http2::http_response> handle_request(http2::http_request req,
-                                                http2::request_context ctx) override {
-    if (req.method == http2::http_method_e::CONNECT) {
-      error_if(req.headers != EXPECTED_CONNECT_HEADERS);
-      error_if(!req.body.data.empty());
-      error_if(req.path != "/ada");
-      // ignore websocket etc here, just assume its correct
-      co_return ctx.connect_response(200, {{"okay", "accepted"}}, handle_connect_request(ctx));
-    }
-    http2::http_response rsp = answer_req(std::move(req));
+  bool answer_before_data(http_request const& r) const noexcept override {
+    return r.method == http2::http_method_e::CONNECT;
+  }
+
+  dd::task<std::pair<http_response, stream_body_maker_t>> handle_request_stream(
+      http_request req, memory_queue_ptr q, request_context ctx) override {
+    error_if(req.headers != EXPECTED_CONNECT_HEADERS);
+    error_if(!req.body.data.empty());
+    error_if(req.path != "/ada");
+    http_response rsp;
+    rsp.status = 200;
+    rsp.headers = {{"okay", "accepted"}};
+    co_return {std::move(rsp), std::bind_front(&handle_connect_request, q)};
+  }
+
+  dd::task<http_response> handle_request(http_request req, request_context ctx) override {
+    error_if(req.method == http2::http_method_e::CONNECT);
+    http_response rsp = answer_req(std::move(req));
     co_return rsp;
   }
 };
@@ -117,17 +123,16 @@ dd::task<http2::http_response> make_test_stream_request(http2::http2_client& cli
   co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
 }
 
-streaming_body_t websocket_connect_test(http_response rsp, request_context ctx) {
+streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, request_context ctx) {
   error_if(!rsp.body.empty());
   error_if(rsp.status != 200);
   error_if(rsp.headers != http_headers_t{{"okay", "accepted"}});
 
   std::string data = "hello world!";
-  auto q = ctx.get_memory_queue();
 
   for (size_t i = 0; i < data.size(); ++i) {
     co_yield {(byte_t*)&data[i], 1};
-    auto s = co_await q->read();
+    auto s = co_await q->next_chunk();
     error_if(s.size() != 1);
     error_if(s.front() != data[i]);
   }

@@ -207,7 +207,8 @@ struct http2_client {
   // precondition: request.method == CONNECT && request.body.data.empty()
   // returns status of first response, < 0 if connection request was failed
   dd::task<int> send_connect_request(
-      http_request request, move_only_fn<streaming_body_t(http_response, request_context)> makestream,
+      http_request request,
+      move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_context)> makestream,
       deadline_t = deadline_t::never());
 
   bool connected() const;
