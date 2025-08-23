@@ -319,7 +319,9 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
             handle_utility_frame(frame, con);
             break;
         }
-      } catch (stream_error& e) {
+      } catch (stream_error& _e) {
+        // workaround windows ABI https://github.com/llvm/llvm-project/issues/153949
+        auto& e = _e;
         // reuse finish request with 'user' exception to make sure user will know about error
         request_node* node = con.findResponseByStreamid(e.streamid);
         if (node) {

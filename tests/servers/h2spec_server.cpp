@@ -3,7 +3,7 @@
 #include <iostream>
 
 http2::h2spec_server server;
-int main() {
+int main() try {
   std::signal(
       SIGINT, +[](int) {
         std::cout << "interrupted!";
@@ -13,4 +13,6 @@ int main() {
   server.listen({ipv4_endpoint});
 
   server.ioctx().run();
+} catch (std::exception& e) {
+  std::cout << e.what() << std::endl;
 }

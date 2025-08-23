@@ -149,11 +149,11 @@ dd::task<void> make_test_websocket_request(http2_client& client) {
 }
 
 dd::task<void> main_coro(http2_client& client) {
-  //  http_response rsp = co_await make_test_request(client);
-  // check_response(rsp);
+  http_response rsp = co_await make_test_request(client);
+  check_response(rsp);
 
-  /// rsp = co_await make_test_stream_request(client);
-  // check_streaming_response(rsp);
+  rsp = co_await make_test_stream_request(client);
+  check_streaming_response(rsp);
 
   co_await make_test_websocket_request(client);
 

@@ -4,6 +4,10 @@
 #include "http2/asio/asio_executor.hpp"
 #include "http2/http2_client.hpp"
 
+#include <boost/stacktrace.hpp>
+#include <csignal>
+#include <iostream>
+
 using namespace http2;
 
 // TODO и для сервера и для клиента протестировать отправку/получение
@@ -83,7 +87,13 @@ dd::task<void> run_requests(http2_client& client, size_t count, asio::ip::tcp::e
   }
 }
 
+void segfault_handler(int sig) {
+  std::cerr << "segfault, stacktrace:\n" << boost::stacktrace::stacktrace() << '\n';
+  std::exit(1);
+}
+
 int main() {
+  std::signal(SIGSEGV, segfault_handler);
   bistream_test_server server(http2_server_options{.idleTimeout = std::chrono::seconds(50000)});
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
@@ -98,5 +108,6 @@ int main() {
 
   while (!done) {
     server.ioctx().poll_one();
+    // client.ioctx().poll_one();
   }
 }

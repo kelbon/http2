@@ -2,7 +2,8 @@
 # Обходит ВСЕ таргеты, определённые в пределах вашего проекта
 # и вызывает переданный визитор с аргументами:
 #   <name> <type> <binary_dir>
-macro(visit_project_targets visitor)
+# WHAT_VISIT may be BUILDSYSTEM_TARGETS or IMPORTED_TARGETS
+macro(visit_project_targets visitor WHAT_VISIT)
     if(NOT COMMAND ${visitor})
         message(FATAL_ERROR "Visitor '${visitor}' не найден (ни функция, ни макрос).")
     endif()
@@ -10,7 +11,7 @@ macro(visit_project_targets visitor)
     # Внутренняя рекурсивная функция
     macro(_collect dir)
         # Таргеты в текущей директории
-        get_property(local_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+        get_property(local_targets DIRECTORY "${dir}" PROPERTY ${WHAT_VISIT})
 
         foreach(tgt IN LISTS local_targets)
             if(NOT TARGET "${tgt}")
@@ -118,7 +119,7 @@ function(generate_launch_json_file)
     endif()
   endmacro()
 
-  visit_project_targets(append_launch_configuration)
+  visit_project_targets(append_launch_configuration BUILDSYSTEM_TARGETS)
 
   if(NOT new_configs)
     message(STATUS "No executable targets found, nothing to add to launch.json.")

@@ -196,7 +196,7 @@ void request_node::receiveRequestData(http2_frame_t frame) {
   }
 
   if (is_input_streaming()) {
-    (*onDataPart)(frame.data, end_stream_received);
+    (*onDataPart)(frame.data, frame.header.flags& flags::END_STREAM);
   } else {
     req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
   }
