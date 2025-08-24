@@ -136,10 +136,10 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
 }
 
 void server_session::onRequestReady(request_node& n) noexcept {
-  // was detached before in startRequestAssemble
-  http2::node_ptr np(&n, /*add_ref=*/true);
-  if (np->bidir_stream_active)
+  if (n.bidir_stream_active)
     return;  // already done, DATA with END_STREAM received (its END_STREAM)
+  // was detached before in startRequestAssemble
+  http2::node_ptr np(&n, /*add_ref=*/false);
   np->status = reqerr_e::RESPONSE_IN_PROGRESS;
   on_scope_failure(nodedone) {
     onResponseDone();
@@ -303,7 +303,6 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   // Note: после этого detach() стрим остаётся без владельца
   // это учитывается в onRequestReady и finishServerRequest
   request_node& node = *n.detach();
-  --node.refcount;  // позже её точно захватят и это гарантировано, так что утечки не будет
   node.receiveRequestHeaders(connection->decoder, frame);
   if (node.end_stream_received) {  // setted in receiveRequestHeaders
     // Note: manages 'node' lifetime

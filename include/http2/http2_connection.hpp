@@ -103,7 +103,7 @@ struct request_node {
   requests_hook_type requestsHook;
   responses_hook_type responsesHook;
   timers_hooks_type timersHook;
-  uint32_t refcount = 0;
+  int32_t refcount = 0;
   stream_id_t streamid;
   // local -> remote hope
   // inited from remote settings
