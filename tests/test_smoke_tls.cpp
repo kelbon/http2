@@ -123,7 +123,7 @@ dd::task<http2::http_response> make_test_stream_request(http2::http2_client& cli
   co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
 }
 
-streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, request_context ctx) {
+streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, request_context) {
   error_if(!rsp.body.empty());
   error_if(rsp.status != 200);
   error_if(rsp.headers != http_headers_t{{"okay", "accepted"}});

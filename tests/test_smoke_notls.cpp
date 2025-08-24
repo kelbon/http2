@@ -123,7 +123,7 @@ dd::task<http_response> make_test_stream_request(http2_client& client) {
   co_return co_await client.send_streaming_request(std::move(req), body, deadline_t::never());
 }
 
-streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, request_context ctx) {
+streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, request_context) {
   error_if(!rsp.body.empty());
   error_if(rsp.status != 200);
   error_if(rsp.headers != http_headers_t{{"okay", "accepted"}});
@@ -166,8 +166,8 @@ dd::task<void> main_coro(http2_client& client) {
 int main() try {
   std::thread([] {
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    // HTTP2_LOG_ERROR("test timeout!");
-    // std::exit(-1);
+    HTTP2_LOG_ERROR("test timeout!");
+    std::exit(-1);
   }).detach();
 
   namespace asio = boost::asio;
