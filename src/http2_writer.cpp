@@ -294,7 +294,7 @@ dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_call
 
   on_scope_exit {
     snode.req.body = {};
-    snode.makebody = {};
+    snode.makebody.reset();
   };
   // if !IS_CLIENT request finished on each code path
   // create 'b' before loop to handle exception after loop
