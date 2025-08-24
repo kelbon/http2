@@ -153,6 +153,15 @@ struct fuzzer {
       }
     }
   }
+
+  // runs `ioctxs` with random ordeing
+  void run_until(auto condition, auto&... ioctxs) {
+    // should be asio::io_context (not included here)
+    std::vector ctxs{std::addressof(ioctxs)...};
+    while (!condition()) {
+      select(ctxs)->poll_one();
+    }
+  }
 };
 
 }  // namespace http2::fuzzing

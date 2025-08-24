@@ -1,6 +1,7 @@
 
-#include <http2/http2_server.hpp>
-#include <http2/fuzzing/assertion.hpp>
+#include "http2/http2_server.hpp"
+#include "http2/fuzzing/assertion.hpp"
+#include "http2/fuzzing/fuzzer.hpp"
 #include "http2/asio/asio_executor.hpp"
 #include "http2/http2_client.hpp"
 
@@ -9,8 +10,6 @@
 #include <iostream>
 
 using namespace http2;
-
-// TODO и для сервера и для клиента протестировать отправку/получение
 
 struct bistream_test_server : http2_server {
   using http2_server::http2_server;
@@ -28,7 +27,7 @@ struct bistream_test_server : http2_server {
 
   dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(
       http_request req, memory_queue_ptr q, request_context ctx) override {
-    // TODO forbid? co_await ctx.send_interim_response(100);
+    co_await ctx.send_interim_response(100);
     http_response rsp;
     rsp.status = 200;
     rsp.headers = std::move(req.headers);
@@ -97,18 +96,10 @@ int main() {
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
   server.listen(server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
-  // http2_client client(ipv6_endpoint,
-  //                    {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
-  // run_requests(client, 100, ipv6_endpoint).start_and_detach();
-  std::thread([&] {
-    http2_client client(ipv6_endpoint,
-                        {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
-    run_requests(client, 10000, ipv6_endpoint).start_and_detach();
-    client.ioctx().run();
-  }).detach();
+  http2_client client(ipv6_endpoint,
+                      {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
+  run_requests(client, 100, ipv6_endpoint).start_and_detach();
 
-  while (!done) {
-    server.ioctx().poll_one();
-    // client.ioctx().poll_one();
-  }
+  fuzzing::fuzzer fuz;
+  fuz.run_until([] { return done.load(); }, server.ioctx(), client.ioctx());
 }

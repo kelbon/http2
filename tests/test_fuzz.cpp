@@ -55,11 +55,7 @@ int main() try {
     done = true;
   }).start_and_detach();
 
-  while (!done) {
-    server.ioctx().poll();
-    // poll one to avoid endless work while server cannot done anything to answer
-    client1.ioctx().poll_one();
-  }
+  fuz.run_until([&] { return done; }, server.ioctx(), client1.ioctx());
   HTTP2_LOG_INFO("FUZZING TEST: SUCCESS");
   return 0;
 } catch (...) {

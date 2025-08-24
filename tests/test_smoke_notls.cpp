@@ -1,6 +1,7 @@
 #include <http2/http2_client.hpp>
 #include <http2/asio/factory.hpp>
 #include <http2/http2_server.hpp>
+#include <http2/fuzzing/fuzzer.hpp>
 
 #include <iostream>
 
@@ -180,11 +181,8 @@ int main() try {
   server.listen(server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
   main_coro(client).start_and_detach();
-
-  while (!all_good) {
-    client.ioctx().poll();
-    server.ioctx().poll();
-  }
+  fuzzing::fuzzer fuz;
+  fuz.run_until([&] { return all_good; }, server.ioctx(), client.ioctx());
 
   return 0;
 } catch (std::exception& e) {
