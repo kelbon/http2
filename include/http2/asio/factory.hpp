@@ -12,8 +12,7 @@ struct asio_connection : connection_i {
   }
 
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
-  void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec,
-                  size_t& written) override;
+  void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
   bool isHttps() override {
     return false;
@@ -39,8 +38,7 @@ struct asio_tls_connection : connection_i {
   }
 
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
-  void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec,
-                  size_t& written) override;
+  void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
   bool isHttps() override {
     return true;
