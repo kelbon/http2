@@ -310,6 +310,7 @@ void http2_connection::finishRequest(request_node& node, int status) noexcept {
     HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, status, name);
   }
   node.status = status;
+  node_ptr p = &node;  // hold node
   auto t = std::exchange(node.task, nullptr);
   if (status == reqerr_e::CANCELLED || status == reqerr_e::TIMEOUT) {
     // ignore possible bad alloc for coroutine
