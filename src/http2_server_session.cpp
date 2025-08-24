@@ -218,7 +218,10 @@ void server_session::requestTerminate() noexcept {
       .start_and_detach();
 
   // forget requests (including not finished)
-  auto doforget = [&](request_node* n) { finishServerRequest(*n); };
+  auto doforget = [&](request_node* n) {
+    ::http2::node_ptr p = n;  // prevent node destroy
+    finishServerRequest(*n);
+  };
   connection->responses.clear_and_dispose(doforget);
   connection->requests.clear_and_dispose(doforget);
 
@@ -337,8 +340,6 @@ void server_session::finishServerRequest(request_node& n) noexcept {
     assert(n.task == nullptr);
     connection->forget(n);
     HTTP2_LOG(TRACE, "stream {} canceled before its asembled", n.streamid, name());
-    // not yet complete request, writer will never see it
-    assert(n.refcount == 1);
     // single owner, which was 'detach' in startRequestAssemble
     intrusive_ptr_release(&n);
     onResponseDone();
