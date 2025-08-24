@@ -485,7 +485,8 @@ void http2_connection::returnNode(request_node* ptr) noexcept {
   ptr->connection = nullptr;
   ptr->req = {};
   ptr->makebody.reset();
-  if (freeNodes.size() >= std::min<size_t>(1024, remoteSettings.maxConcurrentStreams)) {
+  // using always server settings, client creates requests, server controls
+  if (freeNodes.size() >= serverSettings->maxConcurrentStreams) {
     delete ptr;
     return;
   }

@@ -233,6 +233,8 @@ struct http2_connection {
 
   settings_t remoteSettings;
   settings_t localSettings;
+  // setted to remoteSettings on client side and localSettings on server side
+  const settings_t* serverSettings;
   any_connection_t tcpCon;
   hpack::encoder encoder;
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.2.1

@@ -15,9 +15,8 @@ void asio_tls_connection::startRead(std::coroutine_handle<> h, std::span<byte_t>
 }
 
 void asio_tls_connection::startWrite(std::coroutine_handle<> h, std::span<byte_t const> buf,
-                                     io_error_code& ec, size_t& written) {
+                                     io_error_code& ec) {
   asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t w) {
-    written = w;
     ec = e;
     h.resume();
   });
@@ -47,16 +46,16 @@ void asio_tls_connection::shutdown() noexcept {
 
 void asio_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   asio::async_read(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
-    ec = e;
+    if (e) [[unlikely]]
+      ec = e;
     h.resume();
   });
 }
 
-void asio_connection::startWrite(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec,
-                                 size_t& written) {
-  asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t w) {
-    written = w;
-    ec = e;
+void asio_connection::startWrite(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec) {
+  asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
+    if (e) [[unlikely]]
+      ec = e;
     h.resume();
   });
 }
