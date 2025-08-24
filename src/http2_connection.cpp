@@ -77,6 +77,9 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
   if (((frame.header.flags & mask) != mask)) {
     throw protocol_error(errc_e::STREAM_CLOSED, "trailers header without END_STREAM | END_HEADERS");
   }
+  on_scope_exit {
+    end_stream_received = true;
+  };
   hpack::decode_headers_block(decoder, frame.data, [&](std::string_view name, std::string_view value) {
     HTTP2_LOG(TRACE, "name: {}, value: {}", name, value, this->name());
     validate_trailer_header(name, frame.header.streamId);
@@ -122,6 +125,9 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   if (status > 199) [[unlikely]] {
     return receiveTrailersHeaders(decoder, frame);
   }
+  on_scope_exit {
+    end_stream_received = frame.header.flags & flags::END_STREAM;
+  };
   byte_t const* in = frame.data.data();
   byte_t const* e = in + frame.data.size();
   status = decoder.decode_response_status(in, e);
@@ -137,6 +143,9 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
 void request_node::receiveResponseData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
+  on_scope_exit {
+    end_stream_received = frame.header.flags & flags::END_STREAM;
+  };
   decrease_window_size(rlStreamlevelWindowSize, int32_t(frame.header.length));
   if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2 && !(frame.header.flags & flags::END_STREAM)) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
@@ -151,11 +160,16 @@ void request_node::receiveResponseData(http2_frame_t frame) {
 void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
+  assert(frame.header.flags & flags::END_HEADERS);
+  assert(req.headers.empty());
+
+  on_scope_exit {
+    end_stream_received = frame.header.flags & flags::END_STREAM;
+  };
+
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
             name());
-  assert(frame.header.flags & flags::END_HEADERS);
 
-  assert(req.headers.empty());
   parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
 #ifdef HTTP2_ENABLE_TRACE
   trace_request_headers(*this, /*from client=*/true);
@@ -166,6 +180,10 @@ void request_node::receiveRequestData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
 
+  on_scope_exit {
+    end_stream_received = frame.header.flags & flags::END_STREAM;
+  };
+
   HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamId, frame.header.length,
             std::string_view((char const*)frame.data.data(), frame.data.size()), name());
 
@@ -173,15 +191,15 @@ void request_node::receiveRequestData(http2_frame_t frame) {
   if (rlStreamlevelWindowSize < MAX_WINDOW_SIZE / 2 && !(frame.header.flags & flags::END_STREAM)) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
   }
-  if (this->is_half_closed_server()) {
-    if (is_streaming() && onDataPart) {  // bidirectional stream
-      (*onDataPart)(frame.data, (frame.header.flags & flags::END_STREAM));
-    } else {
-      throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
-    }
-    return;
+  if (is_half_closed()) {
+    throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
   }
-  req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
+
+  if (!is_input_streaming()) {
+    req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
+  } else {
+    (*onDataPart)(frame.data, frame.header.flags& flags::END_STREAM);
+  }
 }
 
 std::string_view request_node::name() const noexcept {
@@ -441,19 +459,20 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   node->status = reqerr_e::UNKNOWN_ERR;
   node->canceledByRstStream = false;
   node->bidir_stream_active = false;
+  node->answered_before_data = false;
+  node->end_stream_received = false;
 
   assert(node->refcount == 1);
   assert(!node->requestsHook.is_linked());
   assert(!node->responsesHook.is_linked());
   assert(!node->timersHook.is_linked());
-  assert(!node->is_streaming());
+  assert(!node->is_output_streaming());
   return node;
 }
 
 node_ptr http2_connection::newStreamingRequestNode(http_request&& request, deadline_t deadline,
                                                    on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
-                                                   stream_id_t streamid,
-                                                   move_only_fn<streaming_body_t(http_headers_t&)> makebody) {
+                                                   stream_id_t streamid, stream_body_maker_t makebody) {
   node_ptr node = newRequestNode(std::move(request), deadline, onHeader, onDataPart, streamid);
   node->makebody = std::move(makebody);
   return node;
@@ -505,8 +524,7 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
       // decode before all to ensure decoder will be in correct state
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-19
       // maintain hpack dynamic table
-      hpack::decode_headers_block(decoder, frame.data,
-                                  [](std::string_view /*name*/, std::string_view /*value*/) {});
+      hpack::decode_headers_block(decoder, frame.data, [&](std::string_view, std::string_view) {});
 
       if (is_closed_stream(frame.header.streamId)) {
         throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
@@ -520,8 +538,7 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
       // ('data' does not contain padding)
       decrease_window_size(myWindowSize, int32_t(frame.header.length));
       if (is_closed_stream(frame.header.streamId)) {
-        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
-                           "DATA frame sent for closed or idle frame");
+        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "DATA frame sent for closed stream");
       }
       if (is_idle_stream(frame.header.streamId)) {
         throw protocol_error(
@@ -650,6 +667,7 @@ void http2_connection::client_receive_headers(http2_frame_t frame) {
   }
 
   try {
+    // sets end_stream_received flag
     node->receiveResponseHeaders(decoder, frame);
   } catch (hpack::protocol_error&) {
     throw;
@@ -660,15 +678,16 @@ void http2_connection::client_receive_headers(http2_frame_t frame) {
     finishRequestWithUserException(*node, std::current_exception());
     return;
   }
-  if (node->is_connect_request()) [[unlikely]] {
-    if (frame.header.flags & flags::END_STREAM) {
+  // ignore interim responses
+  if (node->is_connect_request() && !(node->status > 99 && node->status < 200)) [[unlikely]] {
+    if (node->end_stream_received) {
       return finishRequest(*node, reqerr_e::SERVER_CANCELLED_REQUEST);
     }
     assert(node->task);
     std::exchange(node->task, nullptr).resume();
     return;
   }
-  if (frame.header.flags & flags::END_STREAM) {
+  if (node->end_stream_received) {
     finishRequest(*node, node->status);
   }
 }
@@ -697,7 +716,7 @@ void http2_connection::client_receive_data(http2_frame_t frame) {
     finishRequestWithUserException(*node, std::current_exception());
     return;
   }
-  if (frame.header.flags & flags::END_STREAM) {
+  if (node->end_stream_received) {  // setted in receiveResponseData
     finishRequest(*node, node->status);
   }
 }

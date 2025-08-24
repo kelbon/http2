@@ -10,10 +10,9 @@
 #define HTTP2_CHECK_NOT_EMPTY_IMPL(TOKEN) HTTP2_FMT_STRING_IS_EMPTY_##TOKEN
 #define HTTP2_CHECK_NOT_EMPTY(...) HTTP2_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
 
-#define HTTP2_DO_LOG(LEVEL, FMT_STR, ...)             \
-  HTTP2_CHECK_NOT_EMPTY(FMT_STR)                      \
-  std::format_to(std::ostreambuf_iterator(std::cout), \
-                 "[" #LEVEL "][HTTP/2] " FMT_STR "\n" __VA_OPT__(, ) __VA_ARGS__)
+#define HTTP2_DO_LOG(LEVEL, FMT_STR, ...) \
+  HTTP2_CHECK_NOT_EMPTY(FMT_STR)          \
+  std::cout << std::format("[" #LEVEL "][HTTP/2] " FMT_STR "\n" __VA_OPT__(, ) __VA_ARGS__)
 
 #define HTTP2_LOG_INFO(FMT_STR, ...) HTTP2_DO_LOG(INFO, FMT_STR __VA_OPT__(, ) __VA_ARGS__)
 #define HTTP2_LOG_ERROR(FMT_STR, ...) HTTP2_DO_LOG(ERROR, FMT_STR __VA_OPT__(, ) __VA_ARGS__)

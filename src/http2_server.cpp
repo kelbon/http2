@@ -54,14 +54,6 @@ terminate отсылает goaway и отменяет все запросы на
 
 namespace http2 {
 
-stream_id_t request_context::streamid() const noexcept {
-  return node->streamid;
-}
-
-bool request_context::canceled_by_client() const noexcept {
-  return node->canceledByRstStream;
-}
-
 using acceptor_t = boost::asio::ip::tcp::acceptor;
 
 struct http2_server::impl {
@@ -335,63 +327,6 @@ dd::task<void> http2_server::terminate() {
 
 asio::io_context& http2_server::ioctx() {
   return m_impl->ioctx();
-}
-
-http_response request_context::stream_response(int status, http_headers_t hdrs,
-                                               move_only_fn<streaming_body_t(http_headers_t&)> makebody) {
-  assert(status > 0);
-  assert(makebody);
-  http_response rsp;
-  rsp.status = status;
-  rsp.headers = std::move(hdrs);
-  node->makebody = std::move(makebody);
-
-  return rsp;
-}
-
-http_response request_context::connect_response(int status, http_headers_t hdrs,
-                                                move_only_fn<streaming_body_t(memory_queue_ptr)> makestream) {
-  // if exception thrown, it will be in `server::handle_request`
-  // (since it called there) and will lead to  RST_STREAM
-  memory_queue_ptr q = std::make_shared<memory_queue>();
-  // emulating send_response here, send_response later will not handle it
-  http_response rsp;
-  rsp.status = status;
-  rsp.headers = std::move(hdrs);
-  node->onDataPart = &*q;
-  node->makebody = [n = node, mkstream = std::move(makestream), q = std::move(q)](http_headers_t&) mutable {
-    n->bidir_stream_active = true;
-    return mkstream(q);
-  };
-  return rsp;
-}
-
-dd::task<void> request_context::send_interim_response(int status, http_headers_t hdrs) {
-  assert(status >= 100 && status <= 199);
-  if (!node->connection)
-    co_return;
-  HTTP2_LOG(TRACE, "sending interim response with status {}", status, node->connection->name);
-  bytes_t bytes;
-  node->connection->start_headers_block(*node, /*force_disable_hpack=(unknown here)*/ false, bytes);
-  auto out = std::back_inserter(bytes);
-  auto& encoder = node->connection->encoder;
-  encoder.encode_status(status, out);
-  for (auto& h : hdrs) {
-    encoder.encode_with_cache(h.name(), h.value(), out);
-  }
-  HTTP2_WAIT_WRITE(*node->connection);
-  io_error_code ec;
-  co_await node->connection->write(bytes, ec);
-  if (ec) {
-    if (ec != asio::error::operation_aborted)
-      HTTP2_LOG(ERROR, "cannot send interim response, err: {}", ec.message(), node->connection->name);
-  }
-}
-
-asio::io_context* request_context::owner_ioctx() {
-  if (!node || !node->connection)
-    return nullptr;
-  return &node->connection->ioctx;
 }
 
 }  // namespace http2

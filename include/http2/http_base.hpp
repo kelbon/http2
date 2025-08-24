@@ -3,6 +3,7 @@
 
 #include "http2/http_body.hpp"
 #include "http2/utils/fn_ref.hpp"
+#include "http2/utils/memory_queue.hpp"
 
 #include <string_view>
 #include <vector>
@@ -114,21 +115,23 @@ struct http_response {
 
 using streaming_body_t = dd::channel<std::span<const byte_t>>;
 
+struct request_context;
+
+// `trailers` may be settted to sent trailers section
+using stream_body_maker_t = move_only_fn<streaming_body_t(http_headers_t& trailers, request_context)>;
+// do not allow trailers in bistream
+using bistream_body_maker_t = move_only_fn<streaming_body_t(request_context)>;
+
 // helper, mostly for implementation
 // `args` will be just stored in returned object
-inline move_only_fn<streaming_body_t(http_headers_t&)> streaming_body_without_trailers(
-    streaming_body_t streambody, auto... args) {
+inline stream_body_maker_t streaming_body_without_trailers(streaming_body_t streambody, auto... args) {
   return [x = std::move(streambody), ... pack = std::move(args)](
-             http_headers_t& /*trailers*/) mutable -> streaming_body_t { return std::move(x); };
-}
-
-inline move_only_fn<streaming_body_t(http_headers_t&)> streaming_body_with_trailers(streaming_body_t body,
-                                                                                    http_headers_t trailers) {
-  return [b = std::move(body), t = std::move(trailers)](http_headers_t& hdrs) mutable -> streaming_body_t {
-    co_yield dd::elements_of(std::move(b));
-    hdrs = std::move(t);
+             http_headers_t& /*trailers*/, request_context&&) mutable -> streaming_body_t {
+    return std::move(x);
   };
 }
+
+stream_body_maker_t streaming_body_with_trailers(streaming_body_t body, http_headers_t trailers);
 
 }  // namespace http2
 

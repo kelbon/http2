@@ -94,9 +94,19 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   http_response rsp;
   HTTP2_ASSUME_THREAD_UNCHANGED_START;
   try {
-    rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
-    // here node->is_streaming() possible if ctx.streaming_response was called
-    assert(!(node->is_streaming() && !rsp.body.empty()) && "streaming response must be with empty body");
+    if (!node->answered_before_data) {
+      rsp = co_await session.server->handle_request(std::move(node->req), request_context(*node));
+    } else {
+      auto [brsp, maker] = co_await session.server->handle_request_stream(
+          std::move(node->req), new memory_queue(*node), request_context(*node));
+      assert(brsp.body.empty());            // function contract violated
+      assert(!node->makebody.has_value());  // ctx.stream_response must not be used here
+      rsp = std::move(brsp);
+      node->makebody = [n = &*node, makeout = std::move(maker)](http_headers_t&, request_context) mutable {
+        n->bidir_stream_active = true;
+        return makeout(request_context(*n));
+      };
+    }
   } catch (stream_error& e) {
     // Note: catching stream error, so user can implement other protocol over HTTP/2 with additional
     // requirements
@@ -126,10 +136,10 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
 }
 
 void server_session::onRequestReady(request_node& n) noexcept {
+  if (n.bidir_stream_active)
+    return;  // already done, DATA with END_STREAM received (its END_STREAM)
   // was detached before in startRequestAssemble
   http2::node_ptr np(&n, /*add_ref=*/false);
-  if (np->bidir_stream_active)
-    return;  // already done, DATA with END_STREAM received (its END_STREAM)
   np->status = reqerr_e::RESPONSE_IN_PROGRESS;
   on_scope_failure(nodedone) {
     onResponseDone();
@@ -250,17 +260,16 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
 
   // if stream already exist, its trailers or error
   if (auto* r = connection->findResponseByStreamid(frame.header.streamId)) [[unlikely]] {
-    if (r->is_half_closed_server()) {
+    if (r->is_half_closed()) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            std::format("client initiates stream, which was already open, streamid: {}",
                                        frame.header.streamId));
     } else {
       // trailer headers received
       r->receiveRequestTrailers(connection->decoder, frame);
-      if (frame.header.flags & flags::END_STREAM) {
-        // Note: manages 'node' lifetime
-        onRequestReady(*r);
-      }
+      assert(r->end_stream_received);  // if not, it must be protocol error
+      // Note: manages 'node' lifetime
+      onRequestReady(*r);
       return;
     }
   }
@@ -276,7 +285,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   }
 
   // Note: before making a decision about a stream, to keep in mind the client's desire to create such stream
-  connection->laststartedstreamid = std::max(connection->laststartedstreamid, frame.header.streamId);
+  connection->laststartedstreamid = frame.header.streamId;
 
   if (connection->is_closed_stream(frame.header.streamId)) {
     throw protocol_error(errc_e::STREAM_CLOSED,
@@ -294,10 +303,13 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   // Note: после этого detach() стрим остаётся без владельца
   // это учитывается в onRequestReady и finishServerRequest
   request_node& node = *n.detach();
-
   node.receiveRequestHeaders(connection->decoder, frame);
-  if ((frame.header.flags & flags::END_STREAM) || node.is_connect_request()) {
+  if (node.end_stream_received) {  // setted in receiveRequestHeaders
     // Note: manages 'node' lifetime
+    onRequestReady(node);
+  } else if (server->answer_before_data(node.req)) {
+    // should be setted only if data will be present
+    node.answered_before_data = true;
     onRequestReady(node);
   }
 }
@@ -316,6 +328,10 @@ void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
 }
 
 void server_session::finishServerRequest(request_node& n) noexcept {
+  if (n.onDataPart) {
+    // prevent endless waiting if client does not send anything etc
+    (*n.onDataPart)({}, /*last chunk*/ true);
+  }
   if (n.status == reqerr_e::REQUEST_CREATED) {
     // request did not assembled yet
     assert(n.task == nullptr);
@@ -362,7 +378,7 @@ void server_session::receive_data(http2_frame_t frame) {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2-1
   decrease_window_size(connection->myWindowSize, int32_t(frame.header.length));
   node->receiveRequestData(frame);
-  if (frame.header.flags & flags::END_STREAM) {
+  if (node->end_stream_received) {  // setted in receiveRequestData
     // Note: manages 'node' lifetime
     onRequestReady(*node);
   }

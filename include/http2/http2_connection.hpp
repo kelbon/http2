@@ -5,7 +5,6 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_protocol.hpp"
 #include "http2/http_base.hpp"
-#include "http2/signewaiter_signal.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/unique_name.hpp"
@@ -104,16 +103,16 @@ struct request_node {
   requests_hook_type requestsHook;
   responses_hook_type responsesHook;
   timers_hooks_type timersHook;
-  uint32_t refcount = 0;
-  stream_id_t streamid = 0;
+  int32_t refcount = 0;
+  stream_id_t streamid;
   // local -> remote hope
   // inited from remote settings
   // how many octets local can send to remote
-  cfint_t lrStreamlevelWindowSize = 0;
+  cfint_t lrStreamlevelWindowSize;
   // remote -> local hope
   // inited from local settings
   // how many octets remote can send to local
-  cfint_t rlStreamlevelWindowSize = 0;
+  cfint_t rlStreamlevelWindowSize;
   // 'newRequestNode' fills req, deadline and initial stream window sizes
   http_request req;
   deadline_t deadline;
@@ -123,22 +122,27 @@ struct request_node {
   on_header_fn_ptr onHeader;
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
-  bool canceledByRstStream = false;  // for server request_context
-  bool bidir_stream_active = false;  // true for CONNECT requests after accepting stream
-
+  bool canceledByRstStream = false;   // for server request_context
+  bool bidir_stream_active = false;   // true for CONNECT requests after accepting stream
+  bool answered_before_data = false;  // when server::answer_before_data() returned true
+  bool end_stream_received = false;   // marks half-closed stream
   // filled if this a streaming request
-  move_only_fn<streaming_body_t(http_headers_t& optional_trailers)> makebody;
+  stream_body_maker_t makebody;
   KELHTTP2_PIN;
 
   // connect request returns before END_STREAM when first HEADERS received and not send :path and :authority
+  // client-side
   [[nodiscard]] bool is_connect_request() const noexcept {
     return req.method == http_method_e::CONNECT;
   }
-  [[nodiscard]] bool is_streaming() const noexcept {
+  [[nodiscard]] bool is_output_streaming() const noexcept {
     return makebody.has_value();
   }
+  bool is_input_streaming() const noexcept {
+    return onDataPart != nullptr;
+  }
   [[nodiscard]] bool has_body() const noexcept {
-    return is_streaming() || !req.body.data.empty();
+    return is_output_streaming() || !req.body.data.empty();
   }
 
   // precondition: started
@@ -146,11 +150,9 @@ struct request_node {
     return task == nullptr;
   }
 
-  // returns true if stream was already assembled and response now in progress
-  // server side
-  [[nodiscard]] bool is_half_closed_server() const noexcept {
-    // status >= 0 - запрос уже на стадии отправки
-    return status == reqerr_e::RESPONSE_IN_PROGRESS || status >= 0;
+  // returns true if stream was received any frame with END_STREAM flag
+  [[nodiscard]] bool is_half_closed() const noexcept {
+    return end_stream_received;
   }
 
   // client side
@@ -435,7 +437,7 @@ struct http2_connection {
   // client side
   node_ptr newStreamingRequestNode(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
                                    on_data_part_fn_ptr onDataPart, stream_id_t streamid,
-                                   move_only_fn<streaming_body_t(http_headers_t&)> makebody);
+                                   stream_body_maker_t makebody);
 
   void returnNode(request_node* ptr) noexcept;
 

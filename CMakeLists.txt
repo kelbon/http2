@@ -21,6 +21,8 @@ endif()
 
 add_library(http2lib ${CMAKE_CURRENT_SOURCE_DIR}/src/http_base.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_client.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/request_context.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/memory_queue.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_protocol.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_connection.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_connection_establishment.cpp
@@ -48,6 +50,7 @@ target_link_libraries(http2lib PUBLIC
     Boost::intrusive
     Boost::smart_ptr
     Boost::asio
+    Boost::stacktrace
 )
 
 set_target_properties(http2lib PROPERTIES
@@ -84,5 +87,4 @@ set_target_properties(http2_fuzzinglib PROPERTIES
 	CXX_STANDARD 20)
 
 include(cmake/visit_targets.cmake)
-
 generate_launch_json_file()

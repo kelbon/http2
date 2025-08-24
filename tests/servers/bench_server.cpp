@@ -5,7 +5,7 @@
 
 using namespace http2;
 
-struct bench_server : http2_server {
+struct bench_server final : http2_server {
   using http2_server::http2_server;
 
   bench_server(http2_server_options o = {}) : http2_server(http2_server_options{.singlethread = true}) {
@@ -24,7 +24,7 @@ struct bench_server : http2_server {
 int main() try {
   bench_server server;
 
-  asio::ip::tcp::endpoint ipv4_endpoint(asio::ip::address_v4::loopback(), 3000);
+  asio::ip::tcp::endpoint ipv4_endpoint(asio::ip::address_v4::loopback(), 2999);
   server.listen({ipv4_endpoint});
 
   server.ioctx().run();
