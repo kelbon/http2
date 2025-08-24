@@ -328,10 +328,10 @@ void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
 }
 
 void server_session::finishServerRequest(request_node& n) noexcept {
-  // if (n.onDataPart) {
-  //   // prevent endless waiting if client does not send anything etc
-  //   (*n.onDataPart)({}, /*last chunk*/ true);
-  // }
+  if (n.onDataPart) {
+    // prevent endless waiting if client does not send anything etc
+    (*n.onDataPart)({}, /*last chunk*/ true);
+  }
   if (n.status == reqerr_e::REQUEST_CREATED) {
     // request did not assembled yet
     assert(n.task == nullptr);
