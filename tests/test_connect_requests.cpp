@@ -19,17 +19,16 @@ struct bistream_test_server : http2_server {
     return true;
   }
 
-  static streaming_body_t stream_body(memory_queue_ptr q, http_headers_t& trailers, request_context ctx) {
+  static streaming_body_t stream_body(memory_queue_ptr q, request_context ctx) {
     while (!q->last_chunk_received()) {
       auto c = co_await q->next_chunk();
       co_yield c;
     }
-    trailers = {{"trailer-header", "abc"}};
   }
 
-  dd::task<std::pair<http_response, stream_body_maker_t>> handle_request_stream(
+  dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(
       http_request req, memory_queue_ptr q, request_context ctx) override {
-    co_await ctx.send_interim_response(100);
+    // TODO forbid? co_await ctx.send_interim_response(100);
     http_response rsp;
     rsp.status = 200;
     rsp.headers = std::move(req.headers);
@@ -98,11 +97,13 @@ int main() {
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
   server.listen(server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
-  http2_client client(ipv6_endpoint,
-                      {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
+  // http2_client client(ipv6_endpoint,
+  //                    {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
   // run_requests(client, 100, ipv6_endpoint).start_and_detach();
   std::thread([&] {
-    run_requests(client, 100, ipv6_endpoint).start_and_detach();
+    http2_client client(ipv6_endpoint,
+                        {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
+    run_requests(client, 10000, ipv6_endpoint).start_and_detach();
     client.ioctx().run();
   }).detach();
 

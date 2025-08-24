@@ -37,22 +37,26 @@ void trace_request_headers(request_node const& node, bool fromclient) {
 namespace http2 {
 
 void intrusive_ptr_add_ref(http2_connection* p) noexcept {
+  assert(p->refcount >= 0);
   ++p->refcount;
 }
 
 void intrusive_ptr_release(http2_connection* p) noexcept {
   --p->refcount;
+  assert(p->refcount >= 0);
   if (p->refcount == 0) {
     delete p;
   }
 }
 
 void intrusive_ptr_add_ref(request_node* p) noexcept {
+  assert(p->refcount >= 0);
   ++p->refcount;
 }
 
 void intrusive_ptr_release(request_node* p) noexcept {
   --p->refcount;
+  assert(p->refcount >= 0);
   if (p->refcount == 0) {
     p->connection->returnNode(p);
   }
@@ -443,8 +447,10 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   node_ptr node;
   if (freeNodes.empty()) {
     node = new request_node;
+    assert(node->refcount == 1);
   } else {
     node = &freeNodes.front();
+    assert(node->refcount == 1);
     freeNodes.pop_front();
   }
   node->lrStreamlevelWindowSize = remoteSettings.initialStreamWindowSize;
@@ -480,6 +486,7 @@ node_ptr http2_connection::newStreamingRequestNode(http_request&& request, deadl
 
 void http2_connection::returnNode(request_node* ptr) noexcept {
   assert(ptr && ptr->connection);
+  assert(ptr->refcount == 0);
   forget(*ptr);
   ptr->connection->mark_stream_closed(ptr->streamid);
   ptr->connection = nullptr;
@@ -524,8 +531,9 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
       // decode before all to ensure decoder will be in correct state
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-19
       // maintain hpack dynamic table
-      hpack::decode_headers_block(decoder, frame.data,
-                                  [](std::string_view /*name*/, std::string_view /*value*/) {});
+      hpack::decode_headers_block(decoder, frame.data, [&](std::string_view name, std::string_view value) {
+        HTTP2_LOG(TRACE, "ignoring header: name = {}, value = {}", name, value, name);
+      });
 
       if (is_closed_stream(frame.header.streamId)) {
         throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
@@ -539,8 +547,7 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
       // ('data' does not contain padding)
       decrease_window_size(myWindowSize, int32_t(frame.header.length));
       if (is_closed_stream(frame.header.streamId)) {
-        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
-                           "DATA frame sent for closed or idle frame");
+        throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "DATA frame sent for closed stream");
       }
       if (is_idle_stream(frame.header.streamId)) {
         throw protocol_error(

@@ -102,10 +102,9 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
       assert(brsp.body.empty());            // function contract violated
       assert(!node->makebody.has_value());  // ctx.stream_response must not be used here
       rsp = std::move(brsp);
-      node->makebody = [n = &*node, makeout = std::move(maker)](http_headers_t& trailers,
-                                                                request_context) mutable {
+      node->makebody = [n = &*node, makeout = std::move(maker)](http_headers_t&, request_context) mutable {
         n->bidir_stream_active = true;
-        return makeout(trailers, request_context(*n));
+        return makeout(request_context(*n));
       };
     }
   } catch (stream_error& e) {
@@ -330,10 +329,10 @@ void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
 }
 
 void server_session::finishServerRequest(request_node& n) noexcept {
-  if (n.onDataPart) {
-    // prevent endless waiting if client does not send anything etc
-    (*n.onDataPart)({}, /*last chunk*/ true);
-  }
+  // if (n.onDataPart) {
+  //   // prevent endless waiting if client does not send anything etc
+  //   (*n.onDataPart)({}, /*last chunk*/ true);
+  // }
   if (n.status == reqerr_e::REQUEST_CREATED) {
     // request did not assembled yet
     assert(n.task == nullptr);

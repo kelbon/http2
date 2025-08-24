@@ -23,7 +23,7 @@ int main() {
     bp::child server(cwd / "servers/h2spec_server");
 #endif
     std::this_thread::sleep_for(std::chrono::seconds(1));  // time for server starting
-    (void)bp::system("h2spec --port 3000", bp::std_out > foutput, bp::std_err > bp::null);
+    (void)bp::system("h2spec --port 2999", bp::std_out > foutput, bp::std_err > bp::null);
     std::string output = foutput.get();
     if (output.find("146 tests, 145 passed, 0 skipped, 1 failed") == output.npos) {
       std::cout << "146 tests NOT FOUND, output: " << output;

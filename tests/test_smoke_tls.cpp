@@ -52,8 +52,7 @@ TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   return rsp;
 }
 
-static streaming_body_t handle_connect_request(memory_queue_ptr q, http_headers_t& trailers,
-                                               request_context ctx) {
+static streaming_body_t handle_connect_request(memory_queue_ptr q, request_context ctx) {
   while (!q->last_chunk_received()) {
     auto chunk = co_await q->next_chunk();
     co_yield chunk;
@@ -67,7 +66,7 @@ struct test_server : http2_server {
     return r.method == http2::http_method_e::CONNECT;
   }
 
-  dd::task<std::pair<http_response, stream_body_maker_t>> handle_request_stream(
+  dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(
       http_request req, memory_queue_ptr q, request_context ctx) override {
     error_if(req.headers != EXPECTED_CONNECT_HEADERS);
     error_if(!req.body.data.empty());

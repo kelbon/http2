@@ -119,6 +119,8 @@ struct request_context;
 
 // `trailers` may be settted to sent trailers section
 using stream_body_maker_t = move_only_fn<streaming_body_t(http_headers_t& trailers, request_context)>;
+// do not allow trailers in bistream
+using bistream_body_maker_t = move_only_fn<streaming_body_t(request_context)>;
 
 // helper, mostly for implementation
 // `args` will be just stored in returned object

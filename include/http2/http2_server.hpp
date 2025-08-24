@@ -52,9 +52,9 @@ struct http2_server {
   // returned response must not contain body data
   // if returned `stream_body_maker_t` is empty, just sends HEADERS, e.g. unaccepted websocket stream
   // Note: ctx.stream_response must not be used in this function
-  virtual dd::task<std::pair<http_response, stream_body_maker_t>> handle_request_stream(http_request,
-                                                                                        memory_queue_ptr,
-                                                                                        request_context) {
+  virtual dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(http_request,
+                                                                                          memory_queue_ptr,
+                                                                                          request_context) {
     throw std::runtime_error("handle_request_stream not overriden");
   }
 

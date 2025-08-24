@@ -2,6 +2,8 @@
 
 #include <format>
 #include <string_view>
+#include <thread>
+#include <cassert>
 
 namespace http2 {
 
@@ -14,6 +16,7 @@ struct unique_name {
   char m_str[LEN];
 
  public:
+  std::thread::id id = std::this_thread::get_id();
   unique_name();
 
   // prefix denotes the belonging of the entity, e.g. client or connection
@@ -36,6 +39,7 @@ namespace std {
 template <>
 struct formatter<::http2::unique_name> : formatter<string_view> {
   auto format(::http2::unique_name const& n, auto& ctx) const -> decltype(ctx.out()) {
+    assert(n.id == std::this_thread::get_id());
     return formatter<string_view>::format(n.str(), ctx);
   }
 };
