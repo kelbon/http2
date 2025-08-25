@@ -101,6 +101,7 @@ struct http_body_bytes : private std::vector<byte_t, detail::allocator_p9<byte_t
   using base_t::pop_back;
   using base_t::rbegin;
   using base_t::rend;
+  using base_t::reserve;
   using base_t::swap;
 
   // не инициализирует память
