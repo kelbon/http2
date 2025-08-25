@@ -383,6 +383,8 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
   };
 
   io_error_code ec;
+  bytes_t headers;
+  headers.reserve(128);
   for (;;) {
     // waiting for job or connection shutdown
 
@@ -413,7 +415,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
         }
       }
 
-      bytes_t headers(H2FHL, 0);  // reserve for frame header
+      headers.resize(H2FHL);  // reserve for frame header
 
       con->start_headers_block(*node, forcedisablehpack, headers);
 
