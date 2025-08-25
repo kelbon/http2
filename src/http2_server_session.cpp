@@ -103,7 +103,6 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
       assert(!node->makebody.has_value());  // ctx.stream_response must not be used here
       rsp = std::move(brsp);
       node->makebody = [n = &*node, makeout = std::move(maker)](http_headers_t&, request_context) mutable {
-        n->bidir_stream_active = true;
         return makeout(request_context(*n));
       };
     }
@@ -136,8 +135,10 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
 }
 
 void server_session::onRequestReady(request_node& n) noexcept {
-  if (n.bidir_stream_active)
-    return;  // already done, DATA with END_STREAM received (its END_STREAM)
+  if (n.responded) [[unlikely]]
+    return;
+  else
+    n.responded = true;
   // was detached before in startRequestAssemble
   http2::node_ptr np(&n, /*add_ref=*/false);
   np->status = reqerr_e::RESPONSE_IN_PROGRESS;
@@ -190,6 +191,16 @@ void server_session::rstStreamAfterError(stream_error const& e) {
 
 size_t server_session::requestsLeft() const noexcept {
   return connection->requests.size() + connection->responses.size();
+}
+
+size_t server_session::requestsLeftExactly() const noexcept {
+  size_t count = 0;
+  // some streams may be in .requests AND in .responses
+  for (request_node& n : connection->requests) {
+    if (connection->findResponseByStreamid(n.streamid) == nullptr)
+      ++count;
+  }
+  return count + connection->responses.size();
 }
 
 void server_session::requestShutdown() noexcept {
@@ -294,7 +305,8 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
     throw protocol_error(errc_e::STREAM_CLOSED,
                          std::format("stream already closed, but received HEADERS frame. Stream id: {}",
                                      frame.header.streamId));
-  } else if (requestsLeft() >= connection->localSettings.maxConcurrentStreams) {
+  } else if (requestsLeft() >= connection->localSettings.maxConcurrentStreams &&
+             requestsLeftExactly() >= connection->localSettings.maxConcurrentStreams) {
     throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
                        std::format("refused due max concurrent streams exceeded, max count: {}, actual: {}",
                                    connection->localSettings.maxConcurrentStreams, requestsLeft()));

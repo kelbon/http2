@@ -459,7 +459,7 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   node->onDataPart = onDataPart;
   node->status = reqerr_e::UNKNOWN_ERR;
   node->canceledByRstStream = false;
-  node->bidir_stream_active = false;
+  node->responded = false;
   node->answered_before_data = false;
   node->end_stream_received = false;
 
@@ -483,7 +483,6 @@ void http2_connection::returnNode(request_node* ptr) noexcept {
   assert(ptr && ptr->connection);
   forget(*ptr);
   ptr->connection->mark_stream_closed(ptr->streamid);
-  ptr->connection = nullptr;
   ptr->req = {};
   ptr->makebody.reset();
   // using always server settings, client creates requests, server controls
@@ -492,6 +491,8 @@ void http2_connection::returnNode(request_node* ptr) noexcept {
     return;
   }
   freeNodes.push_front(*ptr);
+  // it may be last pointer to *this
+  ptr->connection = nullptr;
 }
 
 http2_connection::response_awaiter http2_connection::responseReceived(request_node& node) noexcept {

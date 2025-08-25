@@ -47,7 +47,10 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
 
   ~server_session();
 
+  // returns approximate count of active requests
   [[nodiscard]] size_t requestsLeft() const noexcept;
+  // returns exact count of active requests
+  [[nodiscard]] size_t requestsLeftExactly() const noexcept;
 
   // precondition: 'node' request completely assembled by server reader
   void onRequestReady(request_node& node) noexcept;
