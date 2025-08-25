@@ -6,7 +6,6 @@
 #include <cassert>
 #include <cstring>
 #include <span>
-#include <utility>
 
 namespace http2 {
 
@@ -27,6 +26,20 @@ std::span<byte_t const, sizeof(T)> as_bytes(T const& t) noexcept {
 // this is for trivial types, not for spans
 template <typename T>
 void as_bytes(std::span<T>) = delete;
+
+template <typename T, size_t E>
+std::span<byte_t> reinterpret_span_as_bytes(std::span<T, E> t) {
+  static_assert(std::is_same_v<T, char> || std::is_same_v<T, unsigned char> || std::is_same_v<T, std::byte>);
+
+  return std::span<byte_t, E>(reinterpret_cast<byte_t*>(t.data()), t.size());
+}
+
+template <typename T, size_t E>
+std::span<const byte_t> reinterpret_span_as_bytes(std::span<const T, E> t) {
+  static_assert(std::is_same_v<T, char> || std::is_same_v<T, unsigned char> || std::is_same_v<T, std::byte>);
+
+  return std::span<const byte_t, E>(reinterpret_cast<const byte_t*>(t.data()), t.size());
+}
 
 template <typename T>
 [[nodiscard]] constexpr T htonl_value(T value) noexcept {

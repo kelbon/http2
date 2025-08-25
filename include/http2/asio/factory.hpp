@@ -6,11 +6,16 @@
 namespace http2 {
 
 struct asio_connection : connection_i {
+  static constexpr size_t readen_capacity = (1 << 14) + 9;
+  unsigned char readen[readen_capacity];
+  unsigned char* readen_start = readen;
+  unsigned char* readen_end = readen;
   asio::ip::tcp::socket sock;
 
   explicit asio_connection(asio::ip::tcp::socket s) : sock(std::move(s)) {
   }
 
+  bool tryRead(std::span<byte_t> buf, io_error_code& ec) noexcept override;
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
   void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
@@ -37,6 +42,9 @@ struct asio_tls_connection : connection_i {
       : sock(std::move(s), ctx->ctx), sslctx(std::move(ctx)) {
   }
 
+  bool tryRead(std::span<byte_t>, io_error_code&) noexcept override {
+    return false;  // TODO bufferized?
+  }
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
   void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;

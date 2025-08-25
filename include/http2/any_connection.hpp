@@ -12,6 +12,10 @@
 namespace http2 {
 
 struct connection_i {
+  // returns false on errors, or if not enough bytes available
+  // if true returned and !ec, buf filled with data
+  [[nodiscard]] virtual bool tryRead(std::span<byte_t> buf, io_error_code& ec) noexcept = 0;
+  // precondition: tryRead returns false!
   virtual void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) = 0;
   virtual void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf,
                           io_error_code& ec) = 0;
@@ -30,8 +34,8 @@ struct read_awaiter {
   io_error_code& ec;
   std::span<byte_t> buf;
 
-  static bool await_ready() noexcept {
-    return false;
+  bool await_ready() noexcept {
+    return con->tryRead(buf, ec);
   }
 
   void await_suspend(std::coroutine_handle<> h) const {
