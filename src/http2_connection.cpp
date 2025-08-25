@@ -310,6 +310,7 @@ void http2_connection::finishRequest(request_node& node, int status) noexcept {
     HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, status, name);
   }
   node.status = status;
+  node_ptr p = &node;  // hold node
   auto t = std::exchange(node.task, nullptr);
   if (status == reqerr_e::CANCELLED || status == reqerr_e::TIMEOUT) {
     // ignore possible bad alloc for coroutine
@@ -458,7 +459,7 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   node->onDataPart = onDataPart;
   node->status = reqerr_e::UNKNOWN_ERR;
   node->canceledByRstStream = false;
-  node->bidir_stream_active = false;
+  node->responded = false;
   node->answered_before_data = false;
   node->end_stream_received = false;
 
@@ -482,14 +483,16 @@ void http2_connection::returnNode(request_node* ptr) noexcept {
   assert(ptr && ptr->connection);
   forget(*ptr);
   ptr->connection->mark_stream_closed(ptr->streamid);
-  ptr->connection = nullptr;
   ptr->req = {};
   ptr->makebody.reset();
-  if (freeNodes.size() >= std::min<size_t>(1024, remoteSettings.maxConcurrentStreams)) {
+  // using always server settings, client creates requests, server controls
+  if (freeNodes.size() >= serverSettings->maxConcurrentStreams) {
     delete ptr;
     return;
   }
   freeNodes.push_front(*ptr);
+  // it may be last pointer to *this
+  ptr->connection = nullptr;
 }
 
 http2_connection::response_awaiter http2_connection::responseReceived(request_node& node) noexcept {

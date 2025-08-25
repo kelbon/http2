@@ -1,7 +1,6 @@
 #include "http2/fuzzing/emulated_client.hpp"
+#include "http2/asio/asio_executor.hpp"
 #include "http2/asio/awaiters.hpp"
-
-#include "http2/logger.hpp"
 
 #include <kelcoro/algorithm.hpp>
 
@@ -22,7 +21,7 @@ static void validate_echo_request(const hreq& req, http_response rsp) {
   REQUIRE(rsp.body == req.request.body.data);
 }
 
-dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) {
+dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
   assert(req.is_valid);  // TODO not supported yet?
   if (!req.trailers.empty())
     co_return co_await send_echo_request_as_stream(fuz, c, std::move(req));
@@ -30,10 +29,12 @@ dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) {
   http_response rsp = co_await c.sendRequest(req.request, req.deadline);
 
   validate_echo_request(req, std::move(rsp));
+} catch (std::exception& e) {
+  REQUIRE(false);
 }
 
 // sends requests, but body will be splitted into random chunks
-dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq req) {
+dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq req) try {
   auto sleepcb = [&c](duration_t d, io_error_code& ec) -> dd::task<void> {
     boost::asio::steady_timer timer(c.ioctx());
     co_await net.sleep(timer, d, ec);
@@ -43,6 +44,8 @@ dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq re
   req.request.body = {};
   http_response rsp = co_await c.send_streaming_request(req.request, std::move(bodystr), req.deadline);
   validate_echo_request(req, std::move(rsp));
+} catch (std::exception& e) {
+  REQUIRE(false);
 }
 
 static move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_context)> do_makestream(
@@ -77,7 +80,7 @@ static move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_co
 }
 
 // sends request, but body will be splitted into random chunks + expects server answers stream
-dd::task<void> send_echo_request_connect(fuzzer& fuz, http2_client& c, hreq req, bool websocket) {
+dd::task<void> send_echo_request_connect(fuzzer& fuz, http2_client& c, hreq req, bool websocket) try {
   if (websocket) {
     auto& hdrs = req.request.headers;
     req.request.method = http_method_e::CONNECT;
@@ -90,9 +93,30 @@ dd::task<void> send_echo_request_connect(fuzzer& fuz, http2_client& c, hreq req,
   req.request.body.data = {};  // do_makestream ignores data and sent smth random generated
   int x = co_await c.send_connect_request(req.request, do_makestream(fuz, req.request.headers));
   REQUIRE(x == 200);
+} catch (std::exception& e) {
+  REQUIRE(false);
 }
 
-// TODO run context fuzzer + client + stats + etc?
+struct incr {
+  size_t* x = nullptr;
+
+  incr(size_t& v) noexcept : x(&v) {
+  }
+
+  incr(incr&& other) noexcept : x(std::exchange(other.x, nullptr)) {
+  }
+
+  incr& operator=(incr&& other) noexcept {
+    std::swap(x, other.x);
+    return *this;
+  }
+
+  ~incr() {
+    if (x)
+      ++*x;
+  }
+};
+
 dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem tem, size_t request_count,
                                 size_t max_active_streams, req_weights weights) {
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
@@ -101,9 +125,11 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
   // receive server settings before (to get correct max_count_requests_allowed)
   bool b = co_await client.tryConnect();
   REQUIRE(b);
-  while (request_count != 0) {
-    while (request_count >= client.count_active_requests() &&
-           client.count_active_requests() < max_active_streams) {
+  size_t done = 0;
+  size_t sent = 0;
+  while (sent != request_count) {
+    if (sent != request_count && request_count >= client.count_active_requests() &&
+        client.count_active_requests() < max_active_streams) {
       dd::task<void> task;
       switch (dist(fuz.g)) {
         case 0:
@@ -117,21 +143,21 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
               send_echo_request_connect(fuz, client, tem.generate_request(fuz), /*websocket=*/fuz.rbool(0.3));
           break;
       }
-      chain(std::move(task), [&](auto&&...) {
-        --request_count;
-        return std::suspend_never{};
-      }).start_and_detach();
+      ++sent;
+      dd::with(std::move(task), incr(done)).start_and_detach();
     }
-    co_await dd::suspend_and_t([&](std::coroutine_handle<> h) { asio::post(client.ioctx(), h); });
+    co_await yield_on_ioctx(client.ioctx());
   }
-  // TODO print stats (done etc)
+  while (done != request_count) {
+    co_await yield_on_ioctx(client.ioctx());
+  }
   co_await client.coStop();
   co_return;
 }
 
 dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem, duration_t dur,
                               size_t max_active_streams, req_weights weights) {
-  size_t done = 0;  // TODO use
+  size_t done = 0;
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
   asio::steady_timer timer(client.ioctx());
   io_error_code ec;
@@ -154,14 +180,10 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
               send_echo_request_connect(fuz, client, tem.generate_request(fuz), /*websocket=*/fuz.rbool(0.3));
           break;
       }
-      chain(std::move(task), [&](auto&&...) {
-        ++done;
-        return std::suspend_never{};
-      }).start_and_detach();
+      dd::with(std::move(task), incr(done)).start_and_detach();
     }
-    co_await dd::suspend_and_t([&](std::coroutine_handle<> h) { asio::post(client.ioctx(), h); });
+    co_await yield_on_ioctx(client.ioctx());
   }
-  // TODO print stats (done etc)
   co_await client.coStop();
   co_return;
 }

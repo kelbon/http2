@@ -13,8 +13,11 @@ namespace http2 {
 
 struct connection_i {
   virtual void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) = 0;
-  virtual void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec,
-                          size_t& written) = 0;
+  virtual void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf,
+                          io_error_code& ec) = 0;
+  // returns false on errors, or if not enough bytes available
+  // if true returned and !ec, buf filled with data
+  [[nodiscard]] virtual bool tryRead(std::span<byte_t> buf, io_error_code& ec) noexcept = 0;
   virtual void shutdown() = 0;
   virtual bool isHttps() = 0;
 
@@ -30,8 +33,8 @@ struct read_awaiter {
   io_error_code& ec;
   std::span<byte_t> buf;
 
-  static bool await_ready() noexcept {
-    return false;
+  bool await_ready() noexcept {
+    return con->tryRead(buf, ec);
   }
 
   void await_suspend(std::coroutine_handle<> h) const {
@@ -45,17 +48,15 @@ struct write_awaiter {
   any_connection_t& con;
   io_error_code& ec;
   std::span<byte_t const> buf;
-  size_t written = 0;
 
   static bool await_ready() noexcept {
     return false;
   }
 
   void await_suspend(std::coroutine_handle<> h) {
-    con->startWrite(h, buf, ec, written);
+    con->startWrite(h, buf, ec);
   }
-  size_t await_resume() noexcept {
-    return written;
+  static void await_resume() noexcept {
   }
 };
 

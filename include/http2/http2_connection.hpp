@@ -122,8 +122,10 @@ struct request_node {
   on_header_fn_ptr onHeader;
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
-  bool canceledByRstStream = false;   // for server request_context
-  bool bidir_stream_active = false;   // true for CONNECT requests after accepting stream
+  bool canceledByRstStream = false;  // for server request_context
+  // true if already was in onResponseDone.
+  // used to prevent bistreams handled in onResponseDone twice (they `ended` twice)
+  bool responded = false;
   bool answered_before_data = false;  // when server::answer_before_data() returned true
   bool end_stream_received = false;   // marks half-closed stream
   // filled if this a streaming request
@@ -233,6 +235,8 @@ struct http2_connection {
 
   settings_t remoteSettings;
   settings_t localSettings;
+  // setted to remoteSettings on client side and localSettings on server side
+  const settings_t* serverSettings;
   any_connection_t tcpCon;
   hpack::encoder encoder;
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.2.1

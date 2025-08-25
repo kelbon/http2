@@ -36,6 +36,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
 
   assert(con);
   assert(options.maxReceiveFrameSize <= FRAME_LEN_MAX);
+  con->serverSettings = &con->remoteSettings;
   con->name.set_prefix(CLIENT_CONNECTION_PREFIX);
   con->localSettings = settings_t{
       .headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize,
@@ -128,7 +129,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection
   assert(con);
   io_error_code ec;
   constexpr size_t MAGIC_SZ = std::size(CONNECTION_PREFACE);
-
+  con->serverSettings = &con->localSettings;
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-3.4-4
   // client MUST start its connection with a connection preface
   // client-preface == client magic bytes + settings, which MAY be empty
