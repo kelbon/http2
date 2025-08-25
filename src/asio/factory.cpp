@@ -1,6 +1,7 @@
 #include "http2/asio/factory.hpp"
 #include "http2/asio/awaiters.hpp"
 #include "http2/logger.hpp"
+#include "kelcoro/job.hpp"
 
 #include <boost/asio/read.hpp>
 #include <boost/asio/ssl/host_name_verification.hpp>
@@ -9,15 +10,17 @@ namespace http2 {
 
 void asio_tls_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   asio::async_read(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
-    ec = e;
+    if (e) [[unlikely]]
+      ec = e;
     h.resume();
   });
 }
 
 void asio_tls_connection::startWrite(std::coroutine_handle<> h, std::span<byte_t const> buf,
                                      io_error_code& ec) {
-  asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t w) {
-    ec = e;
+  asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
+    if (e) [[unlikely]]
+      ec = e;
     h.resume();
   });
 }
@@ -44,12 +47,57 @@ void asio_tls_connection::shutdown() noexcept {
   close_tcp_sock(tcp_sock);
 }
 
+bool asio_connection::tryRead(std::span<byte_t> buf, io_error_code&) noexcept {
+  size_t avail = readen_end - readen_start;
+  if (avail >= buf.size()) {
+    memcpy(buf.data(), readen_start, buf.size());
+    readen_start += buf.size();
+    return true;
+  }
+  return false;
+}
+
+// 1. assumes `w` not nullptr
+// 2. no always_inline await_suspend for  avoiding false positive ASAN on symmetric transfer
+struct destroy_and_transfer_control_to_not_null {
+  std::coroutine_handle<> who_waits;
+
+  static bool await_ready() noexcept {
+    return false;
+  }
+  std::coroutine_handle<> await_suspend(std::coroutine_handle<> self) noexcept {
+    // move it to stack memory to save from destruction
+    auto w = who_waits;
+    self.destroy();
+    return w;  // symmetric transfer here
+  }
+  static void await_resume() noexcept {
+    KELCORO_UNREACHABLE;
+  }
+};
+
+static dd::job do_read_some(asio_connection& c, std::span<byte_t> userbuf, io_error_code& ec,
+                            std::coroutine_handle<> callback) {
+  size_t readen = 0;
+  const size_t userbufsz = userbuf.size();
+  byte_t* const userbufend = userbuf.data() + userbufsz;
+  while (readen < userbufsz) {
+    readen += co_await net.read_some_many(c.sock, ec, std::span(userbuf.data() + readen, userbufend),
+                                          std::span(c.readen));
+    if (ec) [[unlikely]]
+      break;
+  }
+  c.readen_end += readen - userbufsz;
+  co_await destroy_and_transfer_control_to_not_null(callback);
+}
+
 void asio_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
-  asio::async_read(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
-    if (e) [[unlikely]]
-      ec = e;
-    h.resume();
-  });
+  // assumes only one reader at one time
+  size_t avail = readen_end - readen_start;
+  assert(avail < buf.size());  // startRead must be invoked only if tryRead failed
+  memcpy(buf.data(), readen_start, avail);
+  readen_start = readen_end = readen;
+  (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
 }
 
 void asio_connection::startWrite(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec) {
