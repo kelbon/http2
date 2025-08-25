@@ -44,6 +44,16 @@ void asio_tls_connection::shutdown() noexcept {
   close_tcp_sock(tcp_sock);
 }
 
+bool asio_connection::tryRead(std::span<byte_t> buf, io_error_code& ec) noexcept {
+  if (buf.empty()) [[unlikely]]
+    return true;
+  if (sock.available(ec) >= buf.size()) {
+    sock.read_some(buf, ec);
+    return true;
+  }
+  return false;
+}
+
 void asio_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   asio::async_read(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
     if (e) [[unlikely]]

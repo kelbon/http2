@@ -57,7 +57,8 @@ struct asio_awaiter {
 
   void await_suspend(std::coroutine_handle<> handle) noexcept {
     auto cb = [this, handle](const io_error_code& ec, T data) {
-      _ec = ec;
+      if (ec) [[unlikely]]
+        _ec = ec;
       std::construct_at(std::addressof(_data), std::move(data));
       handle.resume();
     };
@@ -92,7 +93,8 @@ struct asio_awaiter<void, CallbackUser> {
 
   void await_suspend(std::coroutine_handle<> handle) noexcept {
     auto cb = [this, handle](const io_error_code& ec) {
-      _ec = ec;
+      if (ec) [[unlikely]]
+        _ec = ec;
       handle.resume();
     };
     // assume does not use its memory after passing callback to asio
@@ -160,6 +162,23 @@ struct write_many_operation {
   template <typename T>
   void operator()(T&& cb) {
     asio::async_write(stream, bufs, std::forward<T>(cb));
+  }
+};
+
+template <typename Stream, size_t BufCount>
+struct read_some_many_operation {
+  Stream& stream;
+  std::array<asio::mutable_buffer, BufCount> bufs;
+
+  template <typename... Bytes>
+  read_some_many_operation(Stream& s, std::span<Bytes>... spans)
+      : stream(s), bufs{asio::mutable_buffer(spans.data(), spans.size_bytes())...} {
+    static_assert((std::is_same_v<Bytes, byte_t> && ...));
+  }
+
+  template <typename T>
+  void operator()(T&& cb) {
+    stream.async_read_some(bufs, std::forward<T>(cb));
   }
 };
 
@@ -281,6 +300,14 @@ struct net_t {
                                                    std::span<Byte, Szs>... buffers) {
     static_assert(sizeof...(buffers) > 0);
     return asio_awaiter<size_t, write_many_operation<Stream, sizeof...(buffers)>>(
+        ec, stream, reinterpret_span_as_bytes(buffers)...);
+  }
+
+  template <typename Stream, typename... Byte, size_t... Szs>
+  KELCORO_CO_AWAIT_REQUIRED static auto read_some_many(Stream& stream, io_error_code& ec,
+                                                       std::span<Byte, Szs>... buffers) {
+    static_assert(sizeof...(buffers) > 0);
+    return asio_awaiter<size_t, read_some_many_operation<Stream, sizeof...(buffers)>>(
         ec, stream, reinterpret_span_as_bytes(buffers)...);
   }
 

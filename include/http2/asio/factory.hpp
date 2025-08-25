@@ -9,8 +9,10 @@ struct asio_connection : connection_i {
   asio::ip::tcp::socket sock;
 
   explicit asio_connection(asio::ip::tcp::socket s) : sock(std::move(s)) {
+    sock.non_blocking(true);
   }
 
+  bool tryRead(std::span<byte_t> buf, io_error_code& ec) noexcept override;
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
   void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
@@ -37,6 +39,9 @@ struct asio_tls_connection : connection_i {
       : sock(std::move(s), ctx->ctx), sslctx(std::move(ctx)) {
   }
 
+  bool tryRead(std::span<byte_t>, io_error_code&) noexcept override {
+    return false;  // TODO bufferized?
+  }
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
   void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
