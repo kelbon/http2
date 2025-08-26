@@ -13,33 +13,55 @@ jobs:
     runs-on: ${{matrix.os}}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install ninja-build lld gcc-13 clang-18
           sudo ln -sf /usr/local/bin/ld /usr/bin/lld
+
       - name: Install h2spec
         run: |
           wget https://github.com/summerwind/h2spec/releases/latest/download/h2spec_linux_amd64.tar.gz
           tar -xzf h2spec_linux_amd64.tar.gz
           sudo mv h2spec /usr/local/bin/
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.10.0" # Version of the sccache binary to install
+
       - name: Configure CMake
+        env:
+          SCCACHE_GHA_ENABLED: "true" # Enable GitHub Actions cache
+          CMAKE_C_COMPILER_LAUNCHER: "sccache"
+          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
         run: |
           cmake . -DKELHTTP2_ENABLE_TESTING=ON               \
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
             -DCMAKE_CXX_COMPILER=${{matrix.compiler}}     \
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
             -B build -G "Ninja"
+
       - name: Build
-        run:
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: "sccache"
+          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
+        run: |
           cmake --build build
+
       - name: Test
         run: |
           cd build
           ctest --output-on-failure -C ${{matrix.build_type}}
+
       - name: Configure CMake sanitizers
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: "sccache"
+          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
         run: |
           cmake . -DKELHTTP2_ENABLE_TESTING=ON            \
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
@@ -47,10 +69,17 @@ jobs:
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
             -DKELHTTP2_ENABLE_SANITIZERS=ON               \
             -B build_sanitizers -G "Ninja"
-      - name: Build
-        run:
+
+      - name: Build sanitizers
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: "sccache"
+          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
+        run: |
           cmake --build build_sanitizers
+
       - name: Test sanitizers
         run: |
           cd build_sanitizers
           ctest --output-on-failure -C ${{matrix.build_type}}
+
