@@ -17,7 +17,7 @@ struct memory_queue {
   bytes_t bytes;
   std::coroutine_handle<> waiter = nullptr;
   bool eof = false;  // true if last data frame was received
-  KELHTTP2_PIN;
+  ZAL_PIN;
 
   struct data_awaiter {
     memory_queue* q;

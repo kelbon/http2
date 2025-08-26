@@ -45,7 +45,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME LOGIC_GUARDS
   GIT_REPOSITORY https://github.com/kelbon/logic_guards
-  GIT_TAG        origin/master
+  GIT_TAG        v1.0.0
   OPTIONS "ZAL_ENABLE_TESTING OFF"
 )
 
