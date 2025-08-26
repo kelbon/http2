@@ -130,7 +130,7 @@ struct request_node {
   bool end_stream_received = false;   // marks half-closed stream
   // filled if this a streaming request
   stream_body_maker_t makebody;
-  KELHTTP2_PIN;
+  ZAL_PIN;
 
   // connect request returns before END_STREAM when first HEADERS received and not send :path and :authority
   // client-side
@@ -334,7 +334,7 @@ struct http2_connection {
 
   struct work_waiter {
     http2_connection* connection = nullptr;
-    KELHTTP2_PIN;
+    ZAL_PIN;
 
     bool await_ready() const noexcept {
       return !connection->requests.empty() || connection->isDropped();

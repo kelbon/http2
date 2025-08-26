@@ -32,7 +32,7 @@ struct waiter_of_connection : bi::list_base_hook<link_option_t> {
   http2_client* client = nullptr;
   http2_connection_ptr_t result = nullptr;
   deadline_t deadline;
-  KELHTTP2_PIN;
+  ZAL_PIN;
 
   explicit waiter_of_connection(http2_client* c, deadline_t dl) noexcept : client(c), deadline(dl) {
   }
