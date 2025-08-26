@@ -59,6 +59,12 @@ function(generate_launch_json_file)
   set(launch_file "${CMAKE_SOURCE_DIR}/.vscode/launch.json")
   file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/.vscode")
 
+  # use -B directiry as key in launch json configurations
+  # so for each build directory targets are different
+  file(RELATIVE_PATH RELATIVE_BINARY_DIR 
+    ${CMAKE_SOURCE_DIR} 
+    ${PROJECT_BINARY_DIR}
+  )
   message(STATUS "Processing .vscode/launch.json with target configurations...")
 
   set(new_configs "")
@@ -75,7 +81,7 @@ function(generate_launch_json_file)
     if(WIN32)
         set(config_json
 "{
-    \"name\": \"${name} (${CMAKE_BUILD_TYPE})\",
+    \"name\": \"${name} (${RELATIVE_BINARY_DIR})\",
     \"type\": \"cppvsdbg\",
     \"request\": \"launch\",
     \"program\": \"${exec_path}\",
@@ -89,7 +95,7 @@ function(generate_launch_json_file)
     else()
         set(config_json
 "{
-    \"name\": \"${name} (${CMAKE_BUILD_TYPE})\",
+    \"name\": \"${name} (${RELATIVE_BINARY_DIR})\",
     \"type\": \"cppdbg\",
     \"request\": \"launch\",
     \"program\": \"${exec_path}\",
