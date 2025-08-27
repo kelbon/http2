@@ -16,6 +16,7 @@ struct memory_queue {
   size_t refcount = 0;
   bytes_t bytes;
   std::coroutine_handle<> waiter = nullptr;
+  node_ptr n = nullptr;
   bool eof = false;  // true if last data frame was received
   ZAL_PIN;
 
@@ -39,6 +40,7 @@ struct memory_queue {
  public:
   // creates memory queue associated with `n`, it will receive all data for `n`
   explicit memory_queue(request_node& n) noexcept;
+  ~memory_queue();
 
   bool has_data() const noexcept {
     return !bytes.empty();
