@@ -22,11 +22,11 @@ struct writer_callbacks {
   size_t refcount = 0;
 };
 
-static void intrusive_ptr_add_ref(writer_callbacks* p) noexcept {
+inline void intrusive_ptr_add_ref(writer_callbacks* p) noexcept {
   ++p->refcount;
 }
 
-static void intrusive_ptr_release(writer_callbacks* p) noexcept {
+inline void intrusive_ptr_release(writer_callbacks* p) noexcept {
   --p->refcount;
   if (p->refcount == 0) {
     delete p;

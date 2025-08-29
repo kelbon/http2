@@ -43,7 +43,7 @@ dd::task<void> send_rst_stream(http2_connection_ptr_t con, stream_id_t streamid,
   rst_stream::form(streamid, errc, bytes);
   HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
-  (void)co_await con->write(bytes, ec);
+  co_await con->write(bytes, ec);
   if (ec) {
     if (!con->isDropped()) {
       // ignore error if we dropped connection anyway
@@ -61,7 +61,7 @@ dd::task<void> send_settings_ack(http2_connection_ptr_t con) {
   accepted_settings_frame().form(std::back_inserter(bytes));
   HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
-  (void)co_await con->write(bytes, ec);
+  co_await con->write(bytes, ec);
   if (ec) {
     HTTP2_LOG(ERROR, "cannot send settings ACK: err: {}", ec.what(), con->name);
   }
@@ -76,7 +76,7 @@ dd::task<bool> send_ping(http2_connection_ptr_t con, uint64_t data, bool request
   byte_t buf[ping_frame::LEN];
   ping_frame::form(data, requestPong, buf);
   HTTP2_WAIT_WRITE(*con);
-  (void)co_await con->write(buf, ec);
+  co_await con->write(buf, ec);
   co_return !ec;
 }
 
@@ -104,7 +104,7 @@ dd::task<bool> send_window_update(http2_connection_ptr_t con, stream_id_t id, ui
   HTTP2_LOG(TRACE, "sending window update: stream: {}, inc: {}", id, inc, con->name);
   HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
-  (void)co_await con->write(std::span(buf), ec);
+  co_await con->write(std::span(buf), ec);
   co_return !ec;
 }
 

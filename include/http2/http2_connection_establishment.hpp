@@ -35,7 +35,7 @@ struct http2_server_options {
   // it
   bool singlethread = false;
   // if false, server will not declare websocket support for clients
-  bool supports_websocket = true;
+  bool supports_websocket = false;
 };
 
 // creates server connection with client

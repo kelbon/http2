@@ -122,7 +122,7 @@ struct request_node {
   on_header_fn_ptr onHeader;
   on_data_part_fn_ptr onDataPart;
   int status = reqerr_e::UNKNOWN_ERR;
-  bool canceledByRstStream = false;  // for server request_context
+  bool canceledByRstStream = false;
   // true if already was in onResponseDone.
   // used to prevent bistreams handled in onResponseDone twice (they `ended` twice)
   bool responded = false;

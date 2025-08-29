@@ -59,7 +59,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
     bytes_t connectionRequest;
     form_connection_initiation(con->localSettings, std::back_inserter(connectionRequest));
     HTTP2_LOG(TRACE, "sending client preface", con->name);
-    (void)co_await con->write(connectionRequest, ec);
+    co_await con->write(connectionRequest, ec);
     if (ec) {
       HTTP2_LOG(ERROR, "cannot write HTTP/2 client connection preface, err: {}", ec.what(), con->name);
       throw network_exception("cannot write HTTP/2 client connection preface, err: {}", ec.what());
@@ -110,7 +110,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
 
   accepted_settings_frame().form(buf);
   HTTP2_LOG(TRACE, "sending settings ACK", con->name);
-  (void)co_await con->write(std::span(buf, H2FHL), ec);
+  co_await con->write(std::span(buf, H2FHL), ec);
   if (ec) {
     throw network_exception("cannot send accepted settings frame to server, {}", ec.what());
   }
