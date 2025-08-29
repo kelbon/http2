@@ -198,7 +198,7 @@ static dd::task<void> write_data(node_ptr work, http2_connection_ptr_t con, writ
               std::string_view((char const*)in, framelen), con->name);
     // send frame
     HTTP2_WAIT_WRITE(*con);
-    (void)co_await con->write(std::span(in - H2FHL, framelen + H2FHL), ec);
+    co_await con->write(std::span(in - H2FHL, framelen + H2FHL), ec);
 
     if (ec)
       co_return;
@@ -241,7 +241,7 @@ static dd::task<void> write_continuations(http2_connection_ptr_t con, stream_id_
     };
     h.form(b - H2FHL);
     HTTP2_LOG(TRACE, "writing CONTINUATION frame for stream {}, len: {}", streamid, framesz, con->name);
-    (void)co_await con->write(std::span(b - H2FHL, framesz + H2FHL), ec);
+    co_await con->write(std::span(b - H2FHL, framesz + H2FHL), ec);
 
     if (ec || con->isDropped())
       co_return;
@@ -402,7 +402,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
       // send headers
 
       if constexpr (IS_CLIENT) {
-        while (con->concurrentStreamsNow() >= con->remoteSettings.maxConcurrentStreams) {
+        while (con->concurrentStreamsNow() >= con->remoteSettings.maxConcurrentStreams) [[unlikely]] {
           HTTP2_LOG(TRACE, "too many streams, waiting (max is {})", con->remoteSettings.maxConcurrentStreams,
                     con->name);
           co_await yield_on_ioctx(con->ioctx);
@@ -439,7 +439,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
       trace_request_headers(*node, IS_CLIENT);
 #endif
       HTTP2_WAIT_WRITE(*con);
-      (void)co_await con->write(std::span(headers.data(), fhdr.length + H2FHL), ec);
+      co_await con->write(std::span(headers.data(), fhdr.length + H2FHL), ec);
 
       if (ec || con->isDropped()) {
         // otherwise will be finished by drop_connection with

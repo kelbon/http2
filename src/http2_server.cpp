@@ -226,7 +226,7 @@ struct http2_server::impl {
     HTTP2_LOG(TRACE, "reader stops, waiting stop", session.name());
   drop_session:
     session.requestTerminate();
-    if (session.requestsLeft() > 0) {
+    if (session.hasUnfinishedRequests()) {
       co_await session.sessiondone.wait();
     }
     // we are here if reader ended with exception or after soft shutdown (streams closed, new requests

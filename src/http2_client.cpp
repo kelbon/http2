@@ -340,15 +340,9 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
     }
   } catch (hpack::protocol_error& e) {
     HTTP2_LOG(ERROR, "exception while decoding headers block (HPACK), err: {}", e.what(), con.name);
-    // To avoid ambiguity just send max_stream_id every time. Server did not
-    // initiate streams (SERVER_PUSH disabled) and nghttp2 for example answers
-    // with protocol error for some values
-    //
-    // Rfc:
-    // If a connection terminates without a GOAWAY frame,
-    // the last stream identifier is effectively the highest possible stream
-    // identifier
-    send_goaway(&con, MAX_STREAM_ID, errc_e::COMPRESSION_ERROR, e.what()).start_and_detach();
+    goaway_info.errc = errc_e::COMPRESSION_ERROR;
+    goaway_info.dbginfo = e.what();
+    goto protocol_error;
   } catch (protocol_error& e) {
     HTTP2_LOG(INFO, "exception: {}", e.what(), c->name);
     goaway_info = std::move(e);
@@ -373,6 +367,14 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
   goto dropConnection;
 protocol_error:
   reason = reqerr_e::PROTOCOL_ERR;
+  // To avoid ambiguity just send max_stream_id every time. Server did not
+  // initiate streams (SERVER_PUSH disabled) and nghttp2 for example answers
+  // with protocol error for some values
+  //
+  // Rfc:
+  // If a connection terminates without a GOAWAY frame,
+  // the last stream identifier is effectively the highest possible stream
+  // identifier
   send_goaway(&con, MAX_STREAM_ID, goaway_info.errc, std::move(goaway_info.dbginfo)).start_and_detach();
   goto dropConnection;
 network_error:
@@ -762,46 +764,6 @@ size_t http2_client::count_active_requests() const noexcept {
 
 size_t http2_client::max_count_requests_allowed() const noexcept {
   return m_connection ? m_connection->remoteSettings.maxConcurrentStreams : size_t(-1);
-}
-
-bool http2_client::dbg_cancel_stream(std::coroutine_handle<> handle) {
-  // if request waits connection
-  for (auto& waiter : m_connectionWaiters) {
-    if (waiter.task == handle) {
-      erase_byref(m_connectionWaiters, waiter);
-      waiter.result = nullptr;
-      waiter.task.resume();
-      return true;
-    }
-  }
-  request_node* n = dbg_get_node(handle);
-  if (n) {
-    m_connection->finishRequest(*n, reqerr_e::CANCELLED);
-    return true;
-  }
-  return false;
-}
-
-request_node* http2_client::dbg_get_node(std::coroutine_handle<> handle) noexcept {
-  if (!m_connection)
-    return nullptr;
-  // if request not sent yet
-  for (request_node& x : m_connection->requests) {
-    if (x.task == handle) {
-      return &x;
-    }
-  }
-  // request sent, but not received response
-  for (request_node& x : m_connection->responses) {
-    if (x.task == handle) {
-      return &x;
-    }
-  }
-  return nullptr;
-}
-
-http2_connection_ptr_t http2_client::dbg_get_connection() noexcept {
-  return m_connection;
 }
 
 }  // namespace http2

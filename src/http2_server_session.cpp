@@ -189,10 +189,6 @@ void server_session::rstStreamAfterError(stream_error const& e) {
   send_rst_stream(connection, e.streamid, e.errc).start_and_detach();
 }
 
-size_t server_session::requestsLeft() const noexcept {
-  return connection->requests.size() + connection->responses.size();
-}
-
 size_t server_session::requestsLeftExactly() const noexcept {
   size_t count = 0;
   // some streams may be in .requests AND in .responses
@@ -210,14 +206,14 @@ void server_session::requestShutdown() noexcept {
         .start_and_detach();
   }
 
-  if (requestsLeft() == 0) {
+  if (!hasUnfinishedRequests()) {
     onSessionDone();
   }
 }
 
 void server_session::requestTerminate() noexcept {
   if (terminated) {
-    if (requestsLeft() == 0) {
+    if (!hasUnfinishedRequests()) {
       onSessionDone();
     }
     return;
@@ -237,19 +233,19 @@ void server_session::requestTerminate() noexcept {
   connection->requests.clear_and_dispose(doforget);
 
   assert(connection->requests.empty() && connection->responses.empty() && connection->timers.empty());
-  if (requestsLeft() == 0) {
+  if (!hasUnfinishedRequests()) {
     onSessionDone();
   }
 }
 
 void server_session::onResponseDone() noexcept {
-  if (newRequestsForbiden && requestsLeft() == 0) {
+  if (newRequestsForbiden && !hasUnfinishedRequests()) {
     onSessionDone();
   }
 }
 
 void server_session::onSessionDone() noexcept {
-  assert(newRequestsForbiden && requestsLeft() == 0);
+  assert(newRequestsForbiden && !hasUnfinishedRequests());
   if (done) {
     return;
   }
@@ -305,11 +301,13 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
     throw protocol_error(errc_e::STREAM_CLOSED,
                          std::format("stream already closed, but received HEADERS frame. Stream id: {}",
                                      frame.header.streamId));
-  } else if (requestsLeft() >= connection->localSettings.maxConcurrentStreams &&
-             requestsLeftExactly() >= connection->localSettings.maxConcurrentStreams) {
-    throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
-                       std::format("refused due max concurrent streams exceeded, max count: {}, actual: {}",
-                                   connection->localSettings.maxConcurrentStreams, requestsLeft()));
+  } else if (requestsLeftApprox() >= connection->localSettings.maxConcurrentStreams) {
+    size_t exactreq = requestsLeftExactly();
+    if (exactreq >= connection->localSettings.maxConcurrentStreams) {
+      throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
+                         std::format("refused due max concurrent streams exceeded, max count: {}, actual: {}",
+                                     connection->localSettings.maxConcurrentStreams, exactreq));
+    }
   }
 
   http2::node_ptr n = newEmptyStreamNode(frame.header.streamId);

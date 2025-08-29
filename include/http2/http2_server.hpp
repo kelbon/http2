@@ -55,7 +55,8 @@ struct http2_server {
   virtual dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(http_request,
                                                                                           memory_queue_ptr,
                                                                                           request_context) {
-    throw std::runtime_error("handle_request_stream not overriden");
+    HTTP2_LOG_ERROR("handle_request_stream is not overriden, but `answer_before_data` returns true");
+    std::terminate();
   }
 
   // precondition: returned coro must not wait for sever shutdown / terminate (deadlock)

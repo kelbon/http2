@@ -263,16 +263,6 @@ struct http2_client {
 
  private:
   friend struct http2_tester;
-  // debug api
-
-  // `handle` must be from `sendRequest(on_header_fn_ptr, on_data_part_fn_ptr, http_request, deadline_t)`
-  // returns 'true' if request canceled, 'false' if already done or not exist
-  // canceled request will observe status == reqerr_e::NETWORK_ERR
-  bool dbg_cancel_stream(std::coroutine_handle<> handle);
-
-  request_node* dbg_get_node(std::coroutine_handle<> handle) noexcept;
-
-  http2_connection_ptr_t dbg_get_connection() noexcept;
 };
 
 }  // namespace http2

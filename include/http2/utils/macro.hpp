@@ -12,7 +12,7 @@
 
 namespace http2 {
 
-[[noreturn]] static void unreachable() noexcept {
+[[noreturn]] inline void unreachable() noexcept {
   assert(false);
   KELCORO_UNREACHABLE;
 }
