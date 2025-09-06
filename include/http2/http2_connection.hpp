@@ -393,7 +393,7 @@ struct http2_connection {
 
   // client side
   // returns false if no such stream
-  [[nodiscard]] bool finishStreamWithError(rst_stream rstframe);
+  [[nodiscard]] bool rstStreamClient(rst_stream rstframe);
 
   void finishRequestByTimeout(request_node& node) noexcept {
     finishRequest(node, reqerr_e::TIMEOUT);

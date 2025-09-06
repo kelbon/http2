@@ -200,7 +200,7 @@ static void handle_utility_frame(http2_frame_t frame, http2_connection& con) {
       handle_ping(ping_frame::parse(frame.header, frame.data), &con).start_and_detach();
       return;
     case RST_STREAM:
-      if (!con.finishStreamWithError(rst_stream::parse(frame.header, frame.data))) {
+      if (!con.rstStreamClient(rst_stream::parse(frame.header, frame.data))) {
         HTTP2_LOG(INFO, "server finished stream (id: {}) which is not exists (maybe timeout or canceled)",
                   frame.header.streamId, con.name);
       }

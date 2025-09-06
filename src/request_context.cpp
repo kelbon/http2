@@ -9,7 +9,7 @@ stream_id_t request_context::streamid() const noexcept {
 }
 
 bool request_context::canceled() const noexcept {
-  return node->canceledByRstStream;
+  return node->canceledByRstStream || node->connection->isDropped();
 }
 
 http_response request_context::stream_response(int status, http_headers_t hdrs,
