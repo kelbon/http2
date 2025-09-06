@@ -333,12 +333,13 @@ void http2_connection::finishRequestWithUserException(request_node& node, std::e
   node.task.promise().who_waits.resume();
 }
 
-bool http2_connection::finishStreamWithError(rst_stream rstframe) {
+bool http2_connection::rstStreamClient(rst_stream rstframe) {
   validateRstFrame(rstframe);
   auto* node = findResponseByStreamid(rstframe.header.streamId);
   if (!node) {
     return false;
   }
+  node->canceledByRstStream = true;
   finishRequest(*node, reqerr_e::SERVER_CANCELLED_REQUEST);
   return true;
 }

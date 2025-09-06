@@ -78,7 +78,9 @@ server_session::~server_session() {
 static dd::task<int> send_response(node_ptr node, server_session& session) {
   assert(node);
   assert(node->status == reqerr_e::RESPONSE_IN_PROGRESS);
+  HTTP2_LOG(TRACE, "sending response for stream {}", node->streamid, session.name());
   on_scope_exit {
+    HTTP2_LOG(TRACE, "sent response for stream {}", node->streamid, session.name());
     session.onResponseDone();
   };
   if (session.responsegate.is_closed() || session.connection->isDropped() ||
@@ -150,7 +152,6 @@ void server_session::onRequestReady(request_node& n) noexcept {
     HTTP2_LOG(TRACE, "stream {} response canceled due session shutdown", np->streamid, name());
     return;
   }
-  HTTP2_LOG(TRACE, "session sends response to stream {}", np->streamid, name());
   stream_id_t streamid = np->streamid;
 
   try {

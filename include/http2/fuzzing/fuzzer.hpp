@@ -10,6 +10,7 @@
 
 #include <kelcoro/generator.hpp>
 #include "http2/errors.hpp"
+#include "http2/utils/memory.hpp"
 
 namespace http2::fuzzing {
 
@@ -161,6 +162,21 @@ struct fuzzer {
     while (!condition()) {
       select(ctxs)->poll_one();
     }
+  }
+
+  void run_until(bool& done, auto&... ioctxs) {
+    return run_until([&] { return done; }, ioctxs...);
+  }
+
+  void rbytes_fill(std::forward_iterator auto b, auto e) {
+    for (; b != e; ++b)
+      *b = byte_t(rint(0, 255));
+  }
+
+  std::vector<byte_t> rbytes(size_t count) {
+    std::vector<byte_t> res(count);
+    rbytes_fill(res.begin(), res.end());
+    return res;
   }
 };
 

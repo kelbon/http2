@@ -27,6 +27,7 @@ struct request_context {
 
   stream_id_t streamid() const noexcept;
   // true if remote endpoint already sent RST_STREAM for this request
+  // or connection dropped already
   bool canceled() const noexcept;
 
   // must be returned from `handle_request` to send stream response.
