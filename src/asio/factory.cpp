@@ -127,7 +127,7 @@ asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options 
     : ioctx(ctx), options(std::move(opts)) {
 }
 
-dd::task<any_connection_t> asio_factory::createConnection(endpoint_t endpoint, deadline_t deadline) {
+dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, deadline_t deadline) {
   using tcp = asio::ip::tcp;
 
   tcp::resolver resolver(ioctx);
@@ -149,7 +149,7 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint_t endpoint, d
     throw timeout_exception();
 
   if (results.empty() || ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.address().to_string(), ec.message());
+    HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.message());
     throw network_exception(ec);
   }
   tcp::socket tcp_sock(ioctx);
@@ -166,7 +166,7 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint_t endpoint, d
   co_await net.connect(tcp_sock, results, ec);
 
   if (ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot connect to {}, err: {}", endpoint.address().to_string(), ec.message());
+    HTTP2_LOG_ERROR("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
     throw network_exception(ec);
   }
   options.apply(tcp_sock);
@@ -179,7 +179,7 @@ asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_optio
       sslctx(make_ssl_context_for_http2(options.additional_ssl_certificates)) {
 }
 
-dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint_t endpoint, deadline_t deadline) {
+dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint, deadline_t deadline) {
   namespace ssl = asio::ssl;
   using tcp = asio::ip::tcp;
 
@@ -201,7 +201,7 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint_t endpoin
   if (timeoutflag)
     throw timeout_exception();
   if (results.empty() || ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.address().to_string(), ec.what());
+    HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.what());
     throw network_exception(ec);
   }
   asio::ip::tcp::socket tcp_sock(ioctx);
@@ -220,7 +220,7 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint_t endpoin
   if (timeoutflag)
     throw timeout_exception();
   if (ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot connect to {}, err: {}", endpoint.address().to_string(), ec.message());
+    HTTP2_LOG_ERROR("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
     throw network_exception(ec);
   }
   options.apply(tcp_sock);

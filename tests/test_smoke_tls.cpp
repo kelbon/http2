@@ -171,7 +171,7 @@ int main() try {
 
   namespace asio = boost::asio;
 
-  http2::http2_client client(http2::endpoint_t(asio::ip::address_v6::loopback(), 8080), {},
+  http2::http2_client client(endpoint("localhost", 8080), {},
                              [](asio::io_context& ctx) { return default_tls_transport_factory(ctx); });
 
   test_server server(HTTP2_TLS_DIR "/test_server.crt", HTTP2_TLS_DIR "/test_server.key");

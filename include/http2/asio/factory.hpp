@@ -13,6 +13,7 @@ struct asio_connection : connection_i {
   asio::ip::tcp::socket sock;
 
   explicit asio_connection(asio::ip::tcp::socket s) : sock(std::move(s)) {
+    sock.non_blocking(true);
   }
 
   bool tryRead(std::span<byte_t> buf, io_error_code& ec) noexcept override;
@@ -29,7 +30,7 @@ struct asio_factory : transport_factory_i {
   tcp_connection_options options;
 
   explicit asio_factory(boost::asio::io_context&, tcp_connection_options = {});
-  dd::task<any_connection_t> createConnection(endpoint_t, deadline_t);
+  dd::task<any_connection_t> createConnection(endpoint, deadline_t);
 };
 
 struct asio_tls_connection : connection_i {
@@ -59,7 +60,7 @@ struct asio_tls_factory : transport_factory_i {
   ssl_context_ptr sslctx;  // never null
 
   explicit asio_tls_factory(asio::io_context&, tcp_connection_options = {});
-  dd::task<any_connection_t> createConnection(endpoint_t, deadline_t) override;
+  dd::task<any_connection_t> createConnection(endpoint, deadline_t) override;
 };
 
 }  // namespace http2

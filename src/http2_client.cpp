@@ -405,7 +405,7 @@ http2_client::~http2_client() {
   assert(m_requestsInProgress == 0);
 }
 
-http2_client::http2_client(endpoint_t host, http2_client_options opts,
+http2_client::http2_client(endpoint host, http2_client_options opts,
                            move_only_fn<any_transport_factory(asio::io_context&)> tf)
     : m_host(std::move(host)), m_options(opts), m_factory(tf(m_ioctx)) {
   assert(m_factory);
@@ -722,7 +722,7 @@ bool http2_client::isHttps() const noexcept {
   return m_connection.get()->tcpCon->isHttps();
 }
 
-void http2_client::setHost(endpoint_t s) noexcept {
+void http2_client::setHost(endpoint s) noexcept {
   assert(!connected());
   m_host = std::move(s);
 }

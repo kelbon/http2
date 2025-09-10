@@ -173,7 +173,7 @@ int main() try {
   namespace asio = boost::asio;
 
   http2_client_options opts{};
-  http2_client client(endpoint_t(asio::ip::address_v6::loopback(), 8080), std::move(opts));
+  http2_client client(endpoint("localhost", 8080), std::move(opts));
 
   test_server server(nullptr /*no https*/, {});
 
