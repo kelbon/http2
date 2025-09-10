@@ -78,7 +78,7 @@ struct http2_client {
 
   // on top bcs of destroy order
   asio::io_context m_ioctx = asio::io_context(1);
-  endpoint_t m_host;
+  endpoint m_host;
   http2_client_options m_options;
   http2_connection_ptr_t m_connection;
   // invariant: .!= nullptr, unchanged after creation
@@ -129,17 +129,17 @@ struct http2_client {
 
  public:
   // 'host' used for connecting when required
-  explicit http2_client(endpoint_t host, http2_client_options opts = {})
+  explicit http2_client(endpoint host, http2_client_options opts = {})
       : http2_client(std::move(host), std::move(opts), &default_transport_factory) {
   }
 
-  explicit http2_client(endpoint_t host, http2_client_options,
+  explicit http2_client(endpoint host, http2_client_options,
                         move_only_fn<any_transport_factory(asio::io_context&)>);
 
   http2_client(http2_client&&) = delete;
   void operator=(http2_client&&) = delete;
 
-  endpoint_t const& getHost() const noexcept {
+  endpoint const& getHost() const noexcept {
     return m_host;
   }
 
@@ -213,7 +213,7 @@ struct http2_client {
 
   bool connected() const;
 
-  void setHost(endpoint_t) noexcept;
+  void setHost(endpoint) noexcept;
 
   // returns true if client connected
   dd::task<bool> tryConnect(deadline_t);

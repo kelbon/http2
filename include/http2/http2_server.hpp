@@ -11,7 +11,7 @@
 namespace http2 {
 
 struct server_endpoint {
-  endpoint_t addr;
+  internet_address addr;
   bool reuse_address = true;
 };
 
