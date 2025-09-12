@@ -46,6 +46,15 @@ void asio_tls_connection::startRead(std::coroutine_handle<> h, std::span<byte_t>
   (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
 }
 
+size_t asio_tls_connection::tryWrite(std::span<const byte_t> buf, io_error_code& ec) noexcept {
+  size_t written = sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
+  if (ec) {
+    if (ec == asio::error::would_block)
+      ec.clear();  // not a error
+  }
+  return written;
+}
+
 void asio_tls_connection::startWrite(std::coroutine_handle<> h, std::span<byte_t const> buf,
                                      io_error_code& ec) {
   asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
@@ -88,6 +97,15 @@ void asio_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf
   memcpy(buf.data(), readen_start, avail);
   readen_start = readen_end = readen;
   (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
+}
+
+size_t asio_connection::tryWrite(std::span<const byte_t> buf, io_error_code& ec) noexcept {
+  size_t written = sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
+  if (ec) {
+    if (ec == asio::error::would_block)
+      ec.clear();  // not a error
+  }
+  return written;
 }
 
 void asio_connection::startWrite(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec) {

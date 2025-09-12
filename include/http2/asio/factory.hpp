@@ -18,6 +18,7 @@ struct asio_connection : connection_i {
 
   bool tryRead(std::span<byte_t> buf) noexcept override;
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
+  size_t tryWrite(std::span<const byte_t>, io_error_code&) noexcept override;
   void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
   bool isHttps() override {
@@ -45,10 +46,12 @@ struct asio_tls_connection : connection_i {
   explicit asio_tls_connection(asio::ip::tcp::socket s, ssl_context_ptr ctx)
       // Note: order
       : sock(std::move(s), ctx->ctx), sslctx(std::move(ctx)) {
+    sock.lowest_layer().non_blocking(true);
   }
 
   bool tryRead(std::span<byte_t>) noexcept override;
   void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
+  size_t tryWrite(std::span<const byte_t>, io_error_code&) noexcept override;
   void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
   bool isHttps() override {

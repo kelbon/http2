@@ -16,6 +16,9 @@ struct connection_i {
   [[nodiscard]] virtual bool tryRead(std::span<byte_t> buf) noexcept = 0;
   // precondition: tryRead returns false!
   virtual void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) = 0;
+  // tries to write buffer,
+  // returns number of written bytes (0 on error)
+  virtual size_t tryWrite(std::span<const byte_t>, io_error_code&) noexcept = 0;
   virtual void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf,
                           io_error_code& ec) = 0;
   virtual void shutdown() = 0;
@@ -49,7 +52,12 @@ struct write_awaiter {
   io_error_code& ec;
   std::span<byte_t const> buf;
 
-  static bool await_ready() noexcept {
+  bool await_ready() noexcept {
+    size_t written = con->tryWrite(buf, ec);
+    if (written == buf.size() || ec) {
+      return true;
+    }
+    remove_prefix(buf, written);
     return false;
   }
 
