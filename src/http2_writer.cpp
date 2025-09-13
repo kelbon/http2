@@ -47,7 +47,7 @@ static void generate_http2_connect_headers(request_node const& node, hpack::enco
     // do not handle / reorder user headers here to make sure
     // echo server will exactly copy what user writes in request
     assert(req.headers.front().name() == ":protocol");
-    assert(req.body.contentType.empty());
+    assert(req.body.content_type.empty());
     using hdrs = hpack::static_table_t::values;
     hdrs scheme = req.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
     encoder.encode_header_fully_indexed(scheme, out);
@@ -109,8 +109,8 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
     encoder.encode_status(node.status, out);
   }
 
-  if (!request.body.contentType.empty()) {
-    encoder.encode_with_cache(hdrs::content_type, request.body.contentType, out);
+  if (!request.body.content_type.empty()) {
+    encoder.encode_with_cache(hdrs::content_type, request.body.content_type, out);
   }
 
   // custom headers

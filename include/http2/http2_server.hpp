@@ -41,14 +41,14 @@ struct http2_server {
 
   // invoked when only headers for request received and data will be received
   // if `true` returned, `handle_request_stream` invoked instead of `handle_request`,
-  // Note: request.body is empty, but body.contentType may be setted
+  // Note: request.body is empty, but body.content_type may be setted
   virtual bool answer_before_data(http_request const& r) const noexcept {
     return false;
   }
 
   // invoked only after `answer_before_data` returned true
   // request body.data.empty() == true
-  // Note: request.body is empty, but body.contentType may be setted
+  // Note: request.body is empty, but body.content_type may be setted
   // returned response must not contain body data
   // if returned `stream_body_maker_t` is empty, just sends HEADERS, e.g. unaccepted websocket stream
   // Note: ctx.stream_response must not be used in this function

@@ -135,7 +135,7 @@ static dd::generator<dd::task<http_response>> different_requests(http2_client& c
   http_request r;
   r.path = "/abc";
   r.method = http2::http_method_e::PUT;
-  r.body.contentType = "text/plain";
+  r.body.content_type = "text/plain";
   r.body.data.resize(15, byte_t(1));
   auto deadline = [&] { return deadline_after(timeout); };
 
@@ -185,7 +185,7 @@ static void test_rst_stream(std::shared_ptr<http2_server> server, http2_client& 
     fuz.run_until(done, server->ioctx(), client.ioctx());
     error_if(errmsg != "timeout"sv);
   }
-  client.stop();
+  client.cancel_all();
   server.reset();
 }
 
