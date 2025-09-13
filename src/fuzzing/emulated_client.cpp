@@ -9,11 +9,11 @@ using namespace std::chrono_literals;
 namespace http2::fuzzing {
 
 static void validate_echo_request(const hreq& req, http_response rsp) {
-  if (!req.request.body.contentType.empty()) {
+  if (!req.request.body.content_type.empty()) {
     // content-type should be encoded first (after pseudoheaders, until custom headers)
     // so it should be retunred first, but request.headers does not contain it (must not)
     REQUIRE(!rsp.headers.empty() &&
-            rsp.headers.front() == http_header_t{"content-type", req.request.body.contentType});
+            rsp.headers.front() == http_header_t{"content-type", req.request.body.content_type});
     rsp.headers.erase(rsp.headers.begin());
   }
   REQUIRE(rsp.headers == req.request.headers);

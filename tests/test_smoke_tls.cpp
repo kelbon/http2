@@ -118,7 +118,7 @@ dd::task<http2::http_response> make_test_stream_request(http2::http2_client& cli
       .path = std::string(STREAM_REQUEST_PATH),
       .method = http2::http_method_e::PUT,
   };
-  req.body.contentType = "text/plain";
+  req.body.content_type = "text/plain";
   auto body = [](http2::http_headers_t& trailers, request_context) { return makebody(trailers); };
   co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
 }

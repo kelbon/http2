@@ -395,10 +395,7 @@ connection_dropped:
 
 http2_client::~http2_client() {
   HTTP2_LOG(TRACE, "~http2_client", name());
-  // in any case, even if client stopped now, some requests may wait
-  notifyConnectionWaiters(nullptr);
-  dropConnection(reqerr_e::CANCELLED);
-  stop();
+  cancel_all();
   // make sure client was closed correctly before destroy
   assert(!m_connection);
   assert(m_connectionWaiters.empty());
@@ -707,12 +704,6 @@ dd::task<void> http2_client::coStop() {
   assert(m_requestsInProgress == 0);
 }
 
-dd::task<void> http2_client::coAbort() {
-  dropConnection(reqerr_e::CANCELLED);
-  notifyConnectionWaiters(nullptr);
-  return coStop();
-}
-
 bool http2_client::connected() const {
   return !!m_connection;
 }
@@ -736,20 +727,15 @@ dd::task<bool> http2_client::tryConnect(deadline_t deadline) {
   co_return !!con;
 }
 
-void http2_client::stop() {
-  ioctx().stop();  // cancel all
-  ioctx().restart();
-  std::coroutine_handle h = coStop().start_and_detach(/*stop_at_end=*/true);
-  on_scope_exit {
-    h.destroy();
-  };
-  if (ioctx().stopped())
-    ioctx().restart();
-  try {
-    while (!h.done() && ioctx().run_one() != 0)
-      ;
-  } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "error while http2_clienmt::stop: {}", e.what(), name());
+void http2_client::cancel_all() noexcept {
+  auto all_canceled = [&] { return !m_notYetReadyConnection && !m_connection && m_requestsInProgress == 0; };
+  while (!all_canceled()) {
+    dropConnection(reqerr_e::CANCELLED);
+    notifyConnectionWaiters(nullptr);
+    if (m_notYetReadyConnection)
+      m_notYetReadyConnection->shutdown(reqerr_e::CANCELLED);
+    if (!m_ioctx.get_executor().running_in_this_thread())
+      m_ioctx.poll();  // do smth pending
   }
 }
 

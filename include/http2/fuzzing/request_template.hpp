@@ -138,7 +138,7 @@ struct hreq_template {
       return {};
     http_body r;
     if (fuz.rbool(body_content_type_prob))
-      r.contentType = "text/plain";
+      r.content_type = "text/plain";
     auto str = fuz.rstring(fuz.rint(min_body_sz, max_body_sz));
     r.data.assign(str.begin(), str.end());
     return r;

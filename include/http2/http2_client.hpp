@@ -233,10 +233,8 @@ struct http2_client {
   // == false
   dd::task<void> coStop();
 
-  // aborts all requsts and stops
-  dd::task<void> coAbort();
-
-  void stop();
+  // cancels all requests or active connections
+  void cancel_all() noexcept;
 
   bool isHttps() const noexcept;
 

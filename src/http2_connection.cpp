@@ -21,8 +21,8 @@ void trace_request_headers(request_node const& node, bool fromclient) {
   } else {
     s += std::format(":status: {}\n", node.status);
   }
-  if (!req.body.contentType.empty()) {
-    s += std::format("content-type: {}\n", req.body.contentType);
+  if (!req.body.content_type.empty()) {
+    s += std::format("content-type: {}\n", req.body.content_type);
   }
   for (auto& h : req.headers) {
     s += std::format("name: {}, value: {}\n", h.name(), h.value());

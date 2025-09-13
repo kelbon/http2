@@ -17,8 +17,8 @@ struct echo_server : http2_server {
     // TODO connect
     http_response rsp;
     rsp.status = 200;
-    if (!req.body.contentType.empty()) {
-      rsp.headers.emplace_back("content-type", req.body.contentType);
+    if (!req.body.content_type.empty()) {
+      rsp.headers.emplace_back("content-type", req.body.content_type);
     }
     rsp.headers.insert(rsp.headers.end(), req.headers.begin(), req.headers.end());
     rsp.body = std::move(req.body.data);

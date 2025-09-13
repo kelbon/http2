@@ -10,16 +10,21 @@ namespace http2 {
 
 static void validate_first_server_frame_header(const frame_header& header) {
   if (header.type != frame_e::SETTINGS || header.length > FRAME_LEN_MAX) {
+    HTTP2_LOG_ERROR("first server frame is not settings, frame: {}", header);
     throw protocol_error(errc_e::CONNECT_ERROR,
                          std::format("first server frame is not settings, frame: {}", header));
   }
   if (header.flags & flags::ACK) {
+    HTTP2_LOG_ERROR("invalid server preface SETTINGS with ACK flag");
     throw protocol_error(errc_e::CONNECT_ERROR, "invalid server preface SETTINGS with ACK flag");
   }
 }
 
 static void validate_client_magic(std::span<byte_t> magic) {
   if (!std::ranges::equal(magic, std::span(CONNECTION_PREFACE))) {
+    HTTP2_LOG_ERROR("invalid client magic, expected: {}, received: {}",
+                    std::string_view((const char*)CONNECTION_PREFACE, std::size(CONNECTION_PREFACE)),
+                    std::string_view((const char*)magic.data(), magic.size()));
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("invalid client magic, expected: {}, received: {}",

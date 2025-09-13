@@ -395,7 +395,7 @@ void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t cons
         throw stream_error(errc_e::PROTOCOL_ERROR, streamid, "\"content-type\" already parsed");
       }
       contenttypeParsed = true;
-      req.body.contentType = header.value.str();
+      req.body.content_type = header.value.str();
     } else {
       goto push_header;
     }

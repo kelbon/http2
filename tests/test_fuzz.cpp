@@ -48,7 +48,7 @@ int main() try {
   rr.path = "/abc";
   rr.headers = {{"header1", "value1"}};
   std::string bd = "hello world";
-  rr.body.contentType = "text/plain";
+  rr.body.content_type = "text/plain";
   rr.body.data.assign(bd.begin(), bd.end());
   bool done = false;
   chain(emulate_client_n(fuz, client1, tem, 100, 10, {.stream = 0, .connect = 0}), [&] {
