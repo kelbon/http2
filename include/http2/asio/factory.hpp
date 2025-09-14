@@ -16,12 +16,12 @@ struct asio_connection : connection_i {
     sock.non_blocking(true);
   }
 
-  bool tryRead(std::span<byte_t> buf) noexcept override;
-  void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
-  size_t tryWrite(std::span<const byte_t>, io_error_code&) noexcept override;
-  void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
+  bool try_read(std::span<byte_t> buf) noexcept override;
+  void start_read(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
+  size_t try_write(std::span<const byte_t>, io_error_code&) noexcept override;
+  void start_write(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
-  bool isHttps() override {
+  bool is_https() override {
     return false;
   }
 };
@@ -49,12 +49,12 @@ struct asio_tls_connection : connection_i {
     sock.lowest_layer().non_blocking(true);
   }
 
-  bool tryRead(std::span<byte_t>) noexcept override;
-  void startRead(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
-  size_t tryWrite(std::span<const byte_t>, io_error_code&) noexcept override;
-  void startWrite(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
+  bool try_read(std::span<byte_t>) noexcept override;
+  void start_read(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
+  size_t try_write(std::span<const byte_t>, io_error_code&) noexcept override;
+  void start_write(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
   void shutdown() noexcept override;
-  bool isHttps() override {
+  bool is_https() override {
     return true;
   }
 };

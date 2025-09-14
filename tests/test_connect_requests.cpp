@@ -140,11 +140,11 @@ static dd::generator<dd::task<http_response>> different_requests(http2_client& c
   auto deadline = [&] { return deadline_after(timeout); };
 
   // regular PUT request with body
-  co_yield client.sendRequest(r, deadline());
+  co_yield client.send_request(r, deadline());
 
   // request without body
   r.body = {};
-  co_yield client.sendRequest(r, deadline());
+  co_yield client.send_request(r, deadline());
 
   // streaming request without trailers
   co_yield client.send_streaming_request(r, body0(), deadline());
@@ -213,7 +213,7 @@ static void test_rst_stream() {
     server->listen({addr});
 
     http2_client client(addr, {.allow_requests_before_server_settings = false});
-    auto h = client.tryConnect().start_and_detach(/*stop_at_end=*/true);
+    auto h = client.try_connect().start_and_detach(/*stop_at_end=*/true);
     while (!h.done()) {
       client.ioctx().poll_one();
       server->ioctx().poll_one();
@@ -228,7 +228,7 @@ static void test_rst_stream() {
     server->listen({addr});
 
     http2_client client(addr, {.allow_requests_before_server_settings = true});
-    auto h = client.tryConnect().start_and_detach(/*stop_at_end=*/true);
+    auto h = client.try_connect().start_and_detach(/*stop_at_end=*/true);
     while (!h.done()) {
       client.ioctx().poll_one();
       server->ioctx().poll_one();

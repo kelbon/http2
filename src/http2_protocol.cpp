@@ -331,7 +331,7 @@ static void validate_header_name(const hpack::header_view& h, stream_id_t stream
   bool connection_specific =
       ss::string_switch<bool>(str)
           .cases("te", "connection", "proxy-connection", "keep-alive", "transfer-encoding", "upgrade", true)
-          .orDefault(false);
+          .or_default(false);
   if (connection_specific) [[unlikely]] {
     // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.2-2
     if (str != "te")

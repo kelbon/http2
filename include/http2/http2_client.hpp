@@ -139,14 +139,16 @@ struct http2_client {
   http2_client(http2_client&&) = delete;
   void operator=(http2_client&&) = delete;
 
-  endpoint const& getHost() const noexcept {
+  endpoint const& get_host() const noexcept {
     return m_host;
   }
 
-  void setConnectionTimeout(duration_t dur) noexcept {
+  void set_host(endpoint) noexcept;
+
+  void set_connection_timeout(duration_t dur) noexcept {
     m_options.connectionTimeout = dur;
   }
-  http2_client_options const& getOptions() const noexcept {
+  http2_client_options const& get_options() const noexcept {
     return m_options;
   }
 
@@ -160,14 +162,14 @@ struct http2_client {
   // done, but both handlers nullptr and status not parsed > 0 if 3-digit server
   // response code
   // precondition: request.method is not CONNECT ( for connect use send_connect_request)
-  dd::task<int> sendRequest(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart, http_request,
-                            deadline_t deadline);
+  dd::task<int> send_request(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart, http_request,
+                             deadline_t deadline);
 
   // throws on errors
-  dd::task<http_response> sendRequest(http_request, deadline_t);
+  dd::task<http_response> send_request(http_request, deadline_t);
 
-  dd::task<http_response> sendRequest(http_request request, duration_t timeout) {
-    return sendRequest(std::move(request), deadline_after(timeout));
+  dd::task<http_response> send_request(http_request request, duration_t timeout) {
+    return send_request(std::move(request), deadline_after(timeout));
   }
 
   // `makebody` will be called only once, but will be alive atleast until channel is done.
@@ -213,35 +215,34 @@ struct http2_client {
 
   bool connected() const;
 
-  void setHost(endpoint) noexcept;
+  // returns true if client connected
+  dd::task<bool> try_connect(deadline_t);
 
   // returns true if client connected
-  dd::task<bool> tryConnect(deadline_t);
-
-  // returns true if client connected
-  dd::task<bool> tryConnect(duration_t d) {
-    return tryConnect(deadline_after(d));
+  dd::task<bool> try_connect(duration_t d) {
+    return try_connect(deadline_after(d));
   }
 
   // returns true if client connected
-  dd::task<bool> tryConnect() {
-    return tryConnect(deadline_after(m_options.connectionTimeout));
+  dd::task<bool> try_connect() {
+    return try_connect(deadline_after(m_options.connectionTimeout));
   }
 
   // ждёт завершения всех стримов и затем останавливается
   // postcondition: *this в состоянии как будто только конструктора, connected()
   // == false
-  dd::task<void> coStop();
+  dd::task<void> graceful_stop();
 
   // cancels all requests or active connections
   void cancel_all() noexcept;
 
-  bool isHttps() const noexcept;
+  bool is_https() const noexcept;
 
   // postcondition: !m_connection. Mostly used by client itself
-  void dropConnection(reqerr_e::values_e reason) noexcept;
+  void drop_connection(reqerr_e::values_e reason) noexcept;
 
-  bool connectionInProgress() const noexcept {
+  // returns true if not connected yet, but connection establishing in progress
+  bool connection_in_progress() const noexcept {
     return m_notYetReadyConnection != nullptr;
   }
 

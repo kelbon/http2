@@ -263,7 +263,7 @@ void http2_connection::serverRequestsGracefulShutdown(goaway_frame f) {
     initiateGracefulShutdown(f.lastStreamId);
     gracefulshutdownGoawaySended = true;
   }
-  // do not drop connection, coStop will do it or reader (its out of streams)
+  // do not drop connection, graceful_stop will do it or reader (its out of streams)
 }
 
 void http2_connection::initiateGracefulShutdown(stream_id_t laststreamid) noexcept {
@@ -345,7 +345,7 @@ bool http2_connection::rstStreamClient(rst_stream rstframe) {
 }
 
 void http2_connection::finishAllWithReason(reqerr_e::values_e reason) {
-  assert(isDropped());  // must be called only while dropConnection()
+  assert(isDropped());  // must be called only while drop_connection()
 
   // assume only i have access to it
   auto reqs = std::move(requests);

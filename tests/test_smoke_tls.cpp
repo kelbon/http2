@@ -92,7 +92,7 @@ TGBM_GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http
       .path = std::string(REQUEST_PATH),
       .method = http2::http_method_e::GET,
   };
-  return client.sendRequest(std::move(req), http2::deadline_t::never());
+  return client.send_request(std::move(req), http2::deadline_t::never());
 }
 
 TGBM_GCC_WORKAROUND void check_response(const http2::http_response& rsp) {

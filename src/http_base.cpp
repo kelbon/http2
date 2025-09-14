@@ -76,7 +76,7 @@ void enum_from_string(std::string_view str, http_method_e& e) noexcept {
           .case_("CONNECT", CONNECT)
           .case_("OPTIONS", OPTIONS)
           .case_("TRACE", TRACE)
-          .orDefault(UNKNOWN);
+          .or_default(UNKNOWN);
 }
 
 std::string_view e2str(scheme_e e) noexcept {
@@ -94,7 +94,7 @@ std::string_view e2str(scheme_e e) noexcept {
 
 void enum_from_string(std::string_view str, scheme_e& s) noexcept {
   using enum scheme_e;
-  s = ss::string_switch<scheme_e>(str).case_("http", HTTP).case_("https", HTTPS).orDefault(UNKNOWN);
+  s = ss::string_switch<scheme_e>(str).case_("http", HTTP).case_("https", HTTPS).or_default(UNKNOWN);
 }
 
 stream_body_maker_t streaming_body_with_trailers(streaming_body_t body, http_headers_t trailers) {
