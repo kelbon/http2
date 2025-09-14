@@ -2,7 +2,7 @@
 include(cmake/get_cpm.cmake)
 
 CPMAddPackage(
-  NAME OpenSSL
+  NAME OPENSSL
   GITHUB_REPOSITORY janbar/openssl-cmake
   GIT_TAG 1.1.1w-20231130
   OPTIONS "WITH_APPS OFF"
@@ -11,14 +11,14 @@ CPMAddPackage(
 )
 
 CPMAddPackage(
-  NAME kelcoro
+  NAME KELCORO
   GIT_REPOSITORY https://github.com/kelbon/kelcoro
   GIT_TAG origin/main
   OPTIONS "KELCORO_ENABLE_TESTING OFF"
 )
 
 CPMAddPackage(
-  NAME AnyAny
+  NAME ANYANY
   GIT_REPOSITORY https://github.com/kelbon/AnyAny
   GIT_TAG origin/main
   OPTIONS "AA_ENABLE_TESTING OFF"
@@ -29,7 +29,7 @@ CPMAddPackage(
 # process and stacktrace required only for tests, so user-library may not download it
 set(BOOST_INCLUDE_LIBRARIES intrusive system smart_ptr asio process stacktrace)
 CPMAddPackage(
-  NAME Boost
+  NAME BOOST
   VERSION 1.87.0
   URL https://github.com/boostorg/boost/releases/download/boost-1.87.0/boost-1.87.0-cmake.tar.xz
   OPTIONS "BOOST_ENABLE_CMAKE ON"
