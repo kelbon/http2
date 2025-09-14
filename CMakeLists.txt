@@ -50,7 +50,6 @@ target_link_libraries(http2lib PUBLIC
     Boost::intrusive
     Boost::smart_ptr
     Boost::asio
-    Boost::stacktrace
 )
 
 set_target_properties(http2lib PROPERTIES
