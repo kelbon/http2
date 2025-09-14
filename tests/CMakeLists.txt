@@ -15,5 +15,4 @@ add_http2_test(merged_segments)
 add_http2_test(fuzz http2_fuzzinglib echoserverlib)
 add_http2_test(fuzz_continuations http2_fuzzinglib echoserverlib)
 add_http2_test(h2spec http2_fuzzinglib echoserverlib Boost::process)
-add_http2_test(connect_requests http2_fuzzinglib echoserverlib Boost::process)
-
+add_http2_test(connect_requests http2_fuzzinglib echoserverlib Boost::process Boost::stacktrace)

@@ -26,6 +26,7 @@ CPMAddPackage(
 
 # BEFORE hpack, so dependency with name 'Boost' will contain
 # both intrusive required for HPACK and other deps, required for HTTP2
+# process and stacktrace required only for tests, so user-library may not download it
 set(BOOST_INCLUDE_LIBRARIES intrusive system smart_ptr asio process stacktrace)
 CPMAddPackage(
   NAME Boost
