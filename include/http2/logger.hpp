@@ -1,18 +1,27 @@
 
 #pragma once
 
-#include <format>
-#include <iostream>
+#if __has_include(<kelhttp2_replace/logger.hpp>)
+  #include <kelhttp2_replace/logger.hpp>
+  #ifndef HTTP2_DO_LOG
+    #error <kelhttp2_replace/logger.hpp> must define HTTP2_DO_LOG(LEVEL, FMT_STR, ...ARGS)
+  #endif
+#else
 
-// validates FMT_STR to not be empty token, forbids LOG(, arg)
-#define HTTP2_FMT_STRING_IS_EMPTY_ invalid_empty_fmt_str
-#define HTTP2_FMT_STRING_IS_EMPTY_NO
-#define HTTP2_CHECK_NOT_EMPTY_IMPL(TOKEN) HTTP2_FMT_STRING_IS_EMPTY_##TOKEN
-#define HTTP2_CHECK_NOT_EMPTY(...) HTTP2_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
+  #include <format>
+  #include <iostream>
 
-#define HTTP2_DO_LOG(LEVEL, FMT_STR, ...) \
-  HTTP2_CHECK_NOT_EMPTY(FMT_STR)          \
-  std::cout << std::format("[" #LEVEL "][HTTP/2] " FMT_STR "\n" __VA_OPT__(, ) __VA_ARGS__)
+  // validates FMT_STR to not be empty token, forbids LOG(, arg)
+  #define HTTP2_FMT_STRING_IS_EMPTY_ invalid_empty_fmt_str
+  #define HTTP2_FMT_STRING_IS_EMPTY_NO
+  #define HTTP2_CHECK_NOT_EMPTY_IMPL(TOKEN) HTTP2_FMT_STRING_IS_EMPTY_##TOKEN
+  #define HTTP2_CHECK_NOT_EMPTY(...) HTTP2_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
+
+  #define HTTP2_DO_LOG(LEVEL, FMT_STR, ...) \
+    HTTP2_CHECK_NOT_EMPTY(FMT_STR)          \
+    std::cout << std::format("[" #LEVEL "][HTTP/2] " FMT_STR "\n" __VA_OPT__(, ) __VA_ARGS__)
+
+#endif
 
 #define HTTP2_LOG_INFO(FMT_STR, ...) HTTP2_DO_LOG(INFO, FMT_STR __VA_OPT__(, ) __VA_ARGS__)
 #define HTTP2_LOG_ERROR(FMT_STR, ...) HTTP2_DO_LOG(ERROR, FMT_STR __VA_OPT__(, ) __VA_ARGS__)
