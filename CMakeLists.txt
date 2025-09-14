@@ -6,6 +6,13 @@ option(KELHTTP2_ENABLE_TESTING  "Set to ON to enable tests"      OFF)
 option(KELHTTP2_USE_CPM "Set to ON to enable use CPM for get dependencies" ON)
 option(KELHTTP2_ENABLE_SANITIZERS "build with sanitizers" OFF)
 
+# file for storing SSL keys, useful for debugging SSL connection via Wireshark. Disabled by default
+set(KELHTTP2_DEBUG_SSL_KEYS_FILE "" CACHE FILEPATH "")
+
+if (KELHTTP2_DEBUG_SSL_KEYS_FILE)
+  message(STATUS "Debug SSL keys storing enabled, KELHTTP2_DEBUG_SSL_KEYS_FILE = ${KELHTTP2_DEBUG_SSL_KEYS_FILE}")
+endif()
+
 if (KELHTTP2_ENABLE_SANITIZERS)
   # enable sanitize flags globally, all targets require to be compiled with them
 
@@ -51,6 +58,10 @@ target_link_libraries(http2lib PUBLIC
     Boost::smart_ptr
     Boost::asio
 )
+
+if (KELHTTP2_DEBUG_SSL_KEYS_FILE)
+   target_compile_definitions(http2lib PRIVATE "KELHTTP2_DEBUG_SSL_KEYS_FILE=${KELHTTP2_DEBUG_SSL_KEYS_FILE}")
+endif()
 
 set_target_properties(http2lib PROPERTIES
 	CMAKE_CXX_EXTENSIONS OFF

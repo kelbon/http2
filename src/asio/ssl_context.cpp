@@ -4,8 +4,7 @@
 
 #include <filesystem>
 
-#ifdef TGBM_SSL_KEYS_FILE
-  #define TGBM_ENABLE_WIRESHARK_SUPPORT
+#ifdef KELHTTP2_DEBUG_SSL_KEYS_FILE
   #include <fstream>
 #endif
 
@@ -14,15 +13,17 @@ namespace http2 {
 ssl_context::ssl_context(asio::ssl::context_base::method m) : ctx(m) {
 }
 
-#ifdef TGBM_ENABLE_WIRESHARK_SUPPORT
+#ifdef KELHTTP2_DEBUG_SSL_KEYS_FILE
 
 static void keylog_callback(const SSL*, const char* line) {
-  std::filesystem::path keylog_file_path(TGBM_SSL_KEYS_FILE);
+  std::filesystem::path keylog_file_path = KELHTTP2_DEBUG_SSL_KEYS_FILE;
   std::ofstream keylog_file(keylog_file_path, std::ios_base::app | std::ios_base::out);
+  HTTP2_LOG_INFO("Writing line to SSL keys debugs file");
   if (keylog_file)
-    keylog_file << std::string_view(line);
+    keylog_file << std::string_view(line) << std::endl;
   else
-    TGBM_LOG_ERROR("cannot open keylog file for wireshark support, path: {}", keylog_file_path.string());
+    HTTP2_LOG_ERROR("cannot open keylog file for wireshark debug keys storing, path: {}",
+                    keylog_file_path.string());
 }
 
 #endif
@@ -30,15 +31,15 @@ static void keylog_callback(const SSL*, const char* line) {
 ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::path> additional_certs) {
   namespace ssl = asio::ssl;
   asio::ssl::context_base::method method =
-#ifndef TGBM_ENABLE_WIRESHARK_SUPPORT
+#ifndef KELHTTP2_DEBUG_SSL_KEYS_FILE
       ssl::context::tlsv13_client;
 #else
       ssl::context::tlsv12_client;
 #endif
 
   ssl_context_ptr sslctx = new ssl_context(method);
-#ifdef TGBM_ENABLE_WIRESHARK_SUPPORT
-  TGBM_LOG_INFO("SSL keys store enabled, file path: {}", TGBM_SSL_KEYS_FILE);
+#ifdef KELHTTP2_DEBUG_SSL_KEYS_FILE
+  HTTP2_LOG_WARN("SSL debug keys store enabled, file path: {}", KELHTTP2_DEBUG_SSL_KEYS_FILE);
   SSL_CTX_set_keylog_callback(sslctx->ctx.native_handle(), &keylog_callback);
 #endif
   sslctx->ctx.set_default_verify_paths();
