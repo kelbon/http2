@@ -54,6 +54,6 @@ find_package(Threads REQUIRED)
 CPMAddPackage(
   NAME STRSWITCH
   GIT_REPOSITORY https://github.com/kelbon/strswitch
-  GIT_TAG        v1.0
+  GIT_TAG        v1.1.0
   OPTIONS "STRSWITCH_ENABLE_TESTING OFF"
 )

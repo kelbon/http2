@@ -26,7 +26,7 @@ dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
   if (!req.trailers.empty())
     co_return co_await send_echo_request_as_stream(fuz, c, std::move(req));
 
-  http_response rsp = co_await c.sendRequest(req.request, req.deadline);
+  http_response rsp = co_await c.send_request(req.request, req.deadline);
 
   validate_echo_request(req, std::move(rsp));
 } catch (std::exception& e) {
@@ -123,7 +123,7 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
   asio::steady_timer timer(client.ioctx());
   io_error_code ec;
   // receive server settings before (to get correct max_count_requests_allowed)
-  bool b = co_await client.tryConnect();
+  bool b = co_await client.try_connect();
   REQUIRE(b);
   size_t done = 0;
   size_t sent = 0;
@@ -151,7 +151,7 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
   while (done != request_count) {
     co_await yield_on_ioctx(client.ioctx());
   }
-  co_await client.coStop();
+  co_await client.graceful_stop();
   co_return;
 }
 
@@ -163,7 +163,7 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
   io_error_code ec;
   deadline_t deadline = deadline_after(dur);
   // receive server settings before (to get correct max_count_requests_allowed)
-  bool b = co_await client.tryConnect();
+  bool b = co_await client.try_connect();
   REQUIRE(b);
   while (!deadline.isReached()) {
     while (!deadline.isReached() && client.count_active_requests() < max_active_streams) {
@@ -184,7 +184,7 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
     }
     co_await yield_on_ioctx(client.ioctx());
   }
-  co_await client.coStop();
+  co_await client.graceful_stop();
   co_return;
 }
 

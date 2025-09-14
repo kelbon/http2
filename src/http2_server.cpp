@@ -309,7 +309,7 @@ http2_server::~http2_server() {
   }
 }
 
-size_t http2_server::sessionsCount() const noexcept {
+size_t http2_server::sessions_count() const noexcept {
   return m_impl->sessions.size();
 }
 

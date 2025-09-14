@@ -66,7 +66,7 @@ struct http2_server {
   // if http2::stream_error thrown, its error code used in RST_STREAM
   virtual dd::task<http_response> handle_request(http_request, request_context) = 0;
 
-  [[nodiscard]] size_t sessionsCount() const noexcept;
+  [[nodiscard]] size_t sessions_count() const noexcept;
 
   void listen(server_endpoint);
 

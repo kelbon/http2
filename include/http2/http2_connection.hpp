@@ -266,9 +266,9 @@ struct http2_connection {
   std::vector<responses_t::bucket_type> buckets;
   responses_t responses;
   timers_t timers;
-  bool dropped = false;  // setted ONLY in dropConnection
+  bool dropped = false;  // setted ONLY in drop_connection
   // if goaway with NO_ERROR was already sended. This ensures, that we will
-  // initiate goaway (in coStop) OR server initiates goaway and we answered once
+  // initiate goaway (in graceful_stop) OR server initiates goaway and we answered once
   bool gracefulshutdownGoawaySended = false;
   timer_t pingtimer;
   timer_t pingdeadlinetimer;
@@ -414,7 +414,7 @@ struct http2_connection {
 
   void shutdown(reqerr_e::values_e reason) noexcept;
 
-  // interface for sendRequest
+  // interface for send_request
 
   // postcondition: returns correct streamid (<= MAX_STREAM_ID)
   [[nodiscard]] stream_id_t nextStreamid() noexcept {

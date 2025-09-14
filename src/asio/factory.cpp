@@ -18,7 +18,7 @@ namespace http2 {
   return b;
 }
 
-bool asio_tls_connection::tryRead(std::span<byte_t> buf) noexcept {
+bool asio_tls_connection::try_read(std::span<byte_t> buf) noexcept {
   return try_read_impl(*this, buf);
 }
 
@@ -37,16 +37,16 @@ static dd::job do_read_some(auto& c, std::span<byte_t> userbuf, io_error_code& e
   co_await dd::this_coro::destroy_and_transfer_control_to(callback);
 }
 
-void asio_tls_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
+void asio_tls_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   // assumes only one reader at one time
   size_t avail = readen_end - readen_start;
-  assert(avail < buf.size());  // startRead must be invoked only if tryRead failed
+  assert(avail < buf.size());  // start_read must be invoked only if try_read failed
   memcpy(buf.data(), readen_start, avail);
   readen_start = readen_end = readen;
   (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
 }
 
-size_t asio_tls_connection::tryWrite(std::span<const byte_t> buf, io_error_code& ec) noexcept {
+size_t asio_tls_connection::try_write(std::span<const byte_t> buf, io_error_code& ec) noexcept {
   size_t written = sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
   if (ec) {
     if (ec == asio::error::would_block)
@@ -55,8 +55,8 @@ size_t asio_tls_connection::tryWrite(std::span<const byte_t> buf, io_error_code&
   return written;
 }
 
-void asio_tls_connection::startWrite(std::coroutine_handle<> h, std::span<byte_t const> buf,
-                                     io_error_code& ec) {
+void asio_tls_connection::start_write(std::coroutine_handle<> h, std::span<byte_t const> buf,
+                                      io_error_code& ec) {
   asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
     if (e) [[unlikely]]
       ec = e;
@@ -86,20 +86,20 @@ void asio_tls_connection::shutdown() noexcept {
   close_tcp_sock(tcp_sock);
 }
 
-bool asio_connection::tryRead(std::span<byte_t> buf) noexcept {
+bool asio_connection::try_read(std::span<byte_t> buf) noexcept {
   return try_read_impl(*this, buf);
 }
 
-void asio_connection::startRead(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
+void asio_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   // assumes only one reader at one time
   size_t avail = readen_end - readen_start;
-  assert(avail < buf.size());  // startRead must be invoked only if tryRead failed
+  assert(avail < buf.size());  // start_read must be invoked only if try_read failed
   memcpy(buf.data(), readen_start, avail);
   readen_start = readen_end = readen;
   (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
 }
 
-size_t asio_connection::tryWrite(std::span<const byte_t> buf, io_error_code& ec) noexcept {
+size_t asio_connection::try_write(std::span<const byte_t> buf, io_error_code& ec) noexcept {
   size_t written = sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
   if (ec) {
     if (ec == asio::error::would_block)
@@ -108,7 +108,7 @@ size_t asio_connection::tryWrite(std::span<const byte_t> buf, io_error_code& ec)
   return written;
 }
 
-void asio_connection::startWrite(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec) {
+void asio_connection::start_write(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec) {
   asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
     if (e) [[unlikely]]
       ec = e;

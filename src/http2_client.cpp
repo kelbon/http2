@@ -24,15 +24,15 @@
 
 Путь каждого запроса в http2_client:
 
-1. корутина sendRequest захватывает соединение через borrowConnection, при этом
-может потребоваться вызвать startConnecting, на время соединения sendRequest
+1. корутина send_request захватывает соединение через borrowConnection, при этом
+может потребоваться вызвать startConnecting, на время соединения send_request
 попадаёт в client.m_connectionWaiters. Note: При ошибке создания соединения,
 запросы в m_connectionWaiters будут отменёны. В будущем эту политику можно
 заменить на ещё одну попытку соединения и отмену только тех запросов, что по
 таймауту уже не успевают
 2. После захвата соединения sendRequst создаёт стрим, инициализирует его
 streamid и засыпает на responseReceived, который:
-    * инициализирует stream.task хендлом корутины sendRequest
+    * инициализирует stream.task хендлом корутины send_request
     * складывает стрим в connection.responses (для отправки писателем) и
 connection.timers (для проверки на таймаут)
 3. писатель берёт из очереди стрим, перекладывает его в connection.responses и
@@ -44,11 +44,11 @@ on_data_part при чтении HEADERS/DATA фреймов соответст�
 
 5. При получении фрейма с флагом END_STREAM читатель вызывает finishRequest,
 который корректно забывает (forget) стрим из всех контейнеров и делает
-task.resume, будя корутину sendRequest
+task.resume, будя корутину send_request
 
     Note: фреймом с END_STREAM может быть в том числе trailer HEADERS после DATA
 
-На любом этапе может прийти фрейм RST_STREAM/Goaway или вызваться coStop, это
+На любом этапе может прийти фрейм RST_STREAM/Goaway или вызваться graceful_stop, это
 также приведёт к finishRequest
 */
 
@@ -139,7 +139,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
         self->m_connection = newConnection;
         self->notifyConnectionWaiters(newConnection);
       };
-      any_connection_t tcpCon = co_await self->m_factory->createConnection(self->getHost(), deadline);
+      any_connection_t tcpCon = co_await self->m_factory->createConnection(self->get_host(), deadline);
       http2_connection_ptr_t con = new http2_connection(std::move(tcpCon), self->ioctx());
       timer_t timer(self->ioctx());
       timer.arm(deadline.tp);
@@ -154,22 +154,22 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     }
     assert(newConnection);
 
-    // this gate closed only in coStop and only after all startConnecting already done
+    // this gate closed only in graceful_stop and only after all startConnecting already done
     assert(!self->m_connectionPartsGate.is_closed());
 
     startReaderFor(self, newConnection);
     self->m_connection->writer.handle = nullptr;
     // writer itself sets writer handle in connection
     auto sleepcb = [self](duration_t d, io_error_code& ec) { return self->sleep(d, ec); };
-    auto onnetworkerr = [self] { self->dropConnection(reqerr_e::NETWORK_ERR); };
+    auto onnetworkerr = [self] { self->drop_connection(reqerr_e::NETWORK_ERR); };
     start_writer_for_client(newConnection, std::move(sleepcb), std::move(onnetworkerr),
-                            self->getOptions().forceDisableHpack, self->m_connectionPartsGate.hold());
+                            self->get_options().forceDisableHpack, self->m_connectionPartsGate.hold());
 
     if (self->m_options.pingInterval != duration_t::max()) {
       newConnection->pingtimer.arm_periodic(self->m_options.pingInterval);
       newConnection->pingtimer.set_callback(ping_callback(newConnection, self, self->m_options.pingTimeout));
       // armed when ping sended, canceled when ping received
-      newConnection->pingdeadlinetimer.set_callback([self] { self->dropConnection(reqerr_e::TIMEOUT); });
+      newConnection->pingdeadlinetimer.set_callback([self] { self->drop_connection(reqerr_e::TIMEOUT); });
     }
     // newConnection->timeoutWardenTimer will be armed when requests will be added
     newConnection->timeoutWardenTimer.set_callback([newConnection] {
@@ -181,7 +181,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "exception while trying to connect: {}", e.what(), self->name());
     // if we created connection, but failed when starting reader / writer - drop
-    self->dropConnection(reqerr_e::UNKNOWN_ERR);
+    self->drop_connection(reqerr_e::UNKNOWN_ERR);
   }
 }
 
@@ -383,7 +383,7 @@ network_error:
     HTTP2_LOG(TRACE, "reader drops connection after network err: {}", ec.what(), con.name);
   }
 dropConnection:
-  self->dropConnection(reason);
+  self->drop_connection(reason);
 connection_dropped:
   if (!self->m_connectionWaiters.empty() && !self->alreadyConnecting()) {
     HTTP2_LOG(TRACE, "client initiates reconnect after graceful shutdown or out of streams", con.name);
@@ -443,7 +443,7 @@ std::coroutine_handle<> noexport::waiter_of_connection::await_suspend(std::corou
   return std::move(result);
 }
 
-void http2_client::dropConnection(reqerr_e::values_e reason) noexcept {
+void http2_client::drop_connection(reqerr_e::values_e reason) noexcept {
   http2_connection_ptr_t con = std::move(m_connection);
   if (!con) {
     return;
@@ -453,8 +453,8 @@ void http2_client::dropConnection(reqerr_e::values_e reason) noexcept {
   con->shutdown(reason);
 }
 
-dd::task<int> http2_client::sendRequest(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
-                                        http_request request, deadline_t deadline) {
+dd::task<int> http2_client::send_request(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
+                                         http_request request, deadline_t deadline) {
   // for CONNECT send_connect_request
   assert(request.method != http_method_e::CONNECT);
   if (stopRequested()) [[unlikely]] {
@@ -478,7 +478,7 @@ dd::task<int> http2_client::sendRequest(on_header_fn_ptr onHeader, on_data_part_
     co_return reqerr_e::CANCELLED;
   }
   assert(!request.path.empty());
-  request.scheme = con->tcpCon->isHttps() ? scheme_e::HTTPS : scheme_e::HTTP;
+  request.scheme = con->tcpCon->is_https() ? scheme_e::HTTPS : scheme_e::HTTP;
   stream_id_t streamid = con->nextStreamid();
   HTTP2_LOG(TRACE, "sending http2 request, path: {}, method: {}, streamid: {}", request.path,
             e2str(request.method), streamid, con->name);
@@ -514,7 +514,7 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
     co_return reqerr_e::CANCELLED;
   }
   assert(!request.path.empty());
-  request.scheme = con->tcpCon->isHttps() ? scheme_e::HTTPS : scheme_e::HTTP;
+  request.scheme = con->tcpCon->is_https() ? scheme_e::HTTPS : scheme_e::HTTP;
   stream_id_t streamid = con->nextStreamid();
   HTTP2_LOG(TRACE, "sending http2 streaming request, path: {}, method: {}, streamid: {}", request.path,
             e2str(request.method), streamid, con->name);
@@ -547,7 +547,7 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
   }
 }
 
-dd::task<http_response> http2_client::sendRequest(http_request request, deadline_t deadline) {
+dd::task<http_response> http2_client::send_request(http_request request, deadline_t deadline) {
   http_response rsp;
   auto onHeader = [&](std::string_view name, std::string_view value) {
     rsp.headers.emplace_back(std::string(name), std::string(value));
@@ -555,7 +555,7 @@ dd::task<http_response> http2_client::sendRequest(http_request request, deadline
   auto onDataPart = [&](std::span<byte_t const> bytes, bool /*lastPart*/) {
     rsp.body.insert(rsp.body.end(), bytes.begin(), bytes.end());
   };
-  rsp.status = co_await sendRequest(&onHeader, &onDataPart, std::move(request), deadline);
+  rsp.status = co_await send_request(&onHeader, &onDataPart, std::move(request), deadline);
   if (rsp.status < 0) {
     throw_bad_status(rsp.status);
   }
@@ -610,7 +610,7 @@ dd::task<int> http2_client::send_connect_request(
   if (stopRequested()) [[unlikely]] {
     co_return reqerr_e::CANCELLED;
   }
-  request.scheme = con->tcpCon->isHttps() ? scheme_e::HTTPS : scheme_e::HTTP;
+  request.scheme = con->tcpCon->is_https() ? scheme_e::HTTPS : scheme_e::HTTP;
   stream_id_t streamid = con->nextStreamid();
   HTTP2_LOG(TRACE, "sending CONNECT request, streamid: {}", streamid, con->name);
 
@@ -655,10 +655,10 @@ dd::task<int> http2_client::send_connect_request(
   co_return status;
 }
 
-dd::task<void> http2_client::coStop() {
-  HTTP2_LOG(TRACE, "http2_client::coStop started", name());
+dd::task<void> http2_client::graceful_stop() {
+  HTTP2_LOG(TRACE, "http2_client::graceful_stop started", name());
   on_scope_exit {
-    HTTP2_LOG(TRACE, "http2_client::coStop ended", name());
+    HTTP2_LOG(TRACE, "http2_client::graceful_stop ended", name());
   };
   io_error_code ec;
   http2_connection_ptr_t con = m_connection;  // prevent destroy for graceful shutdown.
@@ -692,7 +692,7 @@ dd::task<void> http2_client::coStop() {
   // notify all not started requests about stop
   notifyConnectionWaiters(nullptr);
   // drop our connection correctly if exists
-  dropConnection(reqerr_e::CANCELLED);
+  drop_connection(reqerr_e::CANCELLED);
 
   co_await m_connectionPartsGate.close(ioctx());
   m_connectionPartsGate = {};  // reopen
@@ -708,17 +708,17 @@ bool http2_client::connected() const {
   return !!m_connection;
 }
 
-bool http2_client::isHttps() const noexcept {
+bool http2_client::is_https() const noexcept {
   assert(m_connection);
-  return m_connection.get()->tcpCon->isHttps();
+  return m_connection.get()->tcpCon->is_https();
 }
 
-void http2_client::setHost(endpoint s) noexcept {
+void http2_client::set_host(endpoint s) noexcept {
   assert(!connected());
   m_host = std::move(s);
 }
 
-dd::task<bool> http2_client::tryConnect(deadline_t deadline) {
+dd::task<bool> http2_client::try_connect(deadline_t deadline) {
   if (stopRequested() || m_connectionGate.is_closed()) {
     co_return false;
   }
@@ -730,7 +730,7 @@ dd::task<bool> http2_client::tryConnect(deadline_t deadline) {
 void http2_client::cancel_all() noexcept {
   auto all_canceled = [&] { return !m_notYetReadyConnection && !m_connection && m_requestsInProgress == 0; };
   while (!all_canceled()) {
-    dropConnection(reqerr_e::CANCELLED);
+    drop_connection(reqerr_e::CANCELLED);
     notifyConnectionWaiters(nullptr);
     if (m_notYetReadyConnection)
       m_notYetReadyConnection->shutdown(reqerr_e::CANCELLED);
