@@ -14,7 +14,7 @@
 using namespace http2;
 
 // all noinlines here is workaround gcc-12 bug (miscompilation)
-#define TGBM_GCC_WORKAROUND [[gnu::noinline]]
+#define GCC_WORKAROUND [[gnu::noinline]]
 
 constexpr inline std::string_view STREAM_REQUEST_PATH = "/bcd";
 constexpr inline std::string_view REQUEST_PATH = "/abc";
@@ -32,7 +32,7 @@ const inline http_headers_t EXPECTED_CONNECT_HEADERS{
 
 constexpr inline std::string_view EXPECTED_DATA = "hello world!";
 
-TGBM_GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
+GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
   http2::http_response rsp;
   if (req.path == REQUEST_PATH && req.method == http2::http_method_e::GET) {
     rsp.status = 200;
@@ -87,7 +87,7 @@ struct test_server : http2_server {
 
 inline bool all_good = false;
 
-TGBM_GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http2_client& client) {
+GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http2_client& client) {
   http2::http_request req{
       .path = std::string(REQUEST_PATH),
       .method = http2::http_method_e::GET,
@@ -95,7 +95,7 @@ TGBM_GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http
   return client.send_request(std::move(req), http2::deadline_t::never());
 }
 
-TGBM_GCC_WORKAROUND void check_response(const http2::http_response& rsp) {
+GCC_WORKAROUND void check_response(const http2::http_response& rsp) {
   error_if(rsp.headers != EXPECTED_HEADERS);
   error_if(!std::ranges::equal(EXPECTED_DATA, rsp.body));
 }
