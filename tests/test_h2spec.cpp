@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <fstream>
 
 #include <boost/asio.hpp>
 #include <boost/process/v2.hpp>
@@ -9,6 +10,8 @@
 
 #include <kelcoro/task.hpp>
 #include <http2/asio/awaiters.hpp>
+
+#include <random>
 
 namespace bp = boost::process;
 
@@ -19,7 +22,6 @@ static dd::task<void> read_until_mark(asio::readable_pipe& pipe, std::string& ou
   io_error_code ec;
   for (;;) {
     size_t sz = co_await net.read_some(pipe, buf, ec);
-    std::cout << std::string_view((const char*)buf, sz);
     if (ec) {
       std::cout << ec.what() << std::endl;
       break;
@@ -48,11 +50,19 @@ int main() try {
 #endif
   bp::process server(ctx, serverpath, {}, bp::process_stdio{.out = server_pipe});
 
-  asio::readable_pipe h2spec_pipe(ctx);
+  boost::filesystem::path tmp =
+      boost::filesystem::temp_directory_path() / std::format("tmphttp2logs{}", std::random_device{}());
+  on_scope_exit {
+    try {
+      std::filesystem::remove(tmp.string());
+    } catch (std::exception& e) {
+      std::cout << "cannot delete tmp file " << e.what() << std::endl;
+    }
+  };
   bp::process h2spec(ctx, bp::environment::find_executable("h2spec"), {"--port", "2999", "-o", "1"},
-                     bp::process_stdio{.out = h2spec_pipe});
-  std::string h2specstr;
+                     bp::process_stdio{.out = tmp});
   std::string serverstr;
+
   // h2spec_server flushes output after this log to avoid deadlock
   auto h =
       read_until_mark(server_pipe, serverstr, "Server listening on").start_and_detach(/*stop_at_end=*/true);
@@ -67,10 +77,6 @@ int main() try {
   on_scope_exit {
     h2.destroy();
   };
-  auto h3 = read_until_mark(h2spec_pipe, h2specstr).start_and_detach(true);
-  on_scope_exit {
-    h3.destroy();
-  };
   while (h2spec.running())
     ctx.poll();
   try {
@@ -79,11 +85,15 @@ int main() try {
     std::cout << "wait failed with " << e.what() << std::endl;
   }
   server_pipe.cancel();
-  h2spec_pipe.cancel();
   server.terminate();
 
   // h2spec end running, but only here writes last chunks of output
   ctx.poll();
+
+  std::ifstream file(tmp.string());
+  std::stringstream file_str;
+  file_str << file.rdbuf();
+  std::string h2specstr = std::move(file_str).str();
   if (auto i = h2spec.exit_code(); i != 1) {
     std::cout << "invalid error code, expected 1, actual: " << i << std::endl;
     return EXIT_FAILURE;
