@@ -19,6 +19,7 @@ static dd::task<void> read_until_mark(asio::readable_pipe& pipe, std::string& ou
   io_error_code ec;
   for (;;) {
     size_t sz = co_await net.read_some(pipe, buf, ec);
+    std::cout << std::string_view((const char*)buf, sz);
     if (ec) {
       std::cout << ec.what() << std::endl;
       break;
@@ -79,7 +80,6 @@ int main() try {
   }
   server_pipe.cancel();
   h2spec_pipe.cancel();
-  server_pipe.close();
   server.terminate();
 
   // h2spec end running, but only here writes last chunks of output
