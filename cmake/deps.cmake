@@ -38,7 +38,7 @@ unset(BOOST_INCLUDE_LIBRARIES)
 
 CPMAddPackage(
   NAME HPACK
-  GIT_REPOSITORY https://github.com/kelbon/HPACK
+  GITHUB_REPOSITORY kelbon/HPACK
   GIT_TAG         v1.1.1
   OPTIONS "HPACK_ENABLE_TESTING OFF"
           "HPACK_USE_CPM OFF"
@@ -46,7 +46,7 @@ CPMAddPackage(
 
 CPMAddPackage(
   NAME LOGIC_GUARDS
-  GIT_REPOSITORY https://github.com/kelbon/logic_guards
+  GITHUB_REPOSITORY kelbon/logic_guards
   GIT_TAG        v1.0.0
   OPTIONS "ZAL_ENABLE_TESTING OFF"
 )
@@ -55,7 +55,15 @@ find_package(Threads REQUIRED)
 
 CPMAddPackage(
   NAME STRSWITCH
-  GIT_REPOSITORY https://github.com/kelbon/strswitch
+  GITHUB_REPOSITORY kelbon/strswitch
   GIT_TAG        v1.1.0
   OPTIONS "STRSWITCH_ENABLE_TESTING OFF"
 )
+
+CPMAddPackage(
+  NAME CCOZY
+  GITHUB_REPOSITORY kelbon/ccozy
+  GIT_TAG v0.8.1
+)
+
+include(${CCOZY_SOURCE_DIR}/ccozy_tools.cmake)

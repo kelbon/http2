@@ -50,6 +50,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
             -DCMAKE_CXX_COMPILER=${{matrix.compiler}}     \
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5            \
             -B build -G "Ninja"
 
       - name: Build
@@ -75,6 +76,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
             -DCMAKE_CXX_COMPILER=${{matrix.compiler}}     \
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5            \
             -DKELHTTP2_ENABLE_SANITIZERS=ON               \
             -B build_sanitizers -G "Ninja"
 

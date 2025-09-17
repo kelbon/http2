@@ -58,6 +58,7 @@ target_link_libraries(http2lib PUBLIC
     Boost::smart_ptr
     Boost::asio
 )
+target_compile_definitions(http2lib PUBLIC -DOPENSSL_API_COMPAT=0x30000000L)
 
 if (KELHTTP2_DEBUG_SSL_KEYS_FILE)
    target_compile_definitions(http2lib PRIVATE "KELHTTP2_DEBUG_SSL_KEYS_FILE=${KELHTTP2_DEBUG_SSL_KEYS_FILE}")
@@ -87,6 +88,7 @@ add_library(http2_fuzzinglib   ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/any_reque
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/fuzzer.cpp
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/request_template.cpp)
 
+
 target_include_directories(http2_fuzzinglib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(http2_fuzzinglib PUBLIC http2lib)
 
@@ -96,5 +98,4 @@ set_target_properties(http2_fuzzinglib PROPERTIES
 	CMAKE_CXX_STANDARD_REQUIRED ON
 	CXX_STANDARD 20)
 
-include(cmake/visit_targets.cmake)
-generate_launch_json_file()
+ccozy_on_configuration_end_vscode()
