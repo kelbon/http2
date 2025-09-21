@@ -25,10 +25,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build lld gcc-13 clang-18
-          sudo ln -sf /usr/local/bin/ld /usr/bin/lld
-
+          sudo apt-get install ninja-build
+          if [[ "${{ matrix.compiler }}" == g++-13* ]]; then
+            sudo apt-get install gcc-13
+          elif [[ "${{ matrix.compiler }}" == clang++-18* ]]; then
+            sudo apt-get install clang-18
+          fi
       - name: Install h2spec
         run: |
           wget https://github.com/summerwind/h2spec/releases/latest/download/h2spec_linux_amd64.tar.gz
@@ -41,23 +43,19 @@ jobs:
           version: "v0.10.0" # Version of the sccache binary to install
 
       - name: Configure CMake
-        env:
-          SCCACHE_GHA_ENABLED: "true" # Enable GitHub Actions cache
-          CMAKE_C_COMPILER_LAUNCHER: "sccache"
-          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
         run: |
           cmake . -DKELHTTP2_ENABLE_TESTING=ON               \
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
             -DCMAKE_CXX_COMPILER=${{matrix.compiler}}     \
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5            \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache           \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache         \
             -B build -G "Ninja"
 
       - name: Build
         env:
           SCCACHE_GHA_ENABLED: "true"
-          CMAKE_C_COMPILER_LAUNCHER: "sccache"
-          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
         run: |
           cmake --build build
 
@@ -67,10 +65,6 @@ jobs:
           ctest --output-on-failure -C ${{matrix.build_type}}
 
       - name: Configure CMake sanitizers
-        env:
-          SCCACHE_GHA_ENABLED: "true"
-          CMAKE_C_COMPILER_LAUNCHER: "sccache"
-          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
         run: |
           cmake . -DKELHTTP2_ENABLE_TESTING=ON            \
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
@@ -78,13 +72,13 @@ jobs:
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5            \
             -DKELHTTP2_ENABLE_SANITIZERS=ON               \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache           \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache         \
             -B build_sanitizers -G "Ninja"
 
       - name: Build sanitizers
         env:
           SCCACHE_GHA_ENABLED: "true"
-          CMAKE_C_COMPILER_LAUNCHER: "sccache"
-          CMAKE_CXX_COMPILER_LAUNCHER: "sccache"
         run: |
           cmake --build build_sanitizers
 
@@ -92,4 +86,3 @@ jobs:
         run: |
           cd build_sanitizers
           ctest --output-on-failure -C ${{matrix.build_type}}
-
