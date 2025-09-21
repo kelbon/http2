@@ -63,7 +63,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME CCOZY
   GITHUB_REPOSITORY kelbon/ccozy
-  GIT_TAG v0.8.1
+  GIT_TAG v0.8.2
 )
 
 include(${CCOZY_SOURCE_DIR}/ccozy_tools.cmake)
