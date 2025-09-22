@@ -6,9 +6,6 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_errors.hpp"
 #include "http2/http2_protocol.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/signewaiter_signal.hpp"
-#include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/gate.hpp"
 
 #include <boost/intrusive/list_hook.hpp>
@@ -29,8 +26,6 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   http2_connection_ptr_t connection;
   http2_server_options options;
   http2_server* server = nullptr;
-  // may be setted when newRequestsForbiden = true
-  singlewaiter_signal sessiondone;
   // reader increments this value for detecting client idle
   size_t framecount = 0;
   // changed only once from 'false' to 'true' when shutdown requested

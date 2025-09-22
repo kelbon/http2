@@ -1,6 +1,7 @@
 
 #include "http2/http2_server.hpp"
 
+#include "http2/asio/asio_executor.hpp"
 #include "http2/asio/factory.hpp"
 #include "http2/http2_server_session.hpp"
 
@@ -226,9 +227,9 @@ struct http2_server::impl {
     HTTP2_LOG(TRACE, "reader stops, waiting stop", session.name());
   drop_session:
     session.requestTerminate();
-    if (session.hasUnfinishedRequests()) {
-      co_await session.sessiondone.wait();
-    }
+    while (session.hasUnfinishedRequests())
+      co_await yield_on_ioctx(session.server->ioctx());
+
     // we are here if reader ended with exception or after soft shutdown (streams closed, new requests
     // forbidden)
     co_await session.connectionPartsGate.close(ioctx());

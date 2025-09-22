@@ -252,11 +252,6 @@ void server_session::onSessionDone() noexcept {
   }
   done = true;
   connection->shutdown(reqerr_e::CANCELLED);
-  if (sessiondone.hasWaiter()) {
-    // after sessiondone notify its possible, that 'this' is already deleted
-    // so we give caller time to end using session pointer
-    asio::post(server->ioctx(), std::exchange(sessiondone.waiter, nullptr));
-  }
 }
 
 node_ptr server_session::newEmptyStreamNode(stream_id_t id) {
