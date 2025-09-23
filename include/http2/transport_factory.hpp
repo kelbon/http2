@@ -110,7 +110,7 @@ struct tcp_connection_options {
   std::optional<std::string> host_for_name_verification = std::nullopt;
 
   template <typename E>
-  void apply(asio::basic_socket<asio::ip::tcp, E>& tcp_sock) {
+  void apply(asio::basic_socket<asio::ip::tcp, E>& tcp_sock) try {
     using tcp = asio::ip::tcp;
 
     tcp_sock.set_option(tcp::no_delay(!merge_small_requests));
@@ -132,6 +132,8 @@ struct tcp_connection_options {
                        send_buffer_size, rsv_sz_option.value());
       }
     }
+  } catch (std::exception& e) {
+    HTTP2_LOG_WARN("Cannot apply tcp settings to socket, err: {}", e.what());
   }
 };
 
@@ -139,5 +141,19 @@ any_transport_factory default_transport_factory(boost::asio::io_context&);
 
 any_transport_factory default_tls_transport_factory(
     boost::asio::io_context&, std::vector<std::filesystem::path> additional_tls_certificates = {});
+
+// binds tcp options to factory for passing tcp options to http2_client
+// `Factory` must be constructible from asio::io_context and tcp_connection_options
+// usage:
+//   http2_client(host,
+//                client_options,
+//                factory_with_tcp_options<SomeFactory>(tcp_options)
+//   )
+template <typename Factory>
+auto factory_with_tcp_options(tcp_connection_options opts) {
+  return [opts = std::move(opts)](asio::io_context& ctx) -> any_transport_factory {
+    return any_transport_factory(new Factory(ctx, opts));
+  };
+}
 
 }  // namespace http2

@@ -1,6 +1,7 @@
 #include <thread>
 
 #include <http2/http2_client.hpp>
+#include "http2/asio/factory.hpp"
 #include "servers/echo_server.hpp"
 #include "http2/fuzzing/any_request_template.hpp"
 #include "http2/fuzzing/emulated_client.hpp"
@@ -36,8 +37,10 @@ int main() try {
   server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
   http2::http2_client client1(
-      ipv6_endpoint, {// avoid sending too many requests because server sets max concurrent streams == 10
-                      .allow_requests_before_server_settings = false});
+      ipv6_endpoint,
+      {// avoid sending too many requests because server sets max concurrent streams == 10
+       .allow_requests_before_server_settings = false},
+      http2::factory_with_tcp_options<http2::asio_factory>({}));
 
   clone_reqtem tem;
   auto& r = tem.req;

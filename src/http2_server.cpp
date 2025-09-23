@@ -68,12 +68,14 @@ struct http2_server::impl {
   http2_server_options options;
   http2_server* creator = nullptr;
   unique_name name;
+  tcp_connection_options tcpopts;
 
   asio::io_context& ioctx() {
     return io;
   }
 
-  explicit impl(int boost_hint) : io(boost_hint) {
+  explicit impl(int boost_hint, tcp_connection_options tcpopts)
+      : io(boost_hint), tcpopts(std::move(tcpopts)) {
     name.set_prefix(SERVER_PREFIX);
   }
 
@@ -120,6 +122,7 @@ struct http2_server::impl {
 
   dd::task<http2_connection_ptr_t> createConnection(asio::ip::tcp::socket socket) {
     try {
+      tcpopts.apply(socket);
       if (sslctx) {
         HTTP2_LOG(TRACE, "start TLS session", name);
 
@@ -276,10 +279,10 @@ struct http2_server::impl {
   }
 };
 
-http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options)
+http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tcp_connection_options tcpopts)
     : m_impl(std::make_unique<http2_server::impl>(
           // https://beta.boost.org/doc/libs/1_74_0/doc/html/boost_asio/overview/core/concurrency_hint.html
-          options.singlethread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT)) {
+          options.singlethread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT, std::move(tcpopts))) {
   if (ctx) {
     m_impl->sslctx = std::move(ctx);
   }
