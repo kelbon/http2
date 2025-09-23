@@ -23,8 +23,66 @@ struct awaiters_queue {
   }
 
  public:
+  awaiters_queue() = default;
+  awaiters_queue(awaiters_queue&& other) noexcept
+      : first(std::exchange(first, other.first)), last(std::exchange(other.last)) {
+  }
+  awaiters_queue& operator=(awaiters_queue&& other) noexcept {
+    std::swap(first, other.first);
+    std::swap(last, other.last);
+    return *this;
+  }
+  ~awaiters_queue() = default;
+
   bool empty() const noexcept {
     return first == nullptr;
+  }
+
+  struct iterator {
+    node_type* n = nullptr;
+
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = node_type;
+    using reference = node_type&;
+    using difference_type = ptrdiff_t;
+
+    constexpr bool operator==(std::default_sentinel_t) const noexcept {
+      return !n;
+    }
+    constexpr bool operator==(const iterator& other) const noexcept {
+      return n == other.n;
+    }
+    constexpr reference operator*() const noexcept {
+      assert(n);
+      return *n;
+    }
+    constexpr node_type* operator->() const noexcept {
+      return n;
+    }
+
+    // * after invoking references to value from operator* are invalidated
+    iterator& operator++() KELCORO_LIFETIMEBOUND {
+      n = n->next;
+      return *this;
+    }
+    void operator++(int) {
+      ++(*this);
+    }
+  };
+
+  iterator begin() noexcept {
+    return iterator(first);
+  }
+
+  static std::default_sentinel_t end() noexcept {
+    return std::default_sentinel;
+  }
+
+  void clear_and_dispose(auto disposer) noexcept {
+    static_assert(noexcept(disposer(first)));
+    while (first)
+      disposer(std::exchange(first, first->next));
+    last = nullptr;
   }
 
   // precondition: node != nullptr && node is not contained in queue
