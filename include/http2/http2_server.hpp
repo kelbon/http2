@@ -7,6 +7,7 @@
 #include "http2/request_context.hpp"
 
 #include <kelcoro/task.hpp>
+#include <kelcoro/thread_pool.hpp>
 
 namespace http2 {
 
@@ -15,10 +16,17 @@ struct server_endpoint {
   bool reuse_address = true;
 };
 
-// NOTE! this class is made to be used with seastar::sharded<T>
+// single threaded interface of server
+// user must inherit http2_server and implement virtual methods, then use http2_server itself as
+// signlethreaded or use http2::server as multithreaded
 struct http2_server {
+ private:
   struct impl;
   std::unique_ptr<impl> m_impl;
+
+  friend struct mt_server;
+  // used by http2::server
+  void set_accept_callback(move_only_fn<void(asio::ip::tcp::socket)>);
 
  public:
   // creates non-tls server
@@ -77,11 +85,77 @@ struct http2_server {
   dd::task<void> terminate();
 
   // used to run server tasks
-  // TODO test behavior with several threads running .run()
   asio::io_context& ioctx();
+
+  void request_stop();
+  // similar to ioctx().run(), for common interface with mt_server
+  void run();
 
  private:
   friend struct http2_tester;
+};
+
+// multithreaded version
+struct mt_server {
+ private:
+  struct local_server_ctx {
+    std::unique_ptr<http2_server> server;
+    asio::executor_work_guard<asio::io_context::executor_type>* work_guard;
+  };
+  std::vector<local_server_ctx> servers;
+  size_t last_selected_server = 0;
+  std::optional<dd::thread_pool> pool;
+  bool running = false;
+
+  // listen starts always on main thread io_context
+  local_server_ctx& listen_server() {
+    return servers[0];
+  }
+
+  local_server_ctx& next_server() noexcept {
+    local_server_ctx& s = servers[last_selected_server];
+    last_selected_server = (last_selected_server + 1) % servers.size();
+    return s;
+  }
+  void initialize();
+
+ public:
+  // creates server with default thread count, constructs S(args...) on each thread
+  template <std::derived_from<http2_server> S, typename... Args>
+  explicit mt_server(std::in_place_type_t<S> t, Args&&... args)
+      : mt_server(std::thread::hardware_concurrency(), t, std::forward<Args>(args)...) {
+  }
+
+  template <std::derived_from<http2_server> S>
+  explicit mt_server(size_t threadcount, std::in_place_type_t<S>, auto&&... args) {
+    if (threadcount == 0) {
+      threadcount = std::thread::hardware_concurrency();
+      if (threadcount == 0)
+        threadcount = 1;
+    }
+    if (threadcount > 1)  // main thread also works
+      pool.emplace(threadcount - 1);
+    for (; threadcount; --threadcount) {
+      // Note: not perfect forward
+      servers.push_back(local_server_ctx(std::unique_ptr<http2_server>(new S(args...))));
+    }
+    initialize();
+  }
+
+  mt_server(mt_server&&) = delete;
+  void operator=(mt_server&&) = delete;
+
+  ~mt_server() = default;
+
+  void listen(server_endpoint);
+
+  // runs until .stop called. Must not be invoked when `run` is active already
+  // run may be called only once!
+  void run();
+
+  // prevents new requests and sessions, when requests on active sessions are done `run` call will end
+  // server may be stopped only once!
+  void request_stop();
 };
 
 }  // namespace http2

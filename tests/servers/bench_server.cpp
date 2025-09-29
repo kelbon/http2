@@ -1,33 +1,25 @@
 
-#include <http2/http2_server.hpp>
-#include <iostream>
+#include "benchmark_server.hpp"
 #include <http2/asio/awaiters.hpp>
+
+#include <csignal>
+#include <iostream>
 
 using namespace http2;
 
-struct bench_server final : http2_server {
-  using http2_server::http2_server;
+mt_server server(std::in_place_type<bench_server>);
 
-  bench_server(http2_server_options o = {}) : http2_server(http2_server_options{.singlethread = true}) {
-  }
-
-  dd::task<http_response> handle_request(http_request r, request_context) override {
-    http_response rsp;
-    rsp.status = 200;
-    std::string_view answer = "hello world";
-    auto* in = answer.data();
-    rsp.body.assign(in, in + answer.size());
-    co_return rsp;
-  }
-};
+void on_ctrl_c(int) {
+  server.request_stop();
+}
 
 int main() try {
-  bench_server server;
+  std::signal(SIGINT, &on_ctrl_c);
+  asio::ip::tcp::endpoint addr(asio::ip::address_v4::loopback(), 2999);
 
-  asio::ip::tcp::endpoint ipv4_endpoint(asio::ip::address_v4::loopback(), 2999);
-  server.listen({ipv4_endpoint});
+  server.listen({addr});
+  server.run();
 
-  server.ioctx().run();
 } catch (std::exception& e) {
   std::cout << e.what() << std::endl;
 }

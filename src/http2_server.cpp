@@ -6,6 +6,7 @@
 #include "http2/http2_server_session.hpp"
 
 #include <exception>
+#include <latch>
 #include <list>
 
 #include <http2/http2_connection.hpp>
@@ -15,7 +16,6 @@
 #include <http2/http2_writer.hpp>
 #include <http2/logger.hpp>
 #include <http2/utils/reusable_buffer.hpp>
-#include <http2/utils/seastar_future_awaiter.hpp>
 #include <http2/asio/awaiters.hpp>
 
 #include <kelcoro/common.hpp>
@@ -23,11 +23,8 @@
 
 #include <zal/zal.hpp>
 
-#include <boost/asio/io_context.hpp>
+#include "http2/asio/aio_context.hpp"
 #include <boost/asio/ip/tcp.hpp>
-
-#undef DELETE
-#undef NO_ERROR
 
 /*
 
@@ -64,43 +61,42 @@ struct http2_server::impl {
   ssl_context_ptr sslctx = nullptr;  // if nullptr, then server is http (not https)
   std::list<acceptor_t> listeners;
   // gate for opened sessions / acceptors
-  gate sessionsgate;
+  dd::gate sessionsgate;
   http2_server_options options;
   http2_server* creator = nullptr;
   unique_name name;
   tcp_connection_options tcpopts;
-
+  move_only_fn<void(asio::ip::tcp::socket)> acceptcb;
+#ifndef NDEBUG
+  std::thread::id tid = std::this_thread::get_id();
+#endif
   asio::io_context& ioctx() {
     return io;
   }
 
-  explicit impl(int boost_hint, tcp_connection_options tcpopts)
-      : io(boost_hint), tcpopts(std::move(tcpopts)) {
+  explicit impl(tcp_connection_options tcpopts) : io(), tcpopts(std::move(tcpopts)) {
     name.set_prefix(SERVER_PREFIX);
   }
 
   void listen(server_endpoint a) {
+    assert(std::this_thread::get_id() == tid);
     acceptor_t& acceptor = listeners.emplace_back(ioctx(), a.addr, a.reuse_address);
     acceptor.listen();
     acceptConnections(sessionsgate.hold(), listeners.back()).start_and_detach();
     HTTP2_LOG(INFO, "Server listening on {}:{}", a.addr.address().to_string(), a.addr.port(), name);
   }
 
-  // TODO должен быть один поток принимающий соединения и все остальные обрабатывающие соединения
-  // видимо какая то абстракция как получать strand? А мб это на пользователя переложить через отдачу
-  // io_context а тут просто делать стренды
-  dd::task<void> acceptConnections(gate::holder, acceptor_t& srv) try {
+  dd::task<void> acceptConnections(dd::gate::holder, acceptor_t& srv) try {
+    assert(std::this_thread::get_id() == tid);
     on_scope_exit {
       HTTP2_LOG(TRACE, "stops listening", name);
     };
     // note: do not remove listener on scope exit
     while (!sessionsgate.is_closed()) {
       io_error_code ec;
-      // there are only one acceptConnections for each address (listen), after creation connection will be
-      // handled singlethreaded so strand used here for single thread guarantee
-      asio::ip::tcp::socket socket(asio::make_strand(srv.get_executor()));
+      asio::ip::tcp::socket socket(srv.get_executor());
       co_await net.accept(srv, socket, ec);
-
+      assert(std::this_thread::get_id() == tid);
       if (ec == asio::error::operation_aborted) {
         HTTP2_LOG(TRACE, "listening on {} stopped", srv.local_endpoint().address().to_string(), name);
         co_return;
@@ -112,7 +108,10 @@ struct http2_server::impl {
       }
       HTTP2_LOG(TRACE, "accepted connection", name);
       if (!sessionsgate.is_closed()) {
-        sessionLifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
+        if (!acceptcb)
+          sessionLifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
+        else
+          acceptcb(std::move(socket));
       }
     }
     HTTP2_LOG(TRACE, "acceptConnections: gate is closed", name);
@@ -121,6 +120,7 @@ struct http2_server::impl {
   }
 
   dd::task<http2_connection_ptr_t> createConnection(asio::ip::tcp::socket socket) {
+    assert(std::this_thread::get_id() == tid);
     try {
       tcpopts.apply(socket);
       if (sslctx) {
@@ -147,7 +147,9 @@ struct http2_server::impl {
   }
 
   // Note: this code ignores possible bad_alloc and other logs exceptions
-  dd::task<void> sessionLifecycle(gate::holder, asio::ip::tcp::socket socket) try {
+  dd::task<void> sessionLifecycle(dd::gate::holder, asio::ip::tcp::socket socket) try {
+    assert(std::this_thread::get_id() == tid);
+
     http2_connection_ptr_t http2con = co_await createConnection(std::move(socket));
     if (!http2con || !creator) {
       co_return;
@@ -193,6 +195,7 @@ struct http2_server::impl {
       });
       timer.arm(options.connectionTimeout);
       (void)co_await establish_http2_session_server(session.connection, opts);
+      session.established = true;
       timer.cancel();
     } catch (std::exception& e) {
       HTTP2_LOG(ERROR, "server -> client connection establishment failed, err: {}", e.what(), name);
@@ -235,54 +238,65 @@ struct http2_server::impl {
 
     // we are here if reader ended with exception or after soft shutdown (streams closed, new requests
     // forbidden)
-    co_await session.connectionPartsGate.close(ioctx());
-    co_await session.responsegate.close(ioctx());
+    co_await session.connectionPartsGate.close();
+    co_await session.responsegate.close();
+    co_await yield_on_ioctx(ioctx());  // give `leave` callers time to finish their work
     HTTP2_LOG(TRACE, "session stop ended", session.name());
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "session ended with exception: {}", e.what(), name);
   }
 
   void stopListeners() {
+    assert(std::this_thread::get_id() == tid);
     HTTP2_LOG(TRACE, "shutdown: listeners size {}", listeners.size(), name);
     for (auto& l : listeners) {
       l.close();
     }
-    // TODO run .open when required?
+    listeners.clear();
   }
 
   dd::task<void> shutdown() {
+    co_await jump_on_ioctx(ioctx());
+    assert(std::this_thread::get_id() == tid);
     HTTP2_LOG(TRACE, "shutdown started", name);
     on_scope_exit {
       HTTP2_LOG(TRACE, "shutdown ended", name);
     };
-    sessionsgate.request_close();
-    stopListeners();
+    auto closeg = sessionsgate.close();
     for (auto& session : sessions) {
       session.requestShutdown();
     }
-    co_await sessionsgate.close(ioctx());
+    stopListeners();
+    co_await closeg;
+    co_await yield_on_ioctx(ioctx());
+    if (sessionsgate.is_closed())  // may be another shutdown/terminate
+      sessionsgate.reopen();
     assert(sessions.empty());
+    assert(listeners.empty());
   }
 
   dd::task<void> terminate() {
+    co_await jump_on_ioctx(ioctx());
+    assert(std::this_thread::get_id() == tid);
     HTTP2_LOG(TRACE, "terminate started", name);
     on_scope_exit {
       HTTP2_LOG(TRACE, "terminate ended", name);
     };
-    sessionsgate.request_close();
-    stopListeners();
+    auto closeg = sessionsgate.close();
     for (auto& session : sessions) {
       session.requestTerminate();
     }
-    co_await sessionsgate.close(ioctx());
+    stopListeners();
+    co_await closeg;
+    co_await yield_on_ioctx(ioctx());
+    sessionsgate.reopen();
     assert(sessions.empty());
+    assert(listeners.empty());
   }
 };
 
 http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tcp_connection_options tcpopts)
-    : m_impl(std::make_unique<http2_server::impl>(
-          // https://beta.boost.org/doc/libs/1_74_0/doc/html/boost_asio/overview/core/concurrency_hint.html
-          options.singlethread ? 1 : BOOST_ASIO_CONCURRENCY_HINT_DEFAULT, std::move(tcpopts))) {
+    : m_impl(std::make_unique<http2_server::impl>(std::move(tcpopts))) {
   if (ctx) {
     m_impl->sslctx = std::move(ctx);
   }
@@ -293,10 +307,10 @@ http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tc
 http2_server::~http2_server() {
   assert(m_impl);
   HTTP2_LOG(TRACE, "~http2_server", m_impl->name);
-  if (m_impl->sessionsgate.active_count() == 0) {
-    return;
-  }
   m_impl->creator = nullptr;
+#ifndef NDEBUG
+  m_impl->tid = std::this_thread::get_id();  // change working thread
+#endif
   std::coroutine_handle h = m_impl->terminate().start_and_detach(/*stop_at_end=*/true);
 
   on_scope_exit {
@@ -311,6 +325,10 @@ http2_server::~http2_server() {
   } catch (std::exception& e) {
     HTTP2_LOG(ERROR, "error while ~http2_server: {}", e.what(), m_impl->name);
   }
+}
+
+void http2_server::set_accept_callback(move_only_fn<void(asio::ip::tcp::socket)> cb) {
+  m_impl->acceptcb = std::move(cb);
 }
 
 size_t http2_server::sessions_count() const noexcept {
@@ -331,6 +349,109 @@ dd::task<void> http2_server::terminate() {
 
 asio::io_context& http2_server::ioctx() {
   return m_impl->ioctx();
+}
+
+void http2_server::request_stop() {
+  shutdown().start_and_detach();
+}
+
+void http2_server::run() {
+  if (m_impl->listeners.empty())
+    HTTP2_LOG_WARN("http2 server `run` called, but no one address listen!");
+  if (ioctx().stopped())
+    ioctx().restart();
+  ioctx().run();
+}
+
+// multi threaded server
+
+void mt_server::initialize() {
+  auto cb = [this](asio::ip::tcp::socket sock) {
+    auto& server = next_server().server;
+
+    // rebind socket executor
+    asio::ip::tcp::socket newsock(server->ioctx());
+    io_error_code ec;
+    auto p = sock.local_endpoint(ec).protocol();
+    auto rawsock = sock.release(ec);
+    newsock.assign(p, rawsock);
+    if (ec) {
+      HTTP2_LOG_ERROR("error when transfering accepted socket, err: {}", ec.what());
+      return;
+    }
+    asio::post(server->ioctx(), [&server, s = std::move(newsock)]() mutable {
+      if (server->m_impl->sessionsgate.is_closed()) [[unlikely]]
+        return;
+      server->m_impl->sessionLifecycle(server->m_impl->sessionsgate.hold(), std::move(s)).start_and_detach();
+    });
+  };
+
+  listen_server().server->set_accept_callback(cb);
+}
+
+void mt_server::listen(server_endpoint e) {
+  // listen always on main thread, so `listen` effects will be observable after `server::listen` return
+  listen_server().server->listen(e);
+}
+
+void mt_server::run() {
+  assert(servers.size() == 1 || servers.size() == pool->queues_range().size() + 1);
+  if (running)
+    throw std::runtime_error("`run` already called");
+  running = true;
+  on_scope_exit {
+    running = false;
+  };
+  if (listen_server().server->m_impl->listeners.empty())
+    HTTP2_LOG_WARN("mt_server `run` called, but no one address listen!");
+  std::latch all_done(servers.size());
+  if (pool) {
+    std::span qs = pool->queues_range();
+    for (size_t i = 1; i != servers.size(); ++i) {
+      dd::schedule_to(qs[i - 1], [&all_done, ptr = &servers[i]] {
+        try {
+          if (ptr->server->ioctx().stopped())
+            ptr->server->ioctx().restart();
+          auto guard = asio::make_work_guard(ptr->server->ioctx());
+          ptr->work_guard = &guard;
+#ifndef NDEBUG
+          ptr->server->m_impl->tid = std::this_thread::get_id();
+#endif
+          ptr->server->ioctx().run();
+        } catch (std::exception& e) {
+          HTTP2_LOG_ERROR("cannot schedule `run` task: err: {}", e.what());
+        }
+        all_done.count_down();
+      });
+    }
+  }
+  auto& main_server = servers[0];
+#ifndef NDEBUG
+  main_server.server->m_impl->tid = std::this_thread::get_id();
+#endif
+  if (main_server.server->ioctx().stopped())
+    main_server.server->ioctx().restart();
+  auto guard = asio::make_work_guard(main_server.server->ioctx());
+  main_server.work_guard = &guard;
+  main_server.server->ioctx().run();
+  all_done.arrive_and_wait();
+}
+
+void mt_server::request_stop() {
+  if (!running)
+    return;
+  auto stop1 = [](local_server_ctx& c) -> dd::task<void> {
+    co_await jump_on_ioctx(c.server->ioctx());
+    co_await c.server->shutdown();
+    if (c.work_guard) {  // avoid another request_stop
+      asio::post(c.server->ioctx(), [&c] {
+        c.work_guard->reset();
+        c.work_guard = nullptr;
+      });
+    }
+  };
+  for (auto& c : servers)
+    stop1(c).start_and_detach();
 }
 
 }  // namespace http2

@@ -31,9 +31,6 @@ struct http2_server_options {
   duration_t connectionTimeout = SERVER_DEFAULT_CONNECTION_TIMEOUT;
   // when drop client if it does not send anything
   duration_t idleTimeout = SERVER_DEFAULT_IDLE_TIMEOUT;
-  // if this option is true, user must use server .run only from one thread and server will be optimized for
-  // it
-  bool singlethread = false;
   // if false, server will not declare websocket support for clients
   bool supports_websocket = false;
 };

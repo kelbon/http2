@@ -203,8 +203,10 @@ size_t server_session::requestsLeftExactly() const noexcept {
 void server_session::requestShutdown() noexcept {
   if (!newRequestsForbiden) {
     newRequestsForbiden = true;
-    send_goaway(connection, connection->lastInitiatedStreamId(), errc_e::NO_ERROR, "graceful shutdown")
-        .start_and_detach();
+    if (established) {
+      send_goaway(connection, connection->lastInitiatedStreamId(), errc_e::NO_ERROR, "graceful shutdown")
+          .start_and_detach();
+    }
   }
 
   if (!hasUnfinishedRequests()) {
