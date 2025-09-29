@@ -5,18 +5,11 @@
 
 #include "http2/transport_factory.hpp"
 #include "http2/utils/memory.hpp"
+#include "http2/asio/aio_context.hpp"
 
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ssl/context.hpp>
-#include <boost/asio/ssl/stream.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/asio/read.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/asio.hpp>
-// windows is really bad
-
-#undef NO_ERROR
-#undef Yield
-#undef min
-#undef max
 
 #include <kelcoro/task.hpp>
 

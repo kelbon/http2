@@ -5,6 +5,7 @@
 
 #include "http2/http2_client.hpp"
 
+#include "http2/asio/asio_executor.hpp"
 #include "http2/http2_connection.hpp"
 #include "http2/http2_connection_establishment.hpp"
 #include "http2/http2_errors.hpp"
@@ -679,7 +680,8 @@ dd::task<void> http2_client::graceful_stop() {
     --m_stopRequested;
   };
   // wait all 'connect' coroutines done
-  co_await m_connectionGate.close(ioctx());
+  co_await m_connectionGate.close();
+  co_await yield_on_ioctx(ioctx());
   // prevent new connection tries and wait all startConnecting coroutines are
   // done
   auto lock = lockConnections();
@@ -694,7 +696,8 @@ dd::task<void> http2_client::graceful_stop() {
   // drop our connection correctly if exists
   drop_connection(reqerr_e::CANCELLED);
 
-  co_await m_connectionPartsGate.close(ioctx());
+  co_await m_connectionPartsGate.close();
+  co_await yield_on_ioctx(ioctx());
   m_connectionPartsGate = {};  // reopen
   m_connectionGate = {};       // reopen
 

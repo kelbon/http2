@@ -10,8 +10,6 @@
 #include <format>
 #include <hpack/basic_types.hpp>
 
-#undef NO_ERROR
-
 namespace http2 {
 
 // 0 reserved for connection related

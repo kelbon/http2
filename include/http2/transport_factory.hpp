@@ -13,10 +13,6 @@
 #include <kelcoro/task.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
-#undef DELETE
-#undef NO_ERROR
-#undef MIN
-
 namespace asio = boost::asio;
 
 namespace http2 {

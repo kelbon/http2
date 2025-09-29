@@ -1,15 +1,9 @@
 #pragma once
 
-#include <boost/asio/ssl/context.hpp>
-#include <boost/asio/ssl/stream.hpp>
+#include "http2/asio/aio_context.hpp"
+
 #include <boost/intrusive_ptr.hpp>
 
-#undef NO_ERROR
-#undef min
-#undef max
-#undef NO_DATA
-#undef DELETE
-#undef socket
 #include <filesystem>
 #include <span>
 

@@ -10,7 +10,7 @@
 #include "http2/utils/reusable_buffer.hpp"
 
 #include <zal/zal.hpp>
-#undef NO_ERROR
+
 namespace http2 {
 
 // handles only utility frames (not DATA / HEADERS)

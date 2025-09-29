@@ -3,7 +3,7 @@
 #include "http2/http2_send_frames.hpp"
 
 #include "http2/http2_connection.hpp"
-#undef NO_ERROR
+
 namespace http2 {
 
 dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid, errc_e errc,

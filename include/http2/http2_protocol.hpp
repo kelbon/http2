@@ -18,8 +18,7 @@
  https://datatracker.ietf.org/doc/html/rfc9113
 
 */
-// windows)))
-#undef NO_ERROR
+
 namespace http2 {
 
 struct http_request;
