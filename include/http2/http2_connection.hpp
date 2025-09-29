@@ -11,9 +11,7 @@
 #include "http2/utils/fn_ref.hpp"
 #include "http2/utils/timer.hpp"
 #include "http2/utils/merged_segments.hpp"
-#include "http2/utils/gateway.hpp"
-
-#include <boost/asio/io_context.hpp>
+#include "http2/asio/aio_context.hpp"
 
 #include <span>
 
@@ -23,6 +21,8 @@
 #include <boost/intrusive/treap_set.hpp>
 #include <boost/intrusive/unordered_set.hpp>
 #include <boost/intrusive_ptr.hpp>
+
+#include <kelcoro/road.hpp>
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
 
@@ -211,8 +211,7 @@ struct request_node {
   std::string_view name() const noexcept;
 };
 
-// Note: shutdown must be called, its not RAII type because its not possible to
-// stop writer/reader in shutdown with seastar
+// Note: shutdown must be called
 struct http2_connection {
   using requests_member_hook_t =
       bi::member_hook<request_node, request_node::requests_hook_type, &request_node::requestsHook>;
@@ -254,7 +253,7 @@ struct http2_connection {
   cfint_t myWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   cfint_t receiverWindowSize = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
   // no one frame must be between CONTINUATION frames
-  gateway continuationGateway;
+  dd::road continuationGateway;
   // setted only when writer is suspended and nullptr when works
   dd::job writer = {};
   requests_t requests;
