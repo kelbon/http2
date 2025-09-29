@@ -10,13 +10,6 @@
 
 #include <boost/system/error_code.hpp>
 
-#undef NO_DATA
-#undef NO_ERROR
-#undef Yield
-#undef min
-#undef max
-#undef DELETE
-
 namespace http2 {
 
 using io_error_code = boost::system::error_code;

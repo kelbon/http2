@@ -6,9 +6,10 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_errors.hpp"
 #include "http2/http2_protocol.hpp"
-#include "http2/utils/gate.hpp"
 
 #include <boost/intrusive/list_hook.hpp>
+
+#include <kelcoro/gate.hpp>
 
 namespace http2 {
 
@@ -19,9 +20,9 @@ struct http2_frame_t;
 // destroy
 struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   uint32_t refcount = 0;
-  gate responsegate;
+  dd::gate responsegate;
   // for connection reader/writer
-  gate connectionPartsGate;
+  dd::gate connectionPartsGate;
   // invariant: != nullptr
   http2_connection_ptr_t connection;
   http2_server_options options;
@@ -32,6 +33,8 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   bool newRequestsForbiden = false;
   bool terminated = false;
   bool done = false;
+  // used to check if goaway required when shutting down. Do not send goaway if session not established yet
+  bool established = false;
 
   // precondition: con != nullptr
   server_session(http2_connection_ptr_t con, http2_server_options opts,

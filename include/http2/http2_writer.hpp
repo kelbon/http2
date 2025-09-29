@@ -5,7 +5,6 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
-#include "http2/utils/gate.hpp"
 
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
@@ -58,9 +57,9 @@ extern template dd::job write_stream_data<false>(node_ptr node, http2_connection
 // precondition: con && sleepcb  && onnetworkerr. Callbacks should not throw and
 // behave as values, not references
 dd::job start_writer_for_client(http2_connection_ptr_t con, writer_sleepcb_t, writer_on_network_err_t,
-                                bool forcedisablehpack, gate::holder);
+                                bool forcedisablehpack, dd::gate::holder);
 
 dd::job start_writer_for_server(http2_connection_ptr_t con, writer_sleepcb_t, writer_on_network_err_t,
-                                bool forcedisablehpack, gate::holder);
+                                bool forcedisablehpack, dd::gate::holder);
 
 }  // namespace http2

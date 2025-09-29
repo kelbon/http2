@@ -8,18 +8,17 @@
 #include "http2/transport_factory.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
-#include "http2/utils/gate.hpp"
 #include "http2/utils/unique_name.hpp"
 
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/list_hook.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
+
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
+#include <kelcoro/gate.hpp>
 
 #include <zal/zal.hpp>
-
-#undef NO_DATA
 
 namespace http2 {
 
@@ -93,9 +92,9 @@ struct http2_client {
   http2_connection_ptr_t m_notYetReadyConnection = nullptr;
   size_t m_stopRequested = 0;
   //  used to correctly wait in 'stop' while all connect calls will end
-  gate m_connectionGate;
+  dd::gate m_connectionGate;
   // for connection reader/writer
-  gate m_connectionPartsGate;
+  dd::gate m_connectionPartsGate;
   unique_name m_name;
 
   // fills requests from raw http2 frames
