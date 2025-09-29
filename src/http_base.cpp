@@ -5,9 +5,6 @@
 #include "http2/request_context.hpp"
 #include "http2/utils/macro.hpp"
 
-// windows)))
-#undef DELETE
-
 namespace http2 {
 
 std::string_view e2str(reqerr_e::values_e e) noexcept {
