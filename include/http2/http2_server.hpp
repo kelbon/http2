@@ -105,7 +105,8 @@ struct mt_server {
   std::vector<local_server_ctx> servers;
   size_t last_selected_server = 0;
   std::optional<dd::thread_pool> pool;
-  bool running = false;
+  bool running = false;   // accessed only from `listen_server` thread
+  bool stopping = false;  // if request_stop in progress
 
   // listen starts always on main thread io_context
   local_server_ctx& listen_server() {
