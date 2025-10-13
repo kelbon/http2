@@ -597,12 +597,14 @@ dd::task<void> http2_connection::receive_headers_with_continuation(
   assert(frame.header.type == frame_e::HEADERS);
   assert(!(frame.header.flags & flags::END_HEADERS));
   assert(oneachframe && whendone);
-  bytes_t bytes(frame.data.begin(), frame.data.end());
+
   // TODO потоковое получение здесь?
   frame.validate_streamid();
   frame.removePadding();
   frame.ignoreDeprecatedPriority();
+
   frame_header startheader = frame.header;
+  bytes_t bytes(frame.data.begin(), frame.data.end());
 
   on_scope_failure(decode_anyway) {
     // maintain dyntab
