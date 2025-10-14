@@ -31,13 +31,13 @@ struct deadline_t {
   std::strong_ordering operator<=>(deadline_t const&) const = default;
 };
 
-// TODO duration underflow
 inline deadline_t deadline_after(duration_t duration) noexcept {
+  if (duration.count() <= 0) [[unlikely]]
+    return deadline_t::yesterday();
   // avoid overflow
   auto tp = std::chrono::steady_clock::now();
-  if (tp.max() - tp <= duration) {
-    return deadline_t{tp.max()};
-  }
+  if (tp.max() - tp <= duration) [[unlikely]]
+    return deadline_t::never();
   return deadline_t{tp + duration};
 }
 

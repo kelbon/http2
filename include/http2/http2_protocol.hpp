@@ -499,10 +499,7 @@ struct window_update_frame {
   [[nodiscard]] static window_update_frame parse(frame_header header, std::span<byte_t const> bytes);
 };
 
-// TODO
-struct continuation_frame {
-  // not yet supported
-};
+struct continuation_frame {};
 
 template <std::output_iterator<hpack::byte_t> O>
 static O form_connection_initiation(settings_t settings, O out) {

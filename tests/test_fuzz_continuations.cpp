@@ -5,18 +5,10 @@
 #include "http2/fuzzing/any_request_template.hpp"
 #include "http2/fuzzing/emulated_client.hpp"
 #include "http2/fuzzing/fuzzer.hpp"
+#include <kelcoro/algorithm.hpp>
 
 using namespace http2::fuzzing;
 namespace asio = boost::asio;
-
-// TODO rm (into kelcoro)
-template <std::invocable<> U>
-auto chain(dd::task<void> t1, U t2) -> dd::task<std::invoke_result_t<U>> {
-  assert(t1);
-  co_await t1;
-  t2();
-  co_return;
-}
 
 using namespace std::chrono_literals;
 
@@ -56,8 +48,9 @@ int main() try {
   rr.body.content_type = "text/plain";
   rr.body.data.assign(bd.begin(), bd.end());
   bool done = false;
-  chain(emulate_client_n(fuz, client1, tem, 100, 10, {.stream = 0, .connect = 0}), [&] {
+  dd::chain(emulate_client_n(fuz, client1, tem, 100, 10, {.stream = 0, .connect = 0}), [&] {
     done = true;
+    return std::suspend_never{};
   }).start_and_detach();
   fuz.run_until([&] { return done; }, server.ioctx(), client1.ioctx());
   HTTP2_LOG_INFO("FUZZING TEST: SUCCESS");

@@ -19,7 +19,6 @@ allows to use my coroutines instead of asio::awaitable and do not think about co
 
 Also removes problems with asio overloads (there so many of them and they are completely not understandable)
 and many problems with asio::buffer (it has ~50 constructor overloads)
-TODO remove problems with dynamic buffers (provide functions with it)
 */
 
 namespace http2 {
@@ -328,53 +327,6 @@ struct net_t {
   KELCORO_CO_AWAIT_REQUIRED static auto read_some(Stream& stream, std::span<byte_t> buffer,
                                                   io_error_code& ec) {
     return asio_awaiter<size_t, read_some_operation<Stream>>(ec, stream, buffer);
-  }
-
-  // appends readen bytes to 'buffer'
-  // returns position where 'delim' starts or -1 on error
-  // precondition: needle is not empty
-  static dd::task<size_t> read_until(auto& stream, std::string& buffer, std::string_view needle,
-                                     io_error_code& ec) {
-    assert(!needle.empty());
-    assert(!ec);
-    // TODO better
-    byte_t buf[128];
-    const size_t init_sz = buffer.size();
-    size_t transfered = 0;
-    size_t checked_bytes = 0;
-    for (;;) {
-      size_t read_bytes = co_await net_t{}.read_some(stream, buf, ec);
-      if (ec)
-        co_return needle.npos;
-      transfered += read_bytes;
-      buffer += std::string_view((char*)buf, read_bytes);  // TODO better
-      if (transfered < needle.size())
-        continue;
-      size_t s = needle.size() - 1;
-      auto p = buffer.find(needle, init_sz + (checked_bytes > s ? checked_bytes - s : 0));
-      if (p != buffer.npos)
-        co_return p;
-      checked_bytes += read_bytes;
-    }
-    unreachable();
-  }
-
-  // appends readen bytes to 'buffer'
-  // returns count of bytes transmitted
-  static dd::task<void> read_until_condition(auto& stream, std::vector<uint8_t>& buffer, auto condition,
-                                             io_error_code& ec) {
-    assert(!ec);
-    // TODO better
-    byte_t buf[128];
-    for (;;) {
-      size_t read_bytes = co_await net_t{}.read_some(stream, buf, ec);
-      if (ec)
-        co_return;
-      buffer.insert(buffer.end(), buf, buf + read_bytes);  // TODO better
-      if (condition(buffer))
-        co_return;
-    }
-    unreachable();
   }
 
   template <typename Timer>
