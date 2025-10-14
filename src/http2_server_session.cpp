@@ -64,7 +64,7 @@ struct response_bro {
   }
 };
 
-server_session::server_session(http2_connection_ptr_t con, http2_server_options opts, http2_server& s)
+server_session::server_session(h2connection_ptr con, http2_server_options opts, http2_server& s)
     : connection(std::move(con)), options(opts), server(&s) {
   assert(connection);
 }

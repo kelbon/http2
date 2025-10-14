@@ -6,8 +6,7 @@
 
 namespace http2 {
 
-dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid, errc_e errc,
-                           std::string dbginfo) {
+dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t streamid, errc_e errc, std::string dbginfo) {
   if (!con || con->isDropped()) {
     co_return false;
   }
@@ -34,7 +33,7 @@ dd::task<bool> send_goaway(http2_connection_ptr_t con, stream_id_t streamid, err
   co_return true;
 }
 
-dd::task<void> send_rst_stream(http2_connection_ptr_t con, stream_id_t streamid, errc_e errc) {
+dd::task<void> send_rst_stream(h2connection_ptr con, stream_id_t streamid, errc_e errc) {
   if (!con || con->isDropped()) {
     co_return;
   }
@@ -52,7 +51,7 @@ dd::task<void> send_rst_stream(http2_connection_ptr_t con, stream_id_t streamid,
   }
 }
 
-dd::task<void> send_settings_ack(http2_connection_ptr_t con) {
+dd::task<void> send_settings_ack(h2connection_ptr con) {
   if (!con || con->isDropped()) {
     co_return;
   }
@@ -67,7 +66,7 @@ dd::task<void> send_settings_ack(http2_connection_ptr_t con) {
   }
 }
 
-dd::task<bool> send_ping(http2_connection_ptr_t con, uint64_t data, bool requestPong) {
+dd::task<bool> send_ping(h2connection_ptr con, uint64_t data, bool requestPong) {
   if (!con || con->isDropped()) {
     co_return false;
   }
@@ -80,7 +79,7 @@ dd::task<bool> send_ping(http2_connection_ptr_t con, uint64_t data, bool request
   co_return !ec;
 }
 
-dd::task<void> handle_ping(ping_frame ping, http2_connection_ptr_t con) {
+dd::task<void> handle_ping(ping_frame ping, h2connection_ptr con) {
   HTTP2_LOG(TRACE, "received ping, data: {}", ping.getData(), con->name);
   if (ping.header.flags & flags::ACK) {
     if (ping.getData() == PING_VALUE) {
@@ -95,7 +94,7 @@ dd::task<void> handle_ping(ping_frame ping, http2_connection_ptr_t con) {
   }
 }
 
-dd::task<bool> send_window_update(http2_connection_ptr_t con, stream_id_t id, uint32_t inc) {
+dd::task<bool> send_window_update(h2connection_ptr con, stream_id_t id, uint32_t inc) {
   if (!con || con->isDropped()) {
     co_return false;
   }
@@ -109,7 +108,7 @@ dd::task<bool> send_window_update(http2_connection_ptr_t con, stream_id_t id, ui
 }
 
 // sends WINDOW_UPDATE correctly to set window size to max
-dd::task<void> update_window_to_max(cfint_t& size, stream_id_t streamid, http2_connection_ptr_t con) try {
+dd::task<void> update_window_to_max(cfint_t& size, stream_id_t streamid, h2connection_ptr con) try {
   assert(con);
   // its possible to have < 0 in such cases like
   // * sending DATA before settings exchange

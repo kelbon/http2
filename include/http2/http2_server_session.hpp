@@ -24,7 +24,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // for connection reader/writer
   dd::gate connectionPartsGate;
   // invariant: != nullptr
-  http2_connection_ptr_t connection;
+  h2connection_ptr connection;
   http2_server_options options;
   http2_server* server = nullptr;
   // reader increments this value for detecting client idle
@@ -37,8 +37,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   bool established = false;
 
   // precondition: con != nullptr
-  server_session(http2_connection_ptr_t con, http2_server_options opts,
-                 http2_server& server KELCORO_LIFETIMEBOUND);
+  server_session(h2connection_ptr con, http2_server_options opts, http2_server& server KELCORO_LIFETIMEBOUND);
 
   server_session(server_session&&) = delete;
   void operator=(server_session&&) = delete;
@@ -116,7 +115,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   void clientRequestsGracefulShutdown(goaway_frame);
 
   struct response_written_awaiter {
-    http2_connection* con = nullptr;
+    h2connection* con = nullptr;
     h2stream* n = nullptr;
 
     bool await_ready() noexcept {

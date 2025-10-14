@@ -17,7 +17,7 @@ namespace http2 {
 static void server_handle_utility_frame(http2_frame_t frame, server_session& session) {
   using enum frame_e;
 
-  http2_connection& con = *session.connection;
+  h2connection& con = *session.connection;
 
   switch (frame.header.type) {
     case HEADERS:
@@ -75,7 +75,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   on_scope_exit {
     HTTP2_LOG(TRACE, "reader ended", session.name());
   };
-  http2_connection& con = *session.connection;
+  h2connection& con = *session.connection;
   io_error_code ec;
   reusable_buffer buffer;
   http2_frame_t frame;

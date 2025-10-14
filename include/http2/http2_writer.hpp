@@ -35,11 +35,11 @@ inline void intrusive_ptr_release(writer_callbacks* p) noexcept {
 using writer_callbacks_ptr = boost::intrusive_ptr<writer_callbacks>;
 
 template <bool IS_CLIENT>
-dd::job write_stream_data(stream_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs);
+dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callbacks_ptr cbs);
 
-extern template dd::job write_stream_data<true>(stream_ptr node, http2_connection_ptr_t con,
+extern template dd::job write_stream_data<true>(stream_ptr node, h2connection_ptr con,
                                                 writer_callbacks_ptr cbs);
-extern template dd::job write_stream_data<false>(stream_ptr node, http2_connection_ptr_t con,
+extern template dd::job write_stream_data<false>(stream_ptr node, h2connection_ptr con,
                                                  writer_callbacks_ptr cbs);
 
 // creates writer associated with connection.
@@ -56,10 +56,10 @@ extern template dd::job write_stream_data<false>(stream_ptr node, http2_connecti
 //
 // precondition: con && sleepcb  && onnetworkerr. Callbacks should not throw and
 // behave as values, not references
-dd::job start_writer_for_client(http2_connection_ptr_t con, writer_sleepcb_t, writer_on_network_err_t,
+dd::job start_writer_for_client(h2connection_ptr con, writer_sleepcb_t, writer_on_network_err_t,
                                 bool forcedisablehpack, dd::gate::holder);
 
-dd::job start_writer_for_server(http2_connection_ptr_t con, writer_sleepcb_t, writer_on_network_err_t,
+dd::job start_writer_for_server(h2connection_ptr con, writer_sleepcb_t, writer_on_network_err_t,
                                 bool forcedisablehpack, dd::gate::holder);
 
 }  // namespace http2

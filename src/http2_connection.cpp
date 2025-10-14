@@ -36,11 +36,11 @@ void trace_request_headers(h2stream const& node, bool fromclient) {
 
 namespace http2 {
 
-void intrusive_ptr_add_ref(http2_connection* p) noexcept {
+void intrusive_ptr_add_ref(h2connection* p) noexcept {
   ++p->refcount;
 }
 
-void intrusive_ptr_release(http2_connection* p) noexcept {
+void intrusive_ptr_release(h2connection* p) noexcept {
   --p->refcount;
   if (p->refcount == 0) {
     delete p;
@@ -206,9 +206,9 @@ std::string_view h2stream::name() const noexcept {
   return connection ? connection->name.str() : "<null>";
 }
 
-// http2_connection methods
+// h2connection methods
 
-http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context& ctx)
+h2connection::h2connection(any_connection_t&& c, boost::asio::io_context& ctx)
     : tcpCon(std::move(c)),
       buckets(initial_buckets_count),
       responses({buckets.data(), buckets.size()}),
@@ -218,11 +218,11 @@ http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context
       ioctx(ctx) {
 }
 
-http2_connection::~http2_connection() {
+h2connection::~h2connection() {
   freeNodes.clear_and_dispose([](h2stream* node) { delete node; });
 }
 
-void http2_connection::settings_changed(http2_frame_t newsettings, bool remote_is_client) {
+void h2connection::settings_changed(http2_frame_t newsettings, bool remote_is_client) {
   if (newsettings.header.flags & flags::ACK) {
     validate_settings_ack_frame(newsettings.header);
     // только после подтверждения настроек я действительно могу перейти на свои настройки
@@ -252,11 +252,11 @@ void http2_connection::settings_changed(http2_frame_t newsettings, bool remote_i
   send_settings_ack(this).start_and_detach();
 }
 
-void http2_connection::serverSettingsChanged(http2_frame_t newsettings) {
+void h2connection::serverSettingsChanged(http2_frame_t newsettings) {
   settings_changed(newsettings, /*remote_is_client=*/false);
 }
 
-void http2_connection::serverRequestsGracefulShutdown(goaway_frame f) {
+void h2connection::serverRequestsGracefulShutdown(goaway_frame f) {
   HTTP2_LOG(TRACE, "graceful shutdown initiated: last stream id: {}", f.lastStreamId, name);
   // if we did not initiate this graceful shutdown
   if (!gracefulshutdownGoawaySended) {
@@ -266,7 +266,7 @@ void http2_connection::serverRequestsGracefulShutdown(goaway_frame f) {
   // do not drop connection, graceful_stop will do it or reader (its out of streams)
 }
 
-void http2_connection::initiateGracefulShutdown(stream_id_t laststreamid) noexcept {
+void h2connection::initiateGracefulShutdown(stream_id_t laststreamid) noexcept {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-3
   // when GOAWAY with NO_ERROR received interpret it as shutdown initiation.
   // Receivers of a GOAWAY frame MUST NOT open additional streams on the
@@ -285,7 +285,7 @@ void http2_connection::initiateGracefulShutdown(stream_id_t laststreamid) noexce
   requests.clear_and_dispose([&](h2stream* r) { finishRequest(*r, reqerr_e::SERVER_CANCELLED_REQUEST); });
 }
 
-void http2_connection::forget(h2stream& node) noexcept {
+void h2connection::forget(h2stream& node) noexcept {
   if (node.requestsHook.is_linked()) {
     erase_byref(requests, node);
   }
@@ -298,7 +298,7 @@ void http2_connection::forget(h2stream& node) noexcept {
   }
 }
 
-void http2_connection::finishRequest(h2stream& node, int status) noexcept {
+void h2connection::finishRequest(h2stream& node, int status) noexcept {
   forget(node);
   if (!node.task) {
     return;
@@ -319,7 +319,7 @@ void http2_connection::finishRequest(h2stream& node, int status) noexcept {
   t.resume();
 }
 
-void http2_connection::finishRequestWithUserException(h2stream& node, std::exception_ptr e) noexcept {
+void h2connection::finishRequestWithUserException(h2stream& node, std::exception_ptr e) noexcept {
   forget(node);
   if (!node.task) {
     return;
@@ -333,7 +333,7 @@ void http2_connection::finishRequestWithUserException(h2stream& node, std::excep
   node.task.promise().who_waits.resume();
 }
 
-bool http2_connection::rstStreamClient(rst_stream rstframe) {
+bool h2connection::rstStreamClient(rst_stream rstframe) {
   validateRstFrame(rstframe);
   auto* node = findResponseByStreamid(rstframe.header.streamId);
   if (!node) {
@@ -344,7 +344,7 @@ bool http2_connection::rstStreamClient(rst_stream rstframe) {
   return true;
 }
 
-void http2_connection::finishAllWithReason(reqerr_e::values_e reason) {
+void h2connection::finishAllWithReason(reqerr_e::values_e reason) {
   assert(isDropped());  // must be called only while drop_connection()
 
   // assume only i have access to it
@@ -363,21 +363,21 @@ void http2_connection::finishAllWithReason(reqerr_e::values_e reason) {
   rsps.clear_and_dispose(forgetAndResume);
 }
 
-[[nodiscard]] h2stream* http2_connection::findResponseByStreamid(stream_id_t id) noexcept {
+[[nodiscard]] h2stream* h2connection::findResponseByStreamid(stream_id_t id) noexcept {
   auto it = responses.find(id);
   return it != responses.end() ? &*it : nullptr;
 }
 
-void http2_connection::dropTimeouted() {
+void h2connection::dropTimeouted() {
   // prevent destruction of *this while resuming
-  http2_connection_ptr_t lock = this;
+  h2connection_ptr lock = this;
   while (!timers.empty() && timers.top()->deadline.isReached()) {
     // node deleted from timers by forgetting
     finishRequestByTimeout(*timers.top());
   }
 }
 
-void http2_connection::windowUpdate(window_update_frame frame) {
+void h2connection::windowUpdate(window_update_frame frame) {
   HTTP2_LOG(TRACE, "received window update, stream: {}, inc: {}", frame.header.streamId,
             frame.windowSizeIncrement, name);
   if (frame.header.streamId == 0) {
@@ -398,7 +398,7 @@ void http2_connection::windowUpdate(window_update_frame frame) {
                         frame.header.streamId);
 }
 
-bool http2_connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
+bool h2connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
   if (isDropped()) {
     return false;
   }
@@ -409,7 +409,7 @@ bool http2_connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
   startDrop();
 
   // prevents me to be destroyed while resuming writer/reader etc
-  http2_connection_ptr_t lock = this;
+  h2connection_ptr lock = this;
 
   pingtimer.cancel();
   pingtimer.set_callback({});  // delete prev callback and shared ptr to connection in it
@@ -432,16 +432,16 @@ bool http2_connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
   return true;
 }
 
-void http2_connection::shutdown(reqerr_e::values_e reason) noexcept {
+void h2connection::shutdown(reqerr_e::values_e reason) noexcept {
   if (!prepareToShutdown(reason)) {
     return;
   }
   tcpCon->shutdown();
 }
 
-stream_ptr http2_connection::new_stream_node(http_request&& request, deadline_t deadline,
-                                             on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
-                                             stream_id_t id) {
+stream_ptr h2connection::new_stream_node(http_request&& request, deadline_t deadline,
+                                         on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
+                                         stream_id_t id) {
   stream_ptr node;
   if (freeNodes.empty()) {
     node = new h2stream;
@@ -472,16 +472,15 @@ stream_ptr http2_connection::new_stream_node(http_request&& request, deadline_t 
   return node;
 }
 
-stream_ptr http2_connection::newStreamingRequestNode(http_request&& request, deadline_t deadline,
-                                                     on_header_fn_ptr onHeader,
-                                                     on_data_part_fn_ptr onDataPart, stream_id_t streamid,
-                                                     stream_body_maker_t makebody) {
+stream_ptr h2connection::newStreamingRequestNode(http_request&& request, deadline_t deadline,
+                                                 on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
+                                                 stream_id_t streamid, stream_body_maker_t makebody) {
   stream_ptr node = new_stream_node(std::move(request), deadline, onHeader, onDataPart, streamid);
   node->makebody = std::move(makebody);
   return node;
 }
 
-void http2_connection::returnNode(h2stream* ptr) noexcept {
+void h2connection::returnNode(h2stream* ptr) noexcept {
   assert(ptr && ptr->connection);
   forget(*ptr);
   ptr->connection->mark_stream_closed(ptr->streamid);
@@ -497,7 +496,7 @@ void http2_connection::returnNode(h2stream* ptr) noexcept {
   ptr->connection = nullptr;
 }
 
-http2_connection::response_awaiter http2_connection::responseReceived(h2stream& node) noexcept {
+h2connection::response_awaiter h2connection::responseReceived(h2stream& node) noexcept {
   assert(!node.timersHook.is_linked());
   assert(!node.requestsHook.is_linked());
   assert(!node.responsesHook.is_linked());
@@ -514,7 +513,7 @@ http2_connection::response_awaiter http2_connection::responseReceived(h2stream& 
   return response_awaiter{this, &node};
 }
 
-void http2_connection::ignoreFrame(http2_frame_t frame) {
+void h2connection::ignoreFrame(http2_frame_t frame) {
   HTTP2_LOG(TRACE, "ignoring frame, type: {}, stream: {}. len: {}", e2str(frame.header.type),
             frame.header.streamId, frame.header.length, name);
   using enum frame_e;
@@ -556,7 +555,7 @@ void http2_connection::ignoreFrame(http2_frame_t frame) {
   }
 }
 
-void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_t new_window_size) {
+void h2connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_t new_window_size) {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9.2-3
   //  When the value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust the size of all stream
   //  flow-control windows that it maintains by the difference between the new value and the old value.
@@ -592,9 +591,9 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
     adjust_stream(x);
 }
 
-dd::task<void> http2_connection::receive_headers_with_continuation(
-    http2_frame_t frame, io_error_code& ec, move_only_fn<void()> oneachframe,
-    move_only_fn<void(http2_frame_t)> whendone) {
+dd::task<void> h2connection::receive_headers_with_continuation(http2_frame_t frame, io_error_code& ec,
+                                                               move_only_fn<void()> oneachframe,
+                                                               move_only_fn<void(http2_frame_t)> whendone) {
   assert(frame.header.type == frame_e::HEADERS);
   assert(!(frame.header.flags & flags::END_HEADERS));
   assert(oneachframe && whendone);
@@ -661,7 +660,7 @@ dd::task<void> http2_connection::receive_headers_with_continuation(
   unreachable();
 }
 
-void http2_connection::client_receive_headers(http2_frame_t frame) {
+void h2connection::client_receive_headers(http2_frame_t frame) {
   assert(frame.header.type == frame_e::HEADERS);
   frame.validate_streamid();
   frame.removePadding();
@@ -699,7 +698,7 @@ void http2_connection::client_receive_headers(http2_frame_t frame) {
   }
 }
 
-void http2_connection::client_receive_data(http2_frame_t frame) {
+void h2connection::client_receive_data(http2_frame_t frame) {
   assert(frame.header.type == frame_e::DATA);
 
   frame.validate_streamid();
