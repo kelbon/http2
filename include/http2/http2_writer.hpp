@@ -35,11 +35,11 @@ inline void intrusive_ptr_release(writer_callbacks* p) noexcept {
 using writer_callbacks_ptr = boost::intrusive_ptr<writer_callbacks>;
 
 template <bool IS_CLIENT>
-dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs);
+dd::job write_stream_data(stream_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs);
 
-extern template dd::job write_stream_data<true>(node_ptr node, http2_connection_ptr_t con,
+extern template dd::job write_stream_data<true>(stream_ptr node, http2_connection_ptr_t con,
                                                 writer_callbacks_ptr cbs);
-extern template dd::job write_stream_data<false>(node_ptr node, http2_connection_ptr_t con,
+extern template dd::job write_stream_data<false>(stream_ptr node, http2_connection_ptr_t con,
                                                  writer_callbacks_ptr cbs);
 
 // creates writer associated with connection.

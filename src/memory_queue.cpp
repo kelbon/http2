@@ -3,7 +3,7 @@
 
 namespace http2 {
 
-memory_queue::memory_queue(request_node& node) noexcept {
+memory_queue::memory_queue(h2stream& node) noexcept {
   assert(!node.onDataPart);
   node.onDataPart = this;
   n = &node;

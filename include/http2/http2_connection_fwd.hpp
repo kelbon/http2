@@ -11,13 +11,12 @@
 
 namespace http2 {
 
-struct request_node;
+struct h2stream;
 
-void intrusive_ptr_add_ref(request_node* p) noexcept;
-void intrusive_ptr_release(request_node* p) noexcept;
+void intrusive_ptr_add_ref(h2stream* p) noexcept;
+void intrusive_ptr_release(h2stream* p) noexcept;
 
-// TODO rename (stream_ptr)
-using node_ptr = boost::intrusive_ptr<request_node>;
+using stream_ptr = boost::intrusive_ptr<h2stream>;
 
 struct http2_connection;
 

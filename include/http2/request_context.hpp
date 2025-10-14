@@ -12,12 +12,12 @@ namespace http2 {
 // Note: its NOT thread safe to copy on other thread
 struct request_context {
  private:
-  node_ptr node = nullptr;
+  stream_ptr node = nullptr;
 
   friend struct http2_client;
 
  public:
-  explicit request_context(request_node& n) noexcept : node(&n) {
+  explicit request_context(h2stream& n) noexcept : node(&n) {
   }
 
   explicit operator bool() const noexcept {

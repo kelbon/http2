@@ -93,7 +93,7 @@ struct http2_frame_t {
 // Note: this type used in client when sending request
 // and reused in server, in this case its response for sending in writer (.req
 // field stores response)
-struct request_node {
+struct h2stream {
   using requests_hook_type = bi::list_member_hook<link_option_t>;
   using responses_hook_type = bi::unordered_set_member_hook<link_option_t>;
   using timers_hooks_type = bi::bs_set_member_hook<link_option_t>;
@@ -113,7 +113,7 @@ struct request_node {
   // inited from local settings
   // how many octets remote can send to local
   cfint_t rlStreamlevelWindowSize;
-  // 'newRequestNode' fills req, deadline and initial stream window sizes
+  // 'new_stream_node' fills req, deadline and initial stream window sizes
   http_request req;
   deadline_t deadline;
   dd::task<int>::handle_type task;  // setted by 'await_suspend' (requester)
@@ -189,7 +189,7 @@ struct request_node {
   };
   struct key_of_value {
     using type = stream_id_t;
-    type const& operator()(request_node const& v) const noexcept {
+    type const& operator()(h2stream const& v) const noexcept {
       return v.streamid;
     }
   };
@@ -203,7 +203,7 @@ struct request_node {
     }
   };
   struct compare_by_deadline {
-    bool operator()(request_node const& l, request_node const& r) const noexcept {
+    bool operator()(h2stream const& l, h2stream const& r) const noexcept {
       return l.deadline < r.deadline;  // less means higher priority
     }
   };
@@ -214,23 +214,22 @@ struct request_node {
 // Note: shutdown must be called
 struct http2_connection {
   using requests_member_hook_t =
-      bi::member_hook<request_node, request_node::requests_hook_type, &request_node::requestsHook>;
+      bi::member_hook<h2stream, h2stream::requests_hook_type, &h2stream::requestsHook>;
   using responses_member_hook_t =
-      bi::member_hook<request_node, request_node::responses_hook_type, &request_node::responsesHook>;
-  using timers_member_hook_t =
-      bi::member_hook<request_node, request_node::timers_hooks_type, &request_node::timersHook>;
+      bi::member_hook<h2stream, h2stream::responses_hook_type, &h2stream::responsesHook>;
+  using timers_member_hook_t = bi::member_hook<h2stream, h2stream::timers_hooks_type, &h2stream::timersHook>;
 
   using requests_t =
-      bi::list<request_node, bi::cache_last<true>, requests_member_hook_t, bi::constant_time_size<true>>;
+      bi::list<h2stream, bi::cache_last<true>, requests_member_hook_t, bi::constant_time_size<true>>;
 
-  using responses_t = bi::unordered_set<request_node, bi::constant_time_size<true>, responses_member_hook_t,
-                                        bi::key_of_value<request_node::key_of_value>,
-                                        bi::equal<request_node::equal_by_streamid>,
-                                        bi::hash<request_node::hash_by_streamid>, bi::power_2_buckets<true>>;
+  using responses_t =
+      bi::unordered_set<h2stream, bi::constant_time_size<true>, responses_member_hook_t,
+                        bi::key_of_value<h2stream::key_of_value>, bi::equal<h2stream::equal_by_streamid>,
+                        bi::hash<h2stream::hash_by_streamid>, bi::power_2_buckets<true>>;
 
-  using timers_t = bi::treap_multiset<request_node, bi::constant_time_size<true>, timers_member_hook_t,
-                                      bi::priority<request_node::compare_by_deadline>,
-                                      bi::compare<request_node::compare_by_deadline>>;
+  using timers_t = bi::treap_multiset<h2stream, bi::constant_time_size<true>, timers_member_hook_t,
+                                      bi::priority<h2stream::compare_by_deadline>,
+                                      bi::compare<h2stream::compare_by_deadline>>;
 
   settings_t remoteSettings;
   settings_t localSettings;
@@ -272,7 +271,7 @@ struct http2_connection {
   timer_t pingtimer;
   timer_t pingdeadlinetimer;
   timer_t timeoutWardenTimer;
-  bi::slist<request_node, requests_member_hook_t, bi::constant_time_size<true>> freeNodes;
+  bi::slist<h2stream, requests_member_hook_t, bi::constant_time_size<true>> freeNodes;
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;
   unique_name name;
@@ -317,7 +316,7 @@ struct http2_connection {
   // OR
   // when server assebles request (in this case 'responses' used as hash table)
   // or server writes response and inserts into responses to catch WINDOW_UPDATe / RST_STREAM
-  void insertResponseNode(request_node& node) {
+  void insertResponseNode(h2stream& node) {
     responses.insert(node);
     if (responses.size() == buckets.size()) [[unlikely]] {
       // https://github.com/boostorg/intrusive/issues/96
@@ -349,8 +348,8 @@ struct http2_connection {
     }
   };
 
-  // postcondition: if returned true, then !requests.empty() && connection not
-  // dropped Note: worker may be still has no right to work (too many streams)
+  // postcondition: if returned true, then !requests.empty() && connection not dropped
+  // Note: worker may be still has no right to work (too many streams)
   [[nodiscard]] work_waiter waitWork() noexcept {
     return work_waiter(this);
   }
@@ -380,27 +379,27 @@ struct http2_connection {
     return isOutofStreamids() && requests.empty() && responses.empty();
   }
 
-  void forget(request_node& node) noexcept;
+  void forget(h2stream& node) noexcept;
 
   // ALL streams must be finished by calling this function except when user
   // exception throwed from on_header/on_data_part callbacks
-  void finishRequest(request_node& node, int status) noexcept;
+  void finishRequest(h2stream& node, int status) noexcept;
 
   // used only when user exception throwed from on_header/on_data_part callbacks
   // or if channel for streaming node throws
-  void finishRequestWithUserException(request_node& node, std::exception_ptr) noexcept;
+  void finishRequestWithUserException(h2stream& node, std::exception_ptr) noexcept;
 
   // client side
   // returns false if no such stream
   [[nodiscard]] bool rstStreamClient(rst_stream rstframe);
 
-  void finishRequestByTimeout(request_node& node) noexcept {
+  void finishRequestByTimeout(h2stream& node) noexcept {
     finishRequest(node, reqerr_e::TIMEOUT);
   }
 
   void finishAllWithReason(reqerr_e::values_e reason);
 
-  [[nodiscard]] request_node* findResponseByStreamid(stream_id_t id) noexcept;
+  [[nodiscard]] h2stream* findResponseByStreamid(stream_id_t id) noexcept;
 
   void dropTimeouted();
 
@@ -434,15 +433,15 @@ struct http2_connection {
 
   // client side
   // after creation 3 hooks (requests, responses, timers) and 'task' left unused
-  node_ptr newRequestNode(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
-                          on_data_part_fn_ptr onDataPart, stream_id_t streamid);
+  stream_ptr new_stream_node(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
+                             on_data_part_fn_ptr onDataPart, stream_id_t streamid);
 
   // client side
-  node_ptr newStreamingRequestNode(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
-                                   on_data_part_fn_ptr onDataPart, stream_id_t streamid,
-                                   stream_body_maker_t makebody);
+  stream_ptr newStreamingRequestNode(http_request&& request, deadline_t deadline, on_header_fn_ptr onHeader,
+                                     on_data_part_fn_ptr onDataPart, stream_id_t streamid,
+                                     stream_body_maker_t makebody);
 
-  void returnNode(request_node* ptr) noexcept;
+  void returnNode(h2stream* ptr) noexcept;
 
   void ignoreFrame(http2_frame_t frame);
 
@@ -462,7 +461,7 @@ struct http2_connection {
 
   struct response_awaiter {
     http2_connection* con = nullptr;
-    request_node* n = nullptr;
+    h2stream* n = nullptr;
 
     static bool await_ready() noexcept {
       return false;
@@ -483,9 +482,9 @@ struct http2_connection {
   };
 
   // client side
-  // Waits until response received (or request_node finished somehow else)
+  // Waits until response received (or h2stream finished somehow else)
   // and returns response status
-  KELCORO_CO_AWAIT_REQUIRED response_awaiter responseReceived(request_node& node) noexcept;
+  KELCORO_CO_AWAIT_REQUIRED response_awaiter responseReceived(h2stream& node) noexcept;
 
   void validatePriorityFrameHeader(const http2_frame_t& h) {
     assert(h.header.type == frame_e::PRIORITY);
@@ -523,7 +522,7 @@ struct http2_connection {
   // used when SETTINGS_INITIAL_WINDOW_SIZE changed
   void adjustWindowForAllStreams(cfint_t old_window_size, cfint_t new_window_size);
 
-  inline void start_headers_block(request_node& node, bool force_disable_hpack, bytes_t& hdrs) {
+  inline void start_headers_block(h2stream& node, bool force_disable_hpack, bytes_t& hdrs) {
     // https://www.rfc-editor.org/rfc/rfc9113.html#name-settings-synchronization
     if (encodertablesizechangerequested) [[unlikely]] {
       encodertablesizechangerequested = false;
@@ -553,7 +552,7 @@ struct http2_connection {
 };
 
 #ifdef HTTP2_ENABLE_TRACE
-void trace_request_headers(request_node const&, bool fromclient);
+void trace_request_headers(h2stream const&, bool fromclient);
 #endif
 
 }  // namespace http2

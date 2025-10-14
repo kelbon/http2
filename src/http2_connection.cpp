@@ -12,7 +12,7 @@
 
 namespace http2 {
 
-void trace_request_headers(request_node const& node, bool fromclient) {
+void trace_request_headers(h2stream const& node, bool fromclient) {
   auto& req = node.req;
   std::string s;
   if (fromclient) {
@@ -47,11 +47,11 @@ void intrusive_ptr_release(http2_connection* p) noexcept {
   }
 }
 
-void intrusive_ptr_add_ref(request_node* p) noexcept {
+void intrusive_ptr_add_ref(h2stream* p) noexcept {
   ++p->refcount;
 }
 
-void intrusive_ptr_release(request_node* p) noexcept {
+void intrusive_ptr_release(h2stream* p) noexcept {
   --p->refcount;
   if (p->refcount == 0) {
     p->connection->returnNode(p);
@@ -69,7 +69,7 @@ static void validate_trailer_header(std::string_view name, stream_id_t streamid)
   }
 }
 
-void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t frame) {
+void h2stream::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   // may handle both request trailers and response trailers
   HTTP2_LOG(TRACE, "received HEADERS (trailers): stream: {}, len: {}", frame.header.streamId,
             frame.header.length, name());
@@ -95,7 +95,7 @@ void request_node::receiveTrailersHeaders(hpack::decoder& decoder, http2_frame_t
   }
 }
 
-void request_node::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t hdrs) {
+void h2stream::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t hdrs) {
   assert(hdrs.header.type == frame_e::HEADERS);
   auto old_on_header = onHeader;
   on_scope_exit {
@@ -109,7 +109,7 @@ void request_node::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t
   receiveTrailersHeaders(decoder, hdrs);
 }
 
-void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t frame) {
+void h2stream::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
@@ -140,7 +140,7 @@ void request_node::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t
   });
 }
 
-void request_node::receiveResponseData(http2_frame_t frame) {
+void h2stream::receiveResponseData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
   on_scope_exit {
@@ -157,7 +157,7 @@ void request_node::receiveResponseData(http2_frame_t frame) {
             std::string_view((char const*)frame.data.data(), frame.data.size()), name());
 }
 
-void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t frame) {
+void h2stream::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
   assert(frame.header.flags & flags::END_HEADERS);
@@ -176,7 +176,7 @@ void request_node::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t 
 #endif
 }
 
-void request_node::receiveRequestData(http2_frame_t frame) {
+void h2stream::receiveRequestData(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::DATA);
 
@@ -202,7 +202,7 @@ void request_node::receiveRequestData(http2_frame_t frame) {
   }
 }
 
-std::string_view request_node::name() const noexcept {
+std::string_view h2stream::name() const noexcept {
   return connection ? connection->name.str() : "<null>";
 }
 
@@ -219,7 +219,7 @@ http2_connection::http2_connection(any_connection_t&& c, boost::asio::io_context
 }
 
 http2_connection::~http2_connection() {
-  freeNodes.clear_and_dispose([](request_node* node) { delete node; });
+  freeNodes.clear_and_dispose([](h2stream* node) { delete node; });
 }
 
 void http2_connection::settings_changed(http2_frame_t newsettings, bool remote_is_client) {
@@ -282,10 +282,10 @@ void http2_connection::initiateGracefulShutdown(stream_id_t laststreamid) noexce
     }
     b = n;
   }
-  requests.clear_and_dispose([&](request_node* r) { finishRequest(*r, reqerr_e::SERVER_CANCELLED_REQUEST); });
+  requests.clear_and_dispose([&](h2stream* r) { finishRequest(*r, reqerr_e::SERVER_CANCELLED_REQUEST); });
 }
 
-void http2_connection::forget(request_node& node) noexcept {
+void http2_connection::forget(h2stream& node) noexcept {
   if (node.requestsHook.is_linked()) {
     erase_byref(requests, node);
   }
@@ -298,7 +298,7 @@ void http2_connection::forget(request_node& node) noexcept {
   }
 }
 
-void http2_connection::finishRequest(request_node& node, int status) noexcept {
+void http2_connection::finishRequest(h2stream& node, int status) noexcept {
   forget(node);
   if (!node.task) {
     return;
@@ -310,7 +310,7 @@ void http2_connection::finishRequest(request_node& node, int status) noexcept {
     HTTP2_LOG(TRACE, "stream {} finished, status: {}", node.streamid, status, name);
   }
   node.status = status;
-  node_ptr p = &node;  // hold node
+  stream_ptr p = &node;  // hold node
   auto t = std::exchange(node.task, nullptr);
   if (status == reqerr_e::CANCELLED || status == reqerr_e::TIMEOUT) {
     // ignore possible bad alloc for coroutine
@@ -319,7 +319,7 @@ void http2_connection::finishRequest(request_node& node, int status) noexcept {
   t.resume();
 }
 
-void http2_connection::finishRequestWithUserException(request_node& node, std::exception_ptr e) noexcept {
+void http2_connection::finishRequestWithUserException(h2stream& node, std::exception_ptr e) noexcept {
   forget(node);
   if (!node.task) {
     return;
@@ -358,12 +358,12 @@ void http2_connection::finishAllWithReason(reqerr_e::values_e reason) {
     HTTP2_LOG(TRACE, "finish {} requests and {} responses, reason code: {}", reqs.size(), rsps.size(),
               e2str(reason), name);
   }
-  auto forgetAndResume = [&](request_node* node) { finishRequest(*node, reason); };
+  auto forgetAndResume = [&](h2stream* node) { finishRequest(*node, reason); };
   reqs.clear_and_dispose(forgetAndResume);
   rsps.clear_and_dispose(forgetAndResume);
 }
 
-[[nodiscard]] request_node* http2_connection::findResponseByStreamid(stream_id_t id) noexcept {
+[[nodiscard]] h2stream* http2_connection::findResponseByStreamid(stream_id_t id) noexcept {
   auto it = responses.find(id);
   return it != responses.end() ? &*it : nullptr;
 }
@@ -384,7 +384,7 @@ void http2_connection::windowUpdate(window_update_frame frame) {
     increment_window_size(receiverWindowSize, int32_t(frame.windowSizeIncrement), 0);
     return;
   }
-  request_node* node = findResponseByStreamid(frame.header.streamId);
+  h2stream* node = findResponseByStreamid(frame.header.streamId);
   if (!node) {
     HTTP2_LOG(WARN, "received window update for stream which not exist, streamid: {}", frame.header.streamId,
               name);
@@ -439,12 +439,12 @@ void http2_connection::shutdown(reqerr_e::values_e reason) noexcept {
   tcpCon->shutdown();
 }
 
-node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t deadline,
-                                          on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
-                                          stream_id_t id) {
-  node_ptr node;
+stream_ptr http2_connection::new_stream_node(http_request&& request, deadline_t deadline,
+                                             on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
+                                             stream_id_t id) {
+  stream_ptr node;
   if (freeNodes.empty()) {
-    node = new request_node;
+    node = new h2stream;
   } else {
     node = &freeNodes.front();
     freeNodes.pop_front();
@@ -472,15 +472,16 @@ node_ptr http2_connection::newRequestNode(http_request&& request, deadline_t dea
   return node;
 }
 
-node_ptr http2_connection::newStreamingRequestNode(http_request&& request, deadline_t deadline,
-                                                   on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart,
-                                                   stream_id_t streamid, stream_body_maker_t makebody) {
-  node_ptr node = newRequestNode(std::move(request), deadline, onHeader, onDataPart, streamid);
+stream_ptr http2_connection::newStreamingRequestNode(http_request&& request, deadline_t deadline,
+                                                     on_header_fn_ptr onHeader,
+                                                     on_data_part_fn_ptr onDataPart, stream_id_t streamid,
+                                                     stream_body_maker_t makebody) {
+  stream_ptr node = new_stream_node(std::move(request), deadline, onHeader, onDataPart, streamid);
   node->makebody = std::move(makebody);
   return node;
 }
 
-void http2_connection::returnNode(request_node* ptr) noexcept {
+void http2_connection::returnNode(h2stream* ptr) noexcept {
   assert(ptr && ptr->connection);
   forget(*ptr);
   ptr->connection->mark_stream_closed(ptr->streamid);
@@ -496,7 +497,7 @@ void http2_connection::returnNode(request_node* ptr) noexcept {
   ptr->connection = nullptr;
 }
 
-http2_connection::response_awaiter http2_connection::responseReceived(request_node& node) noexcept {
+http2_connection::response_awaiter http2_connection::responseReceived(h2stream& node) noexcept {
   assert(!node.timersHook.is_linked());
   assert(!node.requestsHook.is_linked());
   assert(!node.responsesHook.is_linked());
@@ -562,7 +563,7 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
   if (old_window_size == new_window_size)
     return;
   // make sure every stream handled once
-  std::unordered_set<request_node*> handled;
+  std::unordered_set<h2stream*> handled;
   cfint_t increment = new_window_size - old_window_size;
   if (std::abs(increment) > std::numeric_limits<int32_t>::max()) {
     throw protocol_error(
@@ -571,7 +572,7 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
                     old_window_size, new_window_size));
   }
 
-  auto adjust_stream = [&](request_node& x) {
+  auto adjust_stream = [&](h2stream& x) {
     if (handled.contains(&x))
       return;
     try {
@@ -585,9 +586,9 @@ void http2_connection::adjustWindowForAllStreams(cfint_t old_window_size, cfint_
     handled.insert(&x);
   };
 
-  for (request_node& x : requests)
+  for (h2stream& x : requests)
     adjust_stream(x);
-  for (request_node& x : responses)
+  for (h2stream& x : responses)
     adjust_stream(x);
 }
 
@@ -666,7 +667,7 @@ void http2_connection::client_receive_headers(http2_frame_t frame) {
   frame.removePadding();
   frame.ignoreDeprecatedPriority();
 
-  node_ptr node = findResponseByStreamid(frame.header.streamId);
+  stream_ptr node = findResponseByStreamid(frame.header.streamId);
   if (!node) {
     ignoreFrame(frame);
     return;
@@ -703,7 +704,7 @@ void http2_connection::client_receive_data(http2_frame_t frame) {
 
   frame.validate_streamid();
   frame.removePadding();
-  node_ptr node = findResponseByStreamid(frame.header.streamId);
+  stream_ptr node = findResponseByStreamid(frame.header.streamId);
   if (!node) {
     ignoreFrame(frame);
     return;
