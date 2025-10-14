@@ -324,7 +324,7 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
         // workaround windows ABI https://github.com/llvm/llvm-project/issues/153949
         auto& e = _e;
         // reuse finish request with 'user' exception to make sure user will know about error
-        request_node* node = con.findResponseByStreamid(e.streamid);
+        h2stream* node = con.findResponseByStreamid(e.streamid);
         if (node) {
           con.finishRequestWithUserException(*node, std::current_exception());
         } else {
@@ -484,7 +484,7 @@ dd::task<int> http2_client::send_request(on_header_fn_ptr onHeader, on_data_part
   HTTP2_LOG(TRACE, "sending http2 request, path: {}, method: {}, streamid: {}", request.path,
             e2str(request.method), streamid, con->name);
 
-  node_ptr node = con->newRequestNode(std::move(request), deadline, onHeader, onDataPart, streamid);
+  stream_ptr node = con->new_stream_node(std::move(request), deadline, onHeader, onDataPart, streamid);
 
   co_return co_await con->responseReceived(*node);
 }
@@ -520,8 +520,8 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
   HTTP2_LOG(TRACE, "sending http2 streaming request, path: {}, method: {}, streamid: {}", request.path,
             e2str(request.method), streamid, con->name);
 
-  node_ptr node = con->newStreamingRequestNode(std::move(request), deadline, on_header, on_data_part,
-                                               streamid, std::move(makebody));
+  stream_ptr node = con->newStreamingRequestNode(std::move(request), deadline, on_header, on_data_part,
+                                                 streamid, std::move(makebody));
 
   co_return co_await con->responseReceived(*node);
 }
@@ -617,7 +617,7 @@ dd::task<int> http2_client::send_connect_request(
 
   http_response rsp;
 
-  node_ptr node = con->newRequestNode(std::move(request), deadline, nullptr, nullptr, streamid);
+  stream_ptr node = con->new_stream_node(std::move(request), deadline, nullptr, nullptr, streamid);
 
   auto on_header = [&](std::string_view name, std::string_view value) {
     rsp.headers.emplace_back(std::string(name), std::string(value));

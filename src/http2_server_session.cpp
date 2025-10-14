@@ -75,7 +75,7 @@ server_session::~server_session() {
   HTTP2_LOG(TRACE, "session ended", name());
 }
 
-static dd::task<int> send_response(node_ptr node, server_session& session) {
+static dd::task<int> send_response(stream_ptr node, server_session& session) {
   assert(node);
   assert(node->status == reqerr_e::RESPONSE_IN_PROGRESS);
   HTTP2_LOG(TRACE, "sending response for stream {}", node->streamid, session.name());
@@ -136,13 +136,13 @@ static dd::task<int> send_response(node_ptr node, server_session& session) {
   co_return 0;
 }
 
-void server_session::onRequestReady(request_node& n) noexcept {
+void server_session::onRequestReady(h2stream& n) noexcept {
   if (n.responded) [[unlikely]]
     return;
   else
     n.responded = true;
   // was detached before in startRequestAssemble
-  http2::node_ptr np(&n, /*add_ref=*/false);
+  stream_ptr np(&n, /*add_ref=*/false);
   np->status = reqerr_e::RESPONSE_IN_PROGRESS;
   on_scope_failure(nodedone) {
     onResponseDone();
@@ -165,11 +165,11 @@ void server_session::onRequestReady(request_node& n) noexcept {
 
 bool server_session::rstStreamServer(rst_stream rstframe) {
   connection->validateRstFrame(rstframe);
-  request_node* n = connection->findResponseByStreamid(rstframe.header.streamId);
+  h2stream* n = connection->findResponseByStreamid(rstframe.header.streamId);
   if (!n) {
-    auto it = std::find_if(
-        connection->requests.begin(), connection->requests.end(),
-        [streamid = rstframe.header.streamId](request_node& rn) { return rn.streamid == streamid; });
+    auto it =
+        std::find_if(connection->requests.begin(), connection->requests.end(),
+                     [streamid = rstframe.header.streamId](h2stream& rn) { return rn.streamid == streamid; });
     if (it != connection->requests.end()) {
       n = &*it;
     } else {
@@ -193,7 +193,7 @@ void server_session::rstStreamAfterError(stream_error const& e) {
 size_t server_session::requestsLeftExactly() const noexcept {
   size_t count = 0;
   // some streams may be in .requests AND in .responses
-  for (request_node& n : connection->requests) {
+  for (h2stream& n : connection->requests) {
     if (connection->findResponseByStreamid(n.streamid) == nullptr)
       ++count;
   }
@@ -228,8 +228,8 @@ void server_session::requestTerminate() noexcept {
       .start_and_detach();
 
   // forget requests (including not finished)
-  auto doforget = [&](request_node* n) {
-    ::http2::node_ptr p = n;  // prevent node destroy
+  auto doforget = [&](h2stream* n) {
+    stream_ptr p = n;  // prevent node destroy
     finishServerRequest(*n);
   };
   connection->responses.clear_and_dispose(doforget);
@@ -256,11 +256,11 @@ void server_session::onSessionDone() noexcept {
   connection->shutdown(reqerr_e::CANCELLED);
 }
 
-node_ptr server_session::newEmptyStreamNode(stream_id_t id) {
+stream_ptr server_session::new_empty_stream_node(stream_id_t id) {
   assert((id % 2) == 1);
   assert(id <= MAX_STREAM_ID);
   // server reader do not uses 'on_header' / 'on_data_part'
-  return connection->newRequestNode({}, deadline_t::never(), nullptr, nullptr, id);
+  return connection->new_stream_node({}, deadline_t::never(), nullptr, nullptr, id);
 }
 
 void server_session::startRequestAssemble(const http2_frame_t& frame) {
@@ -308,12 +308,12 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
     }
   }
 
-  http2::node_ptr n = newEmptyStreamNode(frame.header.streamId);
+  stream_ptr n = new_empty_stream_node(frame.header.streamId);
   n->status = reqerr_e::REQUEST_CREATED;
   connection->insertResponseNode(*n);
   // Note: после этого detach() стрим остаётся без владельца
   // это учитывается в onRequestReady и finishServerRequest
-  request_node& node = *n.detach();
+  h2stream& node = *n.detach();
   node.receiveRequestHeaders(connection->decoder, frame);
   if (node.end_stream_received) {  // setted in receiveRequestHeaders
     // Note: manages 'node' lifetime
@@ -338,7 +338,7 @@ void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
   // drop connection)
 }
 
-void server_session::finishServerRequest(request_node& n) noexcept {
+void server_session::finishServerRequest(h2stream& n) noexcept {
   if (n.onDataPart) {
     // prevent endless waiting if client does not send anything etc
     (*n.onDataPart)({}, /*last chunk*/ true);
@@ -377,7 +377,7 @@ void server_session::receive_data(http2_frame_t frame) {
   assert(frame.header.type == frame_e::DATA);
   frame.validate_streamid();
   frame.removePadding();
-  request_node* node = connection->findResponseByStreamid(frame.header.streamId);
+  h2stream* node = connection->findResponseByStreamid(frame.header.streamId);
   if (!node) {
     connection->ignoreFrame(frame);
     return;

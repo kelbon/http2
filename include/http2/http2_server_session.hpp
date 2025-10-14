@@ -54,7 +54,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   [[nodiscard]] size_t requestsLeftExactly() const noexcept;
 
   // precondition: 'node' request completely assembled by server reader
-  void onRequestReady(request_node& node) noexcept;
+  void onRequestReady(h2stream& node) noexcept;
 
   // forbids new requests, but existing request handling continues
   // session will be closed when open requests are handled or network error
@@ -105,7 +105,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   void startRequestAssemble(const http2_frame_t& /*HEADERS frame*/);
 
   // after creation 3 hooks (requests, responses, timers) and 'task' left unused
-  http2::node_ptr newEmptyStreamNode(stream_id_t);
+  stream_ptr new_empty_stream_node(stream_id_t);
 
   // used when settings changed while connection active
   // may throw protocol error
@@ -117,7 +117,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
 
   struct response_written_awaiter {
     http2_connection* con = nullptr;
-    request_node* n = nullptr;
+    h2stream* n = nullptr;
 
     bool await_ready() noexcept {
       // data part and header marker for writer, that this request must be
@@ -148,14 +148,14 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // pushes node into send queue and notifies writer about it.
   // resumes when writer writes 'node' content
   // returns 'true' if response sent, false if error occurs
-  KELCORO_CO_AWAIT_REQUIRED response_written_awaiter responseWritten(request_node& n) noexcept {
+  KELCORO_CO_AWAIT_REQUIRED response_written_awaiter responseWritten(h2stream& n) noexcept {
     return response_written_awaiter{connection.get(), &n};
   }
 
   // завершает запрос независимо от того собран он уже или нет
   // Вызывается для нештатного завершения,
   // для успешного завершения писатель вызывает connection.finishRequest
-  void finishServerRequest(request_node&) noexcept;
+  void finishServerRequest(h2stream&) noexcept;
 
   const unique_name& name() const noexcept {
     return connection->name;

@@ -29,8 +29,7 @@ namespace http2 {
 constexpr inline auto H2FHL = FRAME_HEADER_LEN;
 
 // client-side
-static void generate_http2_connect_headers(request_node const& node, hpack::encoder& encoder,
-                                           bytes_t& bytes) {
+static void generate_http2_connect_headers(h2stream const& node, hpack::encoder& encoder, bytes_t& bytes) {
   assert(node.req.method == http_method_e::CONNECT);
 
   auto& req = node.req;
@@ -66,7 +65,7 @@ static void generate_http2_connect_headers(request_node const& node, hpack::enco
 }
 
 template <bool IS_CLIENT>
-static void generate_http2_headers_to(request_node const& node, hpack::encoder& encoder, bytes_t& headers) {
+static void generate_http2_headers_to(h2stream const& node, hpack::encoder& encoder, bytes_t& headers) {
   using hdrs = hpack::static_table_t::values;
   auto const& request = node.req;
 
@@ -128,7 +127,7 @@ static void generate_http2_headers_to(request_node const& node, hpack::encoder& 
 // or 0 if cannot send because of control flow
 // precondition: 'out' contains atleast 9 valid bytes
 template <bool Streaming>
-[[nodiscard]] static cfint_t fill_data_header(request_node const& node, http2_connection const& con,
+[[nodiscard]] static cfint_t fill_data_header(h2stream const& node, http2_connection const& con,
                                               size_t unhandledBytes, byte_t* out) noexcept {
   using enum frame_e;
   using namespace flags;
@@ -155,7 +154,7 @@ template <bool Streaming>
 }
 
 template <bool Streaming>
-static dd::task<void> write_data(node_ptr work, http2_connection_ptr_t con, writer_callbacks_ptr cbs,
+static dd::task<void> write_data(stream_ptr work, http2_connection_ptr_t con, writer_callbacks_ptr cbs,
                                  io_error_code& ec) try {
   assert(con && work && cbs && cbs->neterrcb && cbs->sleepcb);
   http_body_bytes& data = work->req.body.data;
@@ -278,10 +277,10 @@ static dd::task<void> write_trailers(http2_connection& con, stream_id_t streamid
 }
 
 template <bool IS_CLIENT>
-dd::job write_stream_data(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
+dd::job write_stream_data(stream_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
   assert(node && node->is_output_streaming());
 
-  request_node& snode = *node;
+  h2stream& snode = *node;
   assert(!!snode.makebody);
 
   io_error_code ec;
@@ -366,8 +365,9 @@ end:
             con->name);
 }
 
-template dd::job write_stream_data<true>(node_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs);
-template dd::job write_stream_data<false>(node_ptr node, http2_connection_ptr_t con,
+template dd::job write_stream_data<true>(stream_ptr node, http2_connection_ptr_t con,
+                                         writer_callbacks_ptr cbs);
+template dd::job write_stream_data<false>(stream_ptr node, http2_connection_ptr_t con,
                                           writer_callbacks_ptr cbs);
 
 template <bool IS_CLIENT>
@@ -394,7 +394,7 @@ dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
     assert(!con->requests.empty());
 
     while (!con->requests.empty()) {
-      node_ptr node = &con->requests.front();
+      stream_ptr node = &con->requests.front();
 
       con->requests.pop_front();
       con->insertResponseNode(*node);
