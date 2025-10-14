@@ -10,7 +10,6 @@ inline void fuzzing_require(bool b, std::source_location l = std::source_locatio
   if (!b) {
     std::cout << std::format("REQUIRE failed in function {} ({}:{}:{})\n", l.function_name(), l.file_name(),
                              l.line(), l.column());
-    // TODO print stacktrace
     std::exit(EXIT_FAILURE);
   }
 }

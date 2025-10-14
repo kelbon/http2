@@ -184,8 +184,6 @@ std::string_view e2str(frame_e e) noexcept {
 void server_settings_visitor::operator()(setting_t s) {
   switch (s.identifier) {
     case SETTINGS_HEADER_TABLE_SIZE:
-      // TODO ? check if new size > old size, then protocol error (same in client
-      // settings visitor)
       settings.headerTableSize = s.value;
       return;
     case SETTINGS_ENABLE_PUSH:

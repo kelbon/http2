@@ -113,8 +113,7 @@ dd::task<void> update_window_to_max(cfint_t& size, stream_id_t streamid, http2_c
   assert(con);
   // its possible to have < 0 in such cases like
   // * sending DATA before settings exchange
-  // * updating settings value SETTINGS_INITIAL_WINDOW_SIZE (TODO support
-  // decrement for all streams after new settings frame)
+  // * updating settings value SETTINGS_INITIAL_WINDOW_SIZE
   while (size < 0) {
     // avoid too big window size increment
     if (co_await send_window_update(con, streamid, MAX_WINDOW_SIZE)) {

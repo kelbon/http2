@@ -158,8 +158,6 @@ dd::task<void> main_coro(http2::http2_client& client) {
 
   all_good = true;
   HTTP2_LOG_INFO("success");
-
-  // TODO? client.stop();
 }
 
 int main() try {
