@@ -39,7 +39,7 @@ acceptConnections вечно создаёт сокеты прослушивая 
 слушания При получении сокета создаёт корутину sessionLifecycle
 
 sessionLifecycle устанавливает соединение уровнем выше TCP (tls/http2), задаёт нужные настройки и далее
-служит жизненным пространством для server_session, которая в свою очередь обёртка над http2_connection
+служит жизненным пространством для server_session, которая в свою очередь обёртка над h2connection
 server_session завершается когда читатель отдаёт управление, например при получении GOAWAY фрейма
 
 Другой путь завершения server_session это методы сервера shutdown/terminate
@@ -138,7 +138,7 @@ struct http2_server::impl {
     HTTP2_LOG(ERROR, "acceptConnections failed with err {}", e.what(), name);
   }
 
-  dd::task<http2_connection_ptr_t> createConnection(asio::ip::tcp::socket socket) {
+  dd::task<h2connection_ptr> createConnection(asio::ip::tcp::socket socket) {
     assert(std::this_thread::get_id() == tid);
     try {
       tcpopts.apply(socket);
@@ -153,11 +153,11 @@ struct http2_server::impl {
           HTTP2_LOG(ERROR, "error during ssl handshake: {}", ec.message(), name);
           co_return nullptr;
         }
-        co_return new http2_connection(std::move(tcpcon), ioctx());
+        co_return new h2connection(std::move(tcpcon), ioctx());
       } else {
         HTTP2_LOG(TRACE, "start non-tls session", name);
         any_connection_t tcpcon(new asio_connection(std::move(socket)));
-        co_return new http2_connection(std::move(tcpcon), ioctx());
+        co_return new h2connection(std::move(tcpcon), ioctx());
       }
     } catch (std::exception const& e) {
       HTTP2_LOG(ERROR, "connection creation failure: {}", e.what(), name);
@@ -169,7 +169,7 @@ struct http2_server::impl {
   dd::task<void> sessionLifecycle(dd::gate::holder, asio::ip::tcp::socket socket) try {
     assert(std::this_thread::get_id() == tid);
 
-    http2_connection_ptr_t http2con = co_await createConnection(std::move(socket));
+    h2connection_ptr http2con = co_await createConnection(std::move(socket));
     if (!http2con || !creator) {
       co_return;
     }

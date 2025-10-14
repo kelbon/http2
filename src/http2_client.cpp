@@ -55,7 +55,7 @@ task.resume, будя корутину send_request
 
 namespace http2 {
 
-void http2_client::notifyConnectionWaiters(http2_connection_ptr_t result) noexcept {
+void http2_client::notifyConnectionWaiters(h2connection_ptr result) noexcept {
   // assume only i have access to waiters
   auto waiters = std::move(m_connectionWaiters);
   HTTP2_LOG(TRACE, "resuming connection waiters, count: {}", waiters.size(),
@@ -72,13 +72,13 @@ void http2_client::notifyConnectionWaiters(http2_connection_ptr_t result) noexce
 
 // periodically invoked in connection.pingtimer
 struct ping_callback {
-  http2_connection_ptr_t con = nullptr;
+  h2connection_ptr con = nullptr;
   stream_id_t lastid = 0;
   duration_t pingtimeout;
   http2_client* client = nullptr;
 
   // precondition: c != nullptr, client != nullptr
-  explicit ping_callback(http2_connection_ptr_t c, http2_client* clientptr, duration_t pingTimeout) {
+  explicit ping_callback(h2connection_ptr c, http2_client* clientptr, duration_t pingTimeout) {
     assert(c);
     assert(clientptr);
     con = std::move(c);
@@ -121,7 +121,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     // connection awaiters will be awakened by connection when ends
     co_return;
   }
-  http2_connection_ptr_t newConnection = nullptr;
+  h2connection_ptr newConnection = nullptr;
 
   try {
     // note: connection unlocked before notify, avoiding this:
@@ -141,7 +141,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
         self->notifyConnectionWaiters(newConnection);
       };
       any_connection_t tcpCon = co_await self->m_factory->createConnection(self->get_host(), deadline);
-      http2_connection_ptr_t con = new http2_connection(std::move(tcpCon), self->ioctx());
+      h2connection_ptr con = new h2connection(std::move(tcpCon), self->ioctx());
       timer_t timer(self->ioctx());
       timer.arm(deadline.tp);
       timer.set_callback([con] { con->shutdown(reqerr_e::TIMEOUT); });
@@ -187,7 +187,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
 }
 
 // handles only utility frames (not DATA / HEADERS)
-static void handle_utility_frame(http2_frame_t frame, http2_connection& con) {
+static void handle_utility_frame(http2_frame_t frame, h2connection& con) {
   using enum frame_e;
 
   switch (frame.header.type) {
@@ -241,7 +241,7 @@ static void handle_utility_frame(http2_frame_t frame, http2_connection& con) {
 // writer works on node with reader (window_update / rst_stream possible)
 // also node may be cancelled or destroyed, so writer and reader must never
 // cache node between co_awaits
-dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t c) {
+dd::job http2_client::startReaderFor(http2_client* self, h2connection_ptr c) {
   using enum frame_e;
   assert(self && c);
   assert(!self->m_connectionPartsGate.is_closed());
@@ -253,7 +253,7 @@ dd::job http2_client::startReaderFor(http2_client* self, http2_connection_ptr_t 
   };
   auto guard = self->m_connectionPartsGate.hold();
 
-  http2_connection& con = *c;
+  h2connection& con = *c;
   io_error_code ec;
   reusable_buffer buffer;
   http2_frame_t frame;
@@ -437,7 +437,7 @@ std::coroutine_handle<> noexport::waiter_of_connection::await_suspend(std::corou
   return client->startConnecting(client, deadline).handle;
 }
 
-[[nodiscard]] http2_connection_ptr_t noexport::waiter_of_connection::await_resume() {
+[[nodiscard]] h2connection_ptr noexport::waiter_of_connection::await_resume() {
   if (!result || result->isDropped() || client->stopRequested()) {
     return nullptr;
   }
@@ -445,7 +445,7 @@ std::coroutine_handle<> noexport::waiter_of_connection::await_suspend(std::corou
 }
 
 void http2_client::drop_connection(reqerr_e::values_e reason) noexcept {
-  http2_connection_ptr_t con = std::move(m_connection);
+  h2connection_ptr con = std::move(m_connection);
   if (!con) {
     return;
   }
@@ -468,7 +468,7 @@ dd::task<int> http2_client::send_request(on_header_fn_ptr onHeader, on_data_part
   on_scope_exit {
     --m_requestsInProgress;
   };
-  http2_connection_ptr_t con = co_await borrowConnection(deadline);
+  h2connection_ptr con = co_await borrowConnection(deadline);
   if (deadline.isReached()) {
     co_return reqerr_e::TIMEOUT;
   }
@@ -504,7 +504,7 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
   on_scope_exit {
     --m_requestsInProgress;
   };
-  http2_connection_ptr_t con = co_await borrowConnection(deadline);
+  h2connection_ptr con = co_await borrowConnection(deadline);
   if (deadline.isReached()) {
     co_return reqerr_e::TIMEOUT;
   }
@@ -601,7 +601,7 @@ dd::task<int> http2_client::send_connect_request(
   on_scope_exit {
     --m_requestsInProgress;
   };
-  http2_connection_ptr_t con = co_await borrowConnection(deadline);
+  h2connection_ptr con = co_await borrowConnection(deadline);
   if (deadline.isReached()) {
     co_return reqerr_e::TIMEOUT;
   }
@@ -662,7 +662,7 @@ dd::task<void> http2_client::graceful_stop() {
     HTTP2_LOG(TRACE, "http2_client::graceful_stop ended", name());
   };
   io_error_code ec;
-  http2_connection_ptr_t con = m_connection;  // prevent destroy for graceful shutdown.
+  h2connection_ptr con = m_connection;  // prevent destroy for graceful shutdown.
 
   // waiting all requests finish
 
@@ -726,7 +726,7 @@ dd::task<bool> http2_client::try_connect(deadline_t deadline) {
     co_return false;
   }
   auto guard = m_connectionGate.hold();
-  http2_connection_ptr_t con = co_await borrowConnection(deadline);
+  h2connection_ptr con = co_await borrowConnection(deadline);
   co_return !!con;
 }
 

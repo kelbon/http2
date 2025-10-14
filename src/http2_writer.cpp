@@ -127,7 +127,7 @@ static void generate_http2_headers_to(h2stream const& node, hpack::encoder& enco
 // or 0 if cannot send because of control flow
 // precondition: 'out' contains atleast 9 valid bytes
 template <bool Streaming>
-[[nodiscard]] static cfint_t fill_data_header(h2stream const& node, http2_connection const& con,
+[[nodiscard]] static cfint_t fill_data_header(h2stream const& node, h2connection const& con,
                                               size_t unhandledBytes, byte_t* out) noexcept {
   using enum frame_e;
   using namespace flags;
@@ -154,7 +154,7 @@ template <bool Streaming>
 }
 
 template <bool Streaming>
-static dd::task<void> write_data(stream_ptr work, http2_connection_ptr_t con, writer_callbacks_ptr cbs,
+static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_callbacks_ptr cbs,
                                  io_error_code& ec) try {
   assert(con && work && cbs && cbs->neterrcb && cbs->sleepcb);
   http_body_bytes& data = work->req.body.data;
@@ -216,7 +216,7 @@ static dd::task<void> write_data(stream_ptr work, http2_connection_ptr_t con, wr
 
 // writes CONTINUATION frames
 // assumes first 9 bytes of `hdrs` are reserved for frame header
-static dd::task<void> write_continuations(http2_connection_ptr_t con, stream_id_t streamid, size_t handled,
+static dd::task<void> write_continuations(h2connection_ptr con, stream_id_t streamid, size_t handled,
                                           bytes_t hdrs, io_error_code& ec) {
   assert(con);
   assert(handled < hdrs.size());
@@ -247,7 +247,7 @@ static dd::task<void> write_continuations(http2_connection_ptr_t con, stream_id_
   }
 }
 
-static dd::task<void> write_trailers(http2_connection& con, stream_id_t streamid, http_headers_t headers,
+static dd::task<void> write_trailers(h2connection& con, stream_id_t streamid, http_headers_t headers,
                                      io_error_code& ec) {
   HTTP2_LOG(TRACE, "sendind trailers for stream {}", streamid, con.name);
   // reserve memory for frame header
@@ -277,7 +277,7 @@ static dd::task<void> write_trailers(http2_connection& con, stream_id_t streamid
 }
 
 template <bool IS_CLIENT>
-dd::job write_stream_data(stream_ptr node, http2_connection_ptr_t con, writer_callbacks_ptr cbs) try {
+dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callbacks_ptr cbs) try {
   assert(node && node->is_output_streaming());
 
   h2stream& snode = *node;
@@ -365,14 +365,12 @@ end:
             con->name);
 }
 
-template dd::job write_stream_data<true>(stream_ptr node, http2_connection_ptr_t con,
-                                         writer_callbacks_ptr cbs);
-template dd::job write_stream_data<false>(stream_ptr node, http2_connection_ptr_t con,
-                                          writer_callbacks_ptr cbs);
+template dd::job write_stream_data<true>(stream_ptr node, h2connection_ptr con, writer_callbacks_ptr cbs);
+template dd::job write_stream_data<false>(stream_ptr node, h2connection_ptr con, writer_callbacks_ptr cbs);
 
 template <bool IS_CLIENT>
-dd::job start_writer_for(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
-                         writer_on_network_err_t neterrcb, bool forcedisablehpack, dd::gate::holder) {
+dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_on_network_err_t neterrcb,
+                         bool forcedisablehpack, dd::gate::holder) {
   assert(con && sleepcb && neterrcb);
   // make callbacks easy to copy into write_pending_frames for future use
   writer_callbacks_ptr cbs = new writer_callbacks(std::move(sleepcb), std::move(neterrcb));
@@ -494,14 +492,14 @@ end:
   cbs->neterrcb();
 }
 
-dd::job start_writer_for_client(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
+dd::job start_writer_for_client(h2connection_ptr con, writer_sleepcb_t sleepcb,
                                 writer_on_network_err_t neterrcb, bool forcedisablehpack,
                                 dd::gate::holder guard) {
   return start_writer_for</*IS_CLIENT=*/true>(std::move(con), std::move(sleepcb), std::move(neterrcb),
                                               forcedisablehpack, std::move(guard));
 }
 
-dd::job start_writer_for_server(http2_connection_ptr_t con, writer_sleepcb_t sleepcb,
+dd::job start_writer_for_server(h2connection_ptr con, writer_sleepcb_t sleepcb,
                                 writer_on_network_err_t neterrcb, bool forcedisablehpack,
                                 dd::gate::holder guard) {
   return start_writer_for</*IS_CLIENT=*/false>(std::move(con), std::move(sleepcb), std::move(neterrcb),

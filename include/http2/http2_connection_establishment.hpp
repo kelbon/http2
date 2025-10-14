@@ -13,8 +13,7 @@ namespace http2 {
 // creates client connection with server
 // accepts unestablished session 'con' and returns established connection or
 // exception
-dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection_ptr_t con,
-                                                                http2_client_options options);
+dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con, http2_client_options options);
 
 // server drops connection if client inactive this amount of time
 constexpr inline duration_t SERVER_DEFAULT_IDLE_TIMEOUT = std::chrono::seconds(25);
@@ -38,7 +37,6 @@ struct http2_server_options {
 // creates server connection with client
 // accepts unestablished session 'con' and returns established connection or
 // exception
-dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection_ptr_t con,
-                                                                http2_server_options);
+dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con, http2_server_options);
 
 }  // namespace http2

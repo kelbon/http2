@@ -29,7 +29,7 @@ namespace noexport {
 struct waiter_of_connection : bi::list_base_hook<link_option_t> {
   std::coroutine_handle<> task;
   http2_client* client = nullptr;
-  http2_connection_ptr_t result = nullptr;
+  h2connection_ptr result = nullptr;
   deadline_t deadline;
   ZAL_PIN;
 
@@ -40,7 +40,7 @@ struct waiter_of_connection : bi::list_base_hook<link_option_t> {
 
   bool await_ready() noexcept;
   std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept;
-  [[nodiscard]] http2_connection_ptr_t await_resume();
+  [[nodiscard]] h2connection_ptr await_resume();
 };
 
 // prevents new connections while alive
@@ -79,7 +79,7 @@ struct http2_client {
   asio::io_context m_ioctx = asio::io_context(1);
   endpoint m_host;
   http2_client_options m_options;
-  http2_connection_ptr_t m_connection;
+  h2connection_ptr m_connection;
   // invariant: .!= nullptr, unchanged after creation
   any_transport_factory m_factory;
 
@@ -89,7 +89,7 @@ struct http2_client {
   size_t m_isConnecting = 0;  // if connection started to establish, but not established yet
   // present when m_isConnecting > 0. Used to drop in-flight connection when
   // stopping
-  http2_connection_ptr_t m_notYetReadyConnection = nullptr;
+  h2connection_ptr m_notYetReadyConnection = nullptr;
   size_t m_stopRequested = 0;
   //  used to correctly wait in 'stop' while all connect calls will end
   dd::gate m_connectionGate;
@@ -98,7 +98,7 @@ struct http2_client {
   unique_name m_name;
 
   // fills requests from raw http2 frames
-  static dd::job startReaderFor(http2_client*, http2_connection_ptr_t);
+  static dd::job startReaderFor(http2_client*, h2connection_ptr);
 
   // postconditon: returns not null, !returned->dropped && returned->stream_id
   // <= MAX_STREAM_ID
@@ -107,7 +107,7 @@ struct http2_client {
     return noexport::waiter_of_connection(this, deadline);
   }
 
-  void notifyConnectionWaiters(http2_connection_ptr_t result) noexcept;
+  void notifyConnectionWaiters(h2connection_ptr result) noexcept;
 
   [[nodiscard]] bool alreadyConnecting() const noexcept {
     return m_isConnecting > 0;

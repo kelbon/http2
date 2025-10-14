@@ -33,8 +33,8 @@ static void validate_client_magic(std::span<byte_t> magic) {
   }
 }
 
-dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection_ptr_t con,
-                                                                http2_client_options options) {
+dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
+                                                          http2_client_options options) {
   using enum frame_e;
 
   constexpr auto H2FHL = FRAME_HEADER_LEN;
@@ -121,7 +121,7 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   }
 
   // SETTINGS frame with ACK flag will be handled later in
-  // 'http2_connection::serverSettingsChanged' as regular frame
+  // 'h2connection::serverSettingsChanged' as regular frame
 
   HTTP2_LOG(TRACE, "connection successfully established, decoder size: {}",
             con->remoteSettings.headerTableSize, con->name);
@@ -129,8 +129,8 @@ dd::task<http2_connection_ptr_t> establish_http2_session_client(http2_connection
   co_return con;
 }
 
-dd::task<http2_connection_ptr_t> establish_http2_session_server(http2_connection_ptr_t con,
-                                                                http2_server_options options) {
+dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
+                                                          http2_server_options options) {
   assert(con);
   io_error_code ec;
   constexpr size_t MAGIC_SZ = std::size(CONNECTION_PREFACE);

@@ -117,7 +117,7 @@ struct h2stream {
   http_request req;
   deadline_t deadline;
   dd::task<int>::handle_type task;  // setted by 'await_suspend' (requester)
-  http2_connection_ptr_t connection = nullptr;
+  h2connection_ptr connection = nullptr;
   // received resonse (filled by 'reader' in connection)
   on_header_fn_ptr onHeader;
   on_data_part_fn_ptr onDataPart;
@@ -212,7 +212,7 @@ struct h2stream {
 };
 
 // Note: shutdown must be called
-struct http2_connection {
+struct h2connection {
   using requests_member_hook_t =
       bi::member_hook<h2stream, h2stream::requests_hook_type, &h2stream::requestsHook>;
   using responses_member_hook_t =
@@ -277,12 +277,12 @@ struct http2_connection {
   unique_name name;
   boost::asio::io_context& ioctx;
 
-  explicit http2_connection(any_connection_t&& c, boost::asio::io_context&);
+  explicit h2connection(any_connection_t&& c, boost::asio::io_context&);
 
-  http2_connection(http2_connection&&) = delete;
-  void operator=(http2_connection&&) = delete;
+  h2connection(h2connection&&) = delete;
+  void operator=(h2connection&&) = delete;
 
-  ~http2_connection();
+  ~h2connection();
 
   // not coroutine, for perf. waits until its possible to write (not sending CONTINUATION)
 #define HTTP2_WAIT_WRITE(CON)                               \
@@ -331,7 +331,7 @@ struct http2_connection {
   // interface for writer only
 
   struct work_waiter {
-    http2_connection* connection = nullptr;
+    h2connection* connection = nullptr;
     ZAL_PIN;
 
     bool await_ready() const noexcept {
@@ -460,7 +460,7 @@ struct http2_connection {
   void serverRequestsGracefulShutdown(goaway_frame);
 
   struct response_awaiter {
-    http2_connection* con = nullptr;
+    h2connection* con = nullptr;
     h2stream* n = nullptr;
 
     static bool await_ready() noexcept {
