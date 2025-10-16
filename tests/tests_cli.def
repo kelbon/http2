@@ -1,0 +1,11 @@
+
+STRING(tests_regex, "Run tests matching regular expression.", default(""))
+
+RENAME(tests_regex, "tests-regex")
+ALIAS(R, tests-regex)
+
+INTEGER(timeout, "Set the default test timeout.", default("30"))
+
+TAG(dry_run, "Only prints tests, not runs them")
+
+RENAME(dry_run, "dry-run")

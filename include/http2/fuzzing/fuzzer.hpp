@@ -10,6 +10,7 @@
 
 #include <kelcoro/generator.hpp>
 #include "http2/errors.hpp"
+#include "http2/utils/deadline.hpp"
 #include "http2/utils/memory.hpp"
 
 namespace http2::fuzzing {
@@ -127,7 +128,7 @@ struct fuzzer {
   dd::generator<std::span<const std::ranges::range_value_t<T>>> chunks(T data) {
     std::span d = data;
     while (!d.empty()) {
-      auto i = rindex(d.size());
+      auto i = rindex(d.size() + 1);
       co_yield d.subspan(0, i);
       d = d.subspan(i);
     }
@@ -156,16 +157,27 @@ struct fuzzer {
   }
 
   // runs `ioctxs` with random ordeing
-  void run_until(auto condition, auto&... ioctxs) {
+  void run_until(deadline_t d, auto condition, auto&... ioctxs) {
     // should be asio::io_context (not included here)
     std::vector ctxs{std::addressof(ioctxs)...};
-    while (!condition()) {
+    while (!condition() && !d.isReached()) {
       select(ctxs)->poll_one();
     }
+    if (d.isReached())
+      throw timeout_exception();
+    (ioctxs.poll(), ...);  // do pending jobs if some
+  }
+
+  void run_until(auto condition, auto&... ioctxs) {
+    return run_until(deadline_t::never(), std::move(condition), ioctxs...);
   }
 
   void run_until(bool& done, auto&... ioctxs) {
-    return run_until([&] { return done; }, ioctxs...);
+    return run_until(deadline_t::never(), [&] { return done; }, ioctxs...);
+  }
+
+  void run_until(deadline_t d, bool& done, auto&... ioctxs) {
+    return run_until(d, [&] { return done; }, ioctxs...);
   }
 
   void rbytes_fill(std::forward_iterator auto b, auto e) {

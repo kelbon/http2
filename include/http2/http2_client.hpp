@@ -128,7 +128,9 @@ struct http2_client {
 
  public:
   // 'host' used for connecting when required
-  explicit http2_client(endpoint host, http2_client_options opts = {})
+  // by default creates localhost client
+  explicit http2_client(endpoint host = endpoint(asio::ip::address_v4::loopback()),
+                        http2_client_options opts = {})
       : http2_client(std::move(host), std::move(opts), &default_transport_factory) {
   }
 
@@ -142,6 +144,7 @@ struct http2_client {
     return m_host;
   }
 
+  // precondition: !connected()
   void set_host(endpoint) noexcept;
 
   void set_connection_timeout(duration_t dur) noexcept {
@@ -225,6 +228,12 @@ struct http2_client {
   // returns true if client connected
   dd::task<bool> try_connect() {
     return try_connect(deadline_after(m_options.connectionTimeout));
+  }
+
+  // precondition: !connected()
+  dd::task<bool> try_connect(endpoint e, deadline_t d) {
+    set_host(e);
+    return try_connect(d);
   }
 
   // ждёт завершения всех стримов и затем останавливается

@@ -78,9 +78,12 @@ struct http2_server::impl {
     name.set_prefix(SERVER_PREFIX);
   }
 
-  void listen(server_endpoint a) {
+  internet_address listen(server_endpoint a) {
     assert(std::this_thread::get_id() == tid);
     acceptor_t& acceptor = listeners.emplace_back(ioctx(), a.addr, a.reuse_address);
+    // store resolved endpoint (e.g. if port 0 was used) and store it before acceptConnections
+    // (acceptConnections may delete acceptor!)
+    internet_address binded = acceptor.local_endpoint();
     acceptor.listen();
     auto lit = std::prev(listeners.end());
     on_scope_failure(eraselistener) {
@@ -88,7 +91,8 @@ struct http2_server::impl {
     };
     acceptConnections(sessionsgate.hold(), lit).start_and_detach();
     eraselistener.no_longer_needed();
-    HTTP2_LOG(INFO, "Server listening on {}:{}", a.addr.address().to_string(), a.addr.port(), name);
+    HTTP2_LOG(INFO, "Server listening on {}:{}", binded.address().to_string(), a.addr.port(), name);
+    return binded;
   }
 
   dd::task<void> acceptConnections(dd::gate::holder, decltype(listeners)::iterator lit) try {
@@ -108,7 +112,7 @@ struct http2_server::impl {
     // note: do not remove listener on scope exit
     while (!sessionsgate.is_closed()) {
       io_error_code ec;
-      asio::ip::tcp::socket socket(lit->get_executor());
+      asio::ip::tcp::socket socket(ioctx());
       co_await net.accept(*lit, socket, ec);
       assert(std::this_thread::get_id() == tid);
       if (ec == asio::error::operation_aborted) {
@@ -324,6 +328,10 @@ http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tc
 }
 
 http2_server::~http2_server() {
+  stop();
+}
+
+void http2_server::stop() {
   assert(m_impl);
   HTTP2_LOG(TRACE, "~http2_server", m_impl->name);
   m_impl->creator = nullptr;
@@ -354,7 +362,7 @@ size_t http2_server::sessions_count() const noexcept {
   return m_impl->sessions.size();
 }
 
-void http2_server::listen(server_endpoint a) {
+internet_address http2_server::listen(server_endpoint a) {
   return m_impl->listen(std::move(a));
 }
 
@@ -409,9 +417,9 @@ void mt_server::initialize() {
   listen_server().server->set_accept_callback(cb);
 }
 
-void mt_server::listen(server_endpoint e) {
+internet_address mt_server::listen(server_endpoint e) {
   // listen always on main thread, so `listen` effects will be observable after `server::listen` return
-  listen_server().server->listen(e);
+  return listen_server().server->listen(e);
 }
 
 void mt_server::run() {

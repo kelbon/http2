@@ -36,6 +36,19 @@ struct endpoint {
   endpoint(internet_address a) : endpoint(a.address(), a.port()) {
   }
 
+  // sets both addr and port
+  void set_endpoint(internet_address a) noexcept {
+    set_addr(a.address());
+    set_port(a.port());
+  }
+  // returns address only if resolved already
+  std::optional<internet_address> get_endpoint() const noexcept {
+    if (auto* addr = ipaddr())
+      return internet_address(*addr, get_port());
+    else
+      return std::nullopt;
+  }
+
   void set_addr(asio::ip::address a) noexcept {
     addr = std::move(a);
   }
