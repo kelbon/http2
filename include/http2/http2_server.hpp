@@ -76,7 +76,8 @@ struct http2_server {
 
   [[nodiscard]] size_t sessions_count() const noexcept;
 
-  void listen(server_endpoint);
+  // returns binded address (useful e.g. if port 0 was used and OS setted real port number)
+  internet_address listen(server_endpoint);
 
   // shutdown server softly, all responses will be sent after this method calling
   dd::task<void> shutdown();
@@ -88,6 +89,10 @@ struct http2_server {
   asio::io_context& ioctx();
 
   void request_stop();
+
+  // blocking wait until server stops. Must not be called from `handle_request`
+  // server may be stopped only once!
+  void stop();
   // similar to ioctx().run(), for common interface with mt_server
   void run();
 
@@ -148,7 +153,8 @@ struct mt_server {
 
   ~mt_server() = default;
 
-  void listen(server_endpoint);
+  // returns binded address (useful e.g. if port 0 was used and OS setted real port number)
+  internet_address listen(server_endpoint);
 
   // runs until .stop called. Must not be invoked when `run` is active already
   // run may be called only once!

@@ -225,7 +225,7 @@ struct rst_stream {
   [[nodiscard]] static rst_stream parse(frame_header h, std::span<byte_t const> bytes);
 };
 
-enum : uint16_t {
+enum settings_identifier_e : uint16_t {
   SETTINGS_HEADER_TABLE_SIZE = 0x1,
   SETTINGS_ENABLE_PUSH = 0x2,
   SETTINGS_MAX_CONCURRENT_STREAMS = 0x3,
@@ -256,7 +256,7 @@ struct settings_t {
 #pragma pack(push, 1)
 
 struct [[gnu::packed]] setting_t {
-  uint16_t identifier;
+  settings_identifier_e identifier;
   uint32_t value;
 
   template <std::output_iterator<byte_t> O>

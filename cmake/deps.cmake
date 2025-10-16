@@ -66,4 +66,12 @@ CPMAddPackage(
   GIT_TAG v0.8.2
 )
 
+if (KELHTTP2_ENABLE_TESTING)
+  CPMAddPackage(
+    NAME CLINOK
+    GITHUB_REPOSITORY kelbon/clinok
+    GIT_TAG v2.0.1
+  )
+endif()
+
 include(${CCOZY_SOURCE_DIR}/ccozy_tools.cmake)
