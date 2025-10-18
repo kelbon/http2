@@ -317,7 +317,7 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
   }
 
   if (std::exception_ptr e = chan.take_exception()) {
-    con->finishRequestWithUserException(*node, std::current_exception());
+    con->finishRequestWithUserException(*node, std::move(e));
     HTTP2_LOG(ERROR, "writing streaming data for stream {} ended with user exception", node->streamid,
               con->name);
     co_return;

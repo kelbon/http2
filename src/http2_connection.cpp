@@ -326,7 +326,7 @@ void h2connection::finishRequestWithUserException(h2stream& node, std::exception
   }
   HTTP2_LOG(TRACE, "stream {} finished with user exception", node.streamid, name);
   send_rst_stream(this, node.streamid, errc_e::CANCEL).start_and_detach();
-  node.task.promise().exception = std::move(e);
+  node.task.promise().set_exception(std::move(e));
   // Note: избегаем выставления одновременно и результата и исключения,
   // поэтому не будим напрямую .task (она выставит результат из .status), вместо
   // этого будим того кто её ждёт

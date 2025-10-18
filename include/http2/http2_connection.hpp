@@ -387,7 +387,8 @@ struct h2connection {
 
   // used only when user exception throwed from on_header/on_data_part callbacks
   // or if channel for streaming node throws
-  void finishRequestWithUserException(h2stream& node, std::exception_ptr) noexcept;
+  // precondition: e != nullptr
+  void finishRequestWithUserException(h2stream& node, std::exception_ptr e) noexcept;
 
   // client side
   // returns false if no such stream
