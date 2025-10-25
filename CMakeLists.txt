@@ -80,22 +80,6 @@ endif()
 if (KELHTTP2_ENABLE_TESTING)
     include(CTest)
     add_subdirectory(tests)
-    add_subdirectory(tests/servers)
 endif()
-
-add_library(http2_fuzzinglib   ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/any_request_template.cpp
-                               ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/emulated_client.cpp
-                               ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/fuzzer.cpp
-                               ${CMAKE_CURRENT_SOURCE_DIR}/src/fuzzing/request_template.cpp)
-
-
-target_include_directories(http2_fuzzinglib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(http2_fuzzinglib PUBLIC http2lib)
-
-set_target_properties(http2_fuzzinglib PROPERTIES
-	CMAKE_CXX_EXTENSIONS OFF
-	LINKER_LANGUAGE CXX
-	CMAKE_CXX_STANDARD_REQUIRED ON
-	CXX_STANDARD 20)
 
 ccozy_on_configuration_end_vscode()

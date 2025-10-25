@@ -1,6 +1,7 @@
 #pragma once
 
-#include "http2/fuzzing/any_request_template.hpp"
+#include "any_request_template.hpp"
+#include <moko3/moko3.hpp>
 
 namespace http2::fuzzing {
 

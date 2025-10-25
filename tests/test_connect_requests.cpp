@@ -1,13 +1,14 @@
 
 #include "http2/http2_server.hpp"
-#include "http2/fuzzing/assertion.hpp"
-#include "http2/fuzzing/fuzzer.hpp"
+#include "fuzzer.hpp"
 #include "http2/asio/asio_executor.hpp"
 #include "http2/http2_client.hpp"
 
 #include <boost/stacktrace.hpp>
 #include <csignal>
 #include <iostream>
+
+#include <moko3/moko3.hpp>
 
 using namespace http2;
 using namespace std::chrono_literals;

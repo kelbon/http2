@@ -1,5 +1,6 @@
 
 #include "test_connection.hpp"
+#include <moko3/moko3.hpp>
 
 using namespace http2;
 
@@ -46,12 +47,5 @@ CLIENT_TEST("client continuations") {
   auto rsp = handle.promise().result_or_rethrow();
   REQUIRE(rsp.status == 200 && rsp.headers.size() == 1 && rsp.headers.front() == hdrs[1]);
 }
-
-int main(int argc, char* argv[]) try {
-  auto& box = http2::get_testbox();
-  box.config = cli::parse_or_exit(argc, argv);
-  return box.run_tests();
-} catch (std::exception& e) {
-  std::cout << "running tests failed with err: " << e.what() << '\n';
-  return -1;
-}
+REGISTER_TEST_LISTENER(moko3::gtest_listener);
+MOKO3_MAIN;

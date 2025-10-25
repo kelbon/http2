@@ -1,4 +1,4 @@
-#include "http2/fuzzing/fuzzer.hpp"
+#include "fuzzer.hpp"
 
 #include <algorithm>
 

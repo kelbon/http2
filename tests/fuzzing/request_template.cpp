@@ -1,5 +1,5 @@
 
-#include "http2/fuzzing/request_template.hpp"
+#include "request_template.hpp"
 
 namespace http2::fuzzing {
 

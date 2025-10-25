@@ -1,6 +1,9 @@
 
+add_subdirectory(fuzzing)
+add_subdirectory(servers)
+
 add_library(fake_http2lib STATIC test_connection.cpp)
-target_link_libraries(fake_http2lib PUBLIC hpacklib http2lib clinoklib)
+target_link_libraries(fake_http2lib PUBLIC http2lib moko3lib http2_fuzzinglib)
 set_target_properties(fake_http2lib PROPERTIES
 	CMAKE_CXX_EXTENSIONS OFF
 	LINKER_LANGUAGE CXX
