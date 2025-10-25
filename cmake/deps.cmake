@@ -68,6 +68,12 @@ CPMAddPackage(
 
 if (KELHTTP2_ENABLE_TESTING)
   CPMAddPackage(
+    NAME MOKO3
+    GITHUB_REPOSITORY kelbon/moko3
+    GIT_TAG v0.9.1
+  )
+
+  CPMAddPackage(
     NAME CLINOK
     GITHUB_REPOSITORY kelbon/clinok
     GIT_TAG v2.0.1

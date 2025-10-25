@@ -1,7 +1,7 @@
 #include <http2/http2_client.hpp>
 #include <http2/asio/factory.hpp>
 #include <http2/http2_server.hpp>
-#include <http2/fuzzing/fuzzer.hpp>
+#include <fuzzer.hpp>
 
 #include <iostream>
 

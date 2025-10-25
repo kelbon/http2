@@ -6,7 +6,7 @@
 #include <format>
 
 #include <http2/logger.hpp>
-#include "http2/fuzzing/fuzzer.hpp"
+#include "fuzzer.hpp"
 
 #define FAKE_HTTP2_LOG(TYPE, STR, ...)       \
   HTTP2_LOG(TYPE,                            \

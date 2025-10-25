@@ -2,9 +2,9 @@
 
 #include <http2/http2_client.hpp>
 #include "servers/echo_server.hpp"
-#include "http2/fuzzing/any_request_template.hpp"
-#include "http2/fuzzing/emulated_client.hpp"
-#include "http2/fuzzing/fuzzer.hpp"
+#include "any_request_template.hpp"
+#include "emulated_client.hpp"
+#include "fuzzer.hpp"
 #include <kelcoro/algorithm.hpp>
 
 using namespace http2::fuzzing;

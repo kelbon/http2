@@ -4,16 +4,15 @@
 #include <string_view>
 
 #include <hpack/hpack.hpp>
+#include <moko3/moko3.hpp>
 
 #include <map>
 #include <set>
-#include <regex>
 
 #include <http2/http2_protocol.hpp>
 #include <http2/utils/deadline.hpp>
 #include <http2/http_body_bytes.hpp>
 #include <http2/utils/unique_name.hpp>
-#include <http2/fuzzing/assertion.hpp>
 #include <http2/asio/ssl_context.hpp>
 #include <http2/asio/awaiters.hpp>
 #include <http2/asio/factory.hpp>
@@ -21,7 +20,7 @@
 #include <http2/http2_connection.hpp>
 #include <http2/http2_server.hpp>
 #include <http2/asio/asio_executor.hpp>
-#include <http2/fuzzing/fuzzer.hpp>
+#include "fuzzer.hpp"
 
 #include <kelcoro/task.hpp>
 
@@ -351,57 +350,6 @@ dd::task<void> wait_until(PRED pred, asio::io_context& ctx, deadline_t deadline 
   }
 }
 
-struct test_run_info {
-  bool failed = false;
-};
-
-using test_fn_t = test_run_info();
-
-struct testinfo {
-  std::string name;
-  test_fn_t* func;
-};
-
-struct testbox {
-  std::vector<testinfo> tests;
-  fuzzing::fuzzer fuz;
-  duration_t default_test_timeout = 30s;
-  std::ostream& outstream = std::cout;
-  cli::options config;
-
-  void register_test(std::string testname, test_fn_t* test) {
-    // does not check for unique
-    tests.push_back(testinfo{std::move(testname), test});
-  }
-
-  duration_t test_timeout(std::string_view testname) {
-    return config.timeout * 1s;
-  }
-
-  // returns cout of failed tests
-  int run_tests() {
-    std::regex r(std::string(config.tests_regex));
-    int failed = 0;
-    for (testinfo& i : tests) {
-      if (!std::regex_search(i.name, r))
-        continue;
-      outstream << "running test " << i.name << '\n';
-      if (config.dry_run)
-        continue;
-      test_run_info runinfo = i.func();
-      if (runinfo.failed)
-        ++failed;
-    }
-    return failed;
-  }
-};
-
-inline testbox& get_testbox() {
-  // inner constant to avoid depending on ordering of global constant initialization (tests registering)
-  static testbox _box;
-  return _box;
-}
-
 inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& ended) {
   on_scope_exit {
     ended = true;
@@ -415,68 +363,50 @@ inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& en
   }
 }
 
-struct test_registrator {
-  ZAL_PIN;
-
-  test_registrator(std::string name, test_fn_t* test) {
-    get_testbox().register_test(std::move(name), test);
-  }
-};
-
-#define REGISTER_TEST(NAME, ADDR) \
-  static inline const ::http2::test_registrator LOGIC_GUARDS_CONCAT(regtest, __LINE__, __LINE__)(NAME, ADDR)
-
 template <auto* Foo>
-test_run_info server_test_impl(std::string_view name) try {
+void server_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_section) {
   echo_server server;
   internet_address addr(asio::ip::address_v4::loopback(), /*port_num=*/0);
   addr = server.listen({.addr = addr, .reuse_address = true});
   bool test_ended = false;
-  (void)run_test(name, Foo(server, addr, server.ioctx()), test_ended);
-  deadline_t deadline = deadline_after(get_testbox().test_timeout(name));
-  get_testbox().fuz.run_until(deadline, test_ended, server.ioctx());
-  return test_run_info{.failed = false};
-} catch (std::exception& e) {
-  FAIL(std::format("server test {} failed with exception, err: {}", name, e.what()));
-  return test_run_info{.failed = true};
+  (void)run_test(name, Foo(server, addr, server.ioctx(), toplvl_section), test_ended);
+  deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
+  fuzzing::fuzzer fuz(moko3::get_testbox().randg());
+  fuz.run_until(deadline, test_ended, server.ioctx());
 }
 
 template <auto* Foo>
-test_run_info client_test_impl(std::string_view name) try {
+void client_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_section) {
   // start real client, дать адрес куда коннектится и мб даже создать уже фейк соединение
   http2::http2_client client;
   bool test_ended = false;
-  (void)run_test(name, Foo(client, client.ioctx()), test_ended);
-  deadline_t deadline = deadline_after(get_testbox().test_timeout(name));
-  get_testbox().fuz.run_until(deadline, test_ended, client.ioctx());
-  return test_run_info{.failed = false};
-} catch (std::exception& e) {
-  FAIL(std::format("client test {} failed with exception, err: {}", name, e.what()));
-  return test_run_info{.failed = true};
+  (void)run_test(name, Foo(client, client.ioctx(), toplvl_section), test_ended);
+  deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
+  fuzzing::fuzzer fuz(moko3::get_testbox().randg());
+  fuz.run_until(deadline, test_ended, client.ioctx());
 }
 
+#define UNIQUE_TEST_NAME LOGIC_GUARDS_CONCAT(_test, __LINE__, __LINE__)
 // after this macro expected function scope, which will use `server`, `addr`, `ioctx`
 // and return dd::task<void>
-#define SERVER_TEST(NAME)                                                                                \
-  ::dd::task<void> LOGIC_GUARDS_CONCAT(server_test, __LINE__, __LINE__)(                                 \
-      ::http2::echo_server & server, ::http2::internet_address addr, ::boost::asio::io_context & ioctx); \
-  REGISTER_TEST(                                                                                         \
-      NAME, +[] {                                                                                        \
-        return ::http2::server_test_impl<&LOGIC_GUARDS_CONCAT(server_test, __LINE__, __LINE__)>(NAME);   \
-      });                                                                                                \
-  ::dd::task<void> LOGIC_GUARDS_CONCAT(server_test, __LINE__, __LINE__)(                                 \
-      ::http2::echo_server & server, ::http2::internet_address addr, ::boost::asio::io_context & ioctx)
+#define SERVER_TEST(NAME)                                                                                  \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,          \
+                                    ::boost::asio::io_context& ioctx, ::moko3::top_lvl_section* _section); \
+  TEST(NAME) {                                                                                             \
+    ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                          \
+  }                                                                                                        \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,          \
+                                    ::boost::asio::io_context& ioctx, ::moko3::top_lvl_section* _section)
 
 // after this macro expected function scope, which will use `client`, `ioctx`
 // and return dd::task<void>
-#define CLIENT_TEST(NAME)                                                                                   \
-  ::dd::task<void> LOGIC_GUARDS_CONCAT(client_test, __LINE__, __LINE__)(::http2::http2_client & client,     \
-                                                                        ::boost::asio::io_context & ioctx); \
-  REGISTER_TEST(                                                                                            \
-      NAME, +[] {                                                                                           \
-        return ::http2::client_test_impl<&LOGIC_GUARDS_CONCAT(client_test, __LINE__, __LINE__)>(NAME);      \
-      });                                                                                                   \
-  ::dd::task<void> LOGIC_GUARDS_CONCAT(client_test, __LINE__, __LINE__)(::http2::http2_client & client,     \
-                                                                        ::boost::asio::io_context & ioctx)
+#define CLIENT_TEST(NAME)                                                                            \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::boost::asio::io_context& ioctx, \
+                                    ::moko3::top_lvl_section* _section);                             \
+  TEST(NAME) {                                                                                       \
+    ::http2::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                    \
+  }                                                                                                  \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::boost::asio::io_context& ioctx, \
+                                    ::moko3::top_lvl_section* _section)
 
 }  // namespace http2
