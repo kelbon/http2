@@ -3,6 +3,7 @@
 
 #include "http2/asio/asio_executor.hpp"
 #include "http2/asio/factory.hpp"
+#include "http2/http2_send_frames.hpp"
 #include "http2/http2_server_session.hpp"
 
 #include <exception>
@@ -183,11 +184,10 @@ struct http2_server::impl {
       co_return;
     }
 
-    http2_server_options opts = options;
     int reader_ec = 0;
 
     // firstly insert session into list, so server will drop it if stops during session establishing
-    server_session_ptr session_ptr = new server_session(std::move(http2con), opts, *creator);
+    server_session_ptr session_ptr = new server_session(std::move(http2con), options, *creator);
     server_session& session = *session_ptr;
     session.connection->name.set_prefix(SERVER_SESSION_PREFIX);
     HTTP2_LOG(TRACE, "starting server session {}", name, session.name());
@@ -217,9 +217,15 @@ struct http2_server::impl {
         session_ptr->connection->shutdown(reqerr_e::TIMEOUT);
       });
       timer.arm(options.connectionTimeout);
-      (void)co_await establish_http2_session_server(session.connection, opts);
+      (void)co_await establish_http2_session_server(session.connection, options);
       session.established = true;
       timer.cancel();
+      if (sessions.size() > options.limit_clients_count) [[unlikely]] {
+        HTTP2_LOG_WARN("connection dropped due server`s clients limit exceeding", session.name());
+        (void)co_await send_goaway(session.connection, 0, errc_e::NO_ERROR,
+                                   "server's clients limit exceeded, try later");
+        goto drop_session;
+      }
     } catch (std::exception& e) {
       HTTP2_LOG(ERROR, "server -> client connection establishment failed, err: {}", e.what(), name);
       goto drop_session;
@@ -229,7 +235,7 @@ struct http2_server::impl {
       goto drop_session;
     }
 
-    (void)start_writer_for_server(session.connection, sleepcb, requestTerminate, opts.forceDisableHpack,
+    (void)start_writer_for_server(session.connection, sleepcb, requestTerminate, options.forceDisableHpack,
                                   session.connectionPartsGate.hold());
 
     session.connection->pingdeadlinetimer.set_callback(requestTerminateInactive);

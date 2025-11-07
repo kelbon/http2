@@ -9,7 +9,7 @@
 namespace http2 {
 
 // returns false is goaway was not sended
-dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t streamid, errc_e errc, std::string dbginfo);
+dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t laststreamid, errc_e errc, std::string dbginfo);
 
 dd::task<void> send_rst_stream(h2connection_ptr con, stream_id_t streamid, errc_e errc);
 
