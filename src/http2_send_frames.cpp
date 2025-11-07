@@ -6,7 +6,7 @@
 
 namespace http2 {
 
-dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t streamid, errc_e errc, std::string dbginfo) {
+dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t laststreamid, errc_e errc, std::string dbginfo) {
   if (!con || con->isDropped()) {
     co_return false;
   }
@@ -19,7 +19,7 @@ dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t streamid, errc_e er
     con->gracefulshutdownGoawaySended = true;
   }
   bytes_t bytes;
-  goaway_frame::form(streamid, errc, std::move(dbginfo), std::back_inserter(bytes));
+  goaway_frame::form(laststreamid, errc, std::move(dbginfo), std::back_inserter(bytes));
   HTTP2_WAIT_WRITE(*con);
   io_error_code ec;
   co_await con->write(bytes, ec);
