@@ -346,7 +346,11 @@ void h2connection::finishRequestWithUserException(h2stream& node, std::exception
   // Note: избегаем выставления одновременно и результата и исключения,
   // поэтому не будим напрямую .task (она выставит результат из .status), вместо
   // этого будим того кто её ждёт
-  node.task.promise().who_waits.resume();
+  auto who_waits = node.task.promise().who_waits;
+  if (who_waits)
+    who_waits.resume();
+  else
+    node.task.destroy();  // calls dctors on locals etc, so all correct
 }
 
 bool h2connection::rstStreamClient(rst_stream rstframe) {
