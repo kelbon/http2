@@ -567,9 +567,10 @@ inline void strip_padding(std::span<byte_t>& bytes) {
   remove_suffix(bytes, padlen);
 }
 
+struct h2stream;
+
 // разбирает все пришедшие хедера, обрабатывая некорретные значения :path,
 // дублированные или пропущенные псевдохедеры
-void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t const> bytes, http_request& req,
-                                 stream_id_t);
+void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> bytes);
 
 }  // namespace http2

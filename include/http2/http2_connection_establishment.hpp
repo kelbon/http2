@@ -32,6 +32,11 @@ struct http2_server_options {
   duration_t idleTimeout = SERVER_DEFAULT_IDLE_TIMEOUT;
   // if false, server will not declare websocket support for clients
   bool supports_websocket = false;
+  // Как много байт может быть использовано одной клиент-сервер сессией единовременно для сборки и обработки
+  // запросов.
+  // Не даёт клиенту забить память сервера посылкой больших запросов без отправки END_STREAM
+  // Note: лимит выставляется на все запросы сессии вместе, а не на один
+  size_t limit_requests_memory_usage_bytes = size_t(-1);
 };
 
 // creates server connection with client

@@ -3,6 +3,7 @@
 #include "http2/http2_protocol.hpp"
 
 #include "http2/http_base.hpp"
+#include "http2/http2_connection.hpp"
 
 #include <hpack/hpack.hpp>
 #include <strswitch/strswitch.hpp>
@@ -298,13 +299,17 @@ window_update_frame window_update_frame::parse(frame_header header, std::span<by
   return frame;
 }
 
-static protocol_error duplicated_pseudoheader(stream_id_t streamid, std::string_view name) {
+// its protocol error, because client encoder somehow encoded headers
+// and we throw error BEFORE decode all headers. So, we must end connection
+// before our decoder will be in not same state as client`s encoder
+// otherwise we may see incorrect headers(indexes) in following requests
+static protocol_error duplicated_pseudoheader(std::string_view name) {
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.3-5
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.1.1-3
   // Malformed requests or responses that are detected MUST be treated
   // as a stream error (Section 5.4.2) of type PROTOCOL_ERROR.
-  return stream_error(errc_e::PROTOCOL_ERROR, streamid,
-                      std::format("pseudoheader {} appeared on the list twice", name));
+  return protocol_error(errc_e::PROTOCOL_ERROR,
+                        std::format("pseudoheader {} appeared on the list twice", name));
 }
 
 static void validate_header_name(const hpack::header_view& h, stream_id_t streamid) {
@@ -342,58 +347,77 @@ static void validate_header_name(const hpack::header_view& h, stream_id_t stream
   }
 }
 
-void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t const> bytes, http_request& req,
-                                 stream_id_t streamid) {
+void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> bytes) {
   auto const* in = bytes.data();
   auto const* e = in + bytes.size();
   hpack::header_view header;
 
   // parse required pseudoheaders
-
+  http_request& req = s.req;
+  hpack::decoder& d = s.connection->decoder;
   bool schemeParsed = false;
   bool pathParsed = false;
   bool methodParsed = false;
   bool authorityParsed = false;
   bool contenttypeParsed = false;
+
+  auto checkrequired = [&](std::string_view hdrname, bool parsed) {
+    if (!parsed) [[unlikely]] {
+      throw stream_error(errc_e::PROTOCOL_ERROR, s.streamid,
+                         std::format("required header {} not present", hdrname));
+    }
+  };
+
   while (in != e) {
     d.decode_header(in, e, header);
     if (!header)  // skip dynamic size updates
     {
       continue;
     }
+    std::string_view hval = header.value.str();
     if (header.name == ":path") {
       if (pathParsed) {
-        throw duplicated_pseudoheader(streamid, ":path");
+        throw duplicated_pseudoheader(":path");
       }
       pathParsed = true;
-      req.path = header.value.str();
+      if (!s.use_bytes(hval.size())) [[unlikely]]
+        goto memory_limit_exceeded;
+      req.path = hval;
       if (req.path.empty()) {
         throw protocol_error(errc_e::PROTOCOL_ERROR, ":path header is empty");
       }
     } else if (header.name == ":method") {
       if (methodParsed) {
-        throw duplicated_pseudoheader(streamid, ":method");
+        throw duplicated_pseudoheader(":method");
       }
       methodParsed = true;
-      enum_from_string(header.value.str(), req.method);
+      if (!s.use_bytes(hval.size())) [[unlikely]]
+        goto memory_limit_exceeded;
+      enum_from_string(hval, req.method);
     } else if (header.name == ":scheme") {
       if (schemeParsed) {
-        throw duplicated_pseudoheader(streamid, ":scheme");
+        throw duplicated_pseudoheader(":scheme");
       }
       schemeParsed = true;
-      enum_from_string(header.value.str(), req.scheme);
+      if (!s.use_bytes(hval.size())) [[unlikely]]
+        goto memory_limit_exceeded;
+      enum_from_string(hval, req.scheme);
     } else if (header.name == ":authority") {
       if (authorityParsed) {
-        throw duplicated_pseudoheader(streamid, ":authority");
+        throw duplicated_pseudoheader(":authority");
       }
       authorityParsed = true;
-      req.authority = header.value.str();
+      if (!s.use_bytes(hval.size())) [[unlikely]]
+        goto memory_limit_exceeded;
+      req.authority = hval;
     } else if (header.name == "content-type") {
       if (contenttypeParsed) {
-        throw stream_error(errc_e::PROTOCOL_ERROR, streamid, "\"content-type\" already parsed");
+        throw duplicated_pseudoheader("content-type");
       }
       contenttypeParsed = true;
-      req.body.content_type = header.value.str();
+      if (!s.use_bytes(hval.size())) [[unlikely]]
+        goto memory_limit_exceeded;
+      req.body.content_type = hval;
     } else {
       goto push_header;
     }
@@ -404,21 +428,26 @@ void parse_http2_request_headers(hpack::decoder& d, std::span<hpack::byte_t cons
       continue;
     }
   push_header:
-    validate_header_name(header, streamid);
+    validate_header_name(header, s.streamid);
+    if (!s.use_bytes(header.name.str().size() + header.value.str().size())) [[unlikely]]
+      goto memory_limit_exceeded;
     req.headers.push_back(http_header_t(std::string(header.name.str()), std::string(header.value.str())));
   }
 
-  auto checkrequired = [](std::string_view hdrname, bool& parsed) {
-    if (!parsed) [[unlikely]] {
-      throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("required header {} not present", hdrname));
-    }
-  };
   checkrequired(":method", methodParsed);
   if (req.method != http_method_e::CONNECT) [[likely]] {
     checkrequired(":path", pathParsed);
     checkrequired(":scheme", schemeParsed);
   }
   // authority not checked, since its possible to not receive authority (client not required to sent it)
+  return;
+memory_limit_exceeded:
+  HTTP2_LOG(WARN, "memory limit exceeded while parsing http request for stream {}", s.streamid,
+            s.connection->name);
+  // just maintain dynamic table
+  hpack::decode_headers_block(d, std::span{in, e}, [](std::string_view, std::string_view) {});
+  throw stream_error(errc_e::ENHANCE_YOUR_CALM, s.streamid,
+                     "memory limit exceeded when parsing request headers");
 }
 
 }  // namespace http2
