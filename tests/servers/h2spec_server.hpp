@@ -20,8 +20,8 @@ struct h2spec_server : http2_server {
 
   h2spec_server()
       : http2_server(http2_server_options{
-            .maxReceiveFrameSize = 15'000,
-            .maxConcurrentStreams = 10,  // enables h2spec test for it
+            .maxReceiveFrameSize = MIN_MAX_FRAME_LEN,  // enables FRAME_SIZE tests
+            .maxConcurrentStreams = 10,                // enables h2spec test for it
         }),
         t(ioctx()) {
   }

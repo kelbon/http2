@@ -160,6 +160,8 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
 
     startReaderFor(self, newConnection);
     self->m_connection->writer.handle = nullptr;
+    assert(self->m_options.max_continuation_len_bytes <= MAX_CONTINUATION_LEN);
+    self->m_connection->max_continuation_len = self->m_options.max_continuation_len_bytes;
     // writer itself sets writer handle in connection
     auto sleepcb = [self](duration_t d, io_error_code& ec) { return self->sleep(d, ec); };
     auto onnetworkerr = [self] { self->drop_connection(reqerr_e::NETWORK_ERR); };
@@ -409,6 +411,7 @@ http2_client::http2_client(endpoint host, http2_client_options opts,
   assert(m_factory);
   m_name.set_prefix(CLIENT_PREFIX);
   m_options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, m_options.maxReceiveFrameSize);
+  m_options.max_continuation_len_bytes = std::min(m_options.max_continuation_len_bytes, MAX_CONTINUATION_LEN);
   HTTP2_LOG(TRACE, "http2_client created", name());
 }
 

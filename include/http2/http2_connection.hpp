@@ -283,6 +283,7 @@ struct h2connection {
   // for supporting http2_server_options::limit_requests_memory_usage_bytes
   size_t used_bytes = 0;
   size_t used_bytes_limit = size_t(-1);
+  uint32_t max_continuation_len = uint32_t(-1);
 
   explicit h2connection(any_connection_t&& c, boost::asio::io_context&);
 

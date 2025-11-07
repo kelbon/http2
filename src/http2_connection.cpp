@@ -653,9 +653,9 @@ dd::task<void> h2connection::receive_headers_with_continuation(http2_frame_t fra
                            std::format("expected CONTINUATION for stream {}, got {}", startheader.streamId,
                                        e2str(frame.header.type)));
     }
-    if (frame.header.length + bytes.size() > MAX_CONTINUATION_LEN) {
+    if (frame.header.length + bytes.size() > max_continuation_len) {
       throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
-                         std::format("CONTINUATION too big, limit: {} bytes", MAX_CONTINUATION_LEN));
+                         std::format("CONTINUATION too big, limit: {} bytes", max_continuation_len));
     }
     // read frame data
     bytes.resize(bytes.size() + frame.header.length);

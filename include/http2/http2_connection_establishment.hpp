@@ -37,6 +37,10 @@ struct http2_server_options {
   // Не даёт клиенту забить память сервера посылкой больших запросов без отправки END_STREAM
   // Note: лимит выставляется на все запросы сессии вместе, а не на один
   size_t limit_requests_memory_usage_bytes = size_t(-1);
+  // При превышении лимита новые соединения будут отброшены
+  size_t limit_clients_count = size_t(-1);
+  // cannot be > 1 GB
+  uint32_t max_continuation_len_bytes = uint32_t(-1);
 };
 
 // creates server connection with client

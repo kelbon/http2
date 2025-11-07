@@ -68,6 +68,9 @@ server_session::server_session(h2connection_ptr con, http2_server_options opts, 
     : connection(std::move(con)), options(opts), server(&s) {
   assert(connection);
   connection->used_bytes_limit = options.limit_requests_memory_usage_bytes;
+  options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, options.maxReceiveFrameSize);
+  options.max_continuation_len_bytes = std::min(options.max_continuation_len_bytes, MAX_CONTINUATION_LEN);
+  connection->max_continuation_len = options.max_continuation_len_bytes;
 }
 
 server_session::~server_session() {
