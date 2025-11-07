@@ -22,6 +22,8 @@ struct http2_client_options {
   // can significantly speed up the first requests on connection,
   // but not all servers correctly support it
   bool allow_requests_before_server_settings = true;
+  // cannot be > 1 GB
+  uint32_t max_continuation_len_bytes = uint32_t(-1);
 };
 
 }  // namespace http2
