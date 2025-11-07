@@ -130,7 +130,11 @@ struct h2stream {
   bool end_stream_received = false;   // marks half-closed stream
   // filled if this a streaming request
   stream_body_maker_t makebody;
+  size_t used_bytes = 0;  // used only by server
   ZAL_PIN;
+
+  // returns false if not allowed to use 'n' bytes
+  [[nodiscard]] bool use_bytes(size_t n) noexcept;
 
   // connect request returns before END_STREAM when first HEADERS received and not send :path and :authority
   // client-side
@@ -276,6 +280,9 @@ struct h2connection {
   merged_segments closed_streams;
   unique_name name;
   boost::asio::io_context& ioctx;
+  // for supporting http2_server_options::limit_requests_memory_usage_bytes
+  size_t used_bytes = 0;
+  size_t used_bytes_limit = size_t(-1);
 
   explicit h2connection(any_connection_t&& c, boost::asio::io_context&);
 
@@ -385,6 +392,7 @@ struct h2connection {
   // exception throwed from on_header/on_data_part callbacks
   void finishRequest(h2stream& node, int status) noexcept;
 
+  // client side
   // used only when user exception throwed from on_header/on_data_part callbacks
   // or if channel for streaming node throws
   // precondition: e != nullptr
@@ -551,6 +559,14 @@ struct h2connection {
 
   void client_receive_data(http2_frame_t frame);
 };
+
+inline bool h2stream::use_bytes(size_t n) noexcept {
+  if (connection->used_bytes + n > connection->used_bytes_limit) [[unlikely]]
+    return false;
+  connection->used_bytes += n;
+  used_bytes += n;
+  return true;
+}
 
 #ifdef HTTP2_ENABLE_TRACE
 void trace_request_headers(h2stream const&, bool fromclient);

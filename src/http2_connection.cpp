@@ -54,6 +54,7 @@ void intrusive_ptr_add_ref(h2stream* p) noexcept {
 void intrusive_ptr_release(h2stream* p) noexcept {
   --p->refcount;
   if (p->refcount == 0) {
+    p->connection->used_bytes -= p->used_bytes;
     p->connection->returnNode(p);
   }
 }
@@ -101,12 +102,22 @@ void h2stream::receiveRequestTrailers(hpack::decoder& decoder, http2_frame_t hdr
   on_scope_exit {
     onHeader = old_on_header;
   };
+  bool memory_limit_exceeded = false;
   auto onheader = [&](std::string_view name, std::string_view value) {
+    if (memory_limit_exceeded || !use_bytes(name.size() + value.size())) [[unlikely]] {
+      // not throw, maintain dynamic table anyway
+      memory_limit_exceeded = true;
+      return;
+    }
     req.headers.push_back(http_header_t(std::string(name), std::string(value)));
   };
   // server does not set 'onHeader' / 'onDataPart' callbacks, but reuses this function for trailers
   onHeader = &onheader;
   receiveTrailersHeaders(decoder, hdrs);
+  if (memory_limit_exceeded) {
+    HTTP2_LOG_WARN("memory limit exceeded when parsing trailers for stream {}", streamid, connection->name);
+    throw stream_error(errc_e::ENHANCE_YOUR_CALM, streamid, "memory limit exceeded when parsing trailers");
+  }
 }
 
 void h2stream::receiveResponseHeaders(hpack::decoder& decoder, http2_frame_t frame) {
@@ -170,7 +181,7 @@ void h2stream::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t fram
   HTTP2_LOG(TRACE, "received HEADERS: stream: {}, len: {}", frame.header.streamId, frame.header.length,
             name());
 
-  parse_http2_request_headers(decoder, frame.data, req, frame.header.streamId);
+  parse_http2_request_headers(*this, frame.data);
 #ifdef HTTP2_ENABLE_TRACE
   trace_request_headers(*this, /*from client=*/true);
 #endif
@@ -184,7 +195,7 @@ void h2stream::receiveRequestData(http2_frame_t frame) {
     end_stream_received = frame.header.flags & flags::END_STREAM;
   };
 
-  HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamId, frame.header.length,
+  HTTP2_LOG(TRACE, "received DATA: stream: {}, len: {}, DATA: {}", streamid, frame.header.length,
             std::string_view((char const*)frame.data.data(), frame.data.size()), name());
 
   decrease_window_size(rlStreamlevelWindowSize, int32_t(frame.header.length));
@@ -192,7 +203,11 @@ void h2stream::receiveRequestData(http2_frame_t frame) {
     update_window_to_max(rlStreamlevelWindowSize, streamid, connection).start_and_detach();
   }
   if (is_half_closed()) {
-    throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId, "stream already assembled");
+    throw stream_error(errc_e::STREAM_CLOSED, streamid, "stream already assembled");
+  }
+  if (!use_bytes(frame.data.size())) {
+    HTTP2_LOG_WARN("memory limit exceeded while receiving DATA for stream {}", streamid, connection->name);
+    throw stream_error(errc_e::ENHANCE_YOUR_CALM, streamid, "too many bytes used");
   }
 
   if (!is_input_streaming()) {
@@ -219,6 +234,7 @@ h2connection::h2connection(any_connection_t&& c, boost::asio::io_context& ctx)
 }
 
 h2connection::~h2connection() {
+  assert(used_bytes == 0);  // all requests should be closed and memory unused
   freeNodes.clear_and_dispose([](h2stream* node) { delete node; });
 }
 
@@ -463,6 +479,7 @@ stream_ptr h2connection::new_stream_node(http_request&& request, deadline_t dead
   node->responded = false;
   node->answered_before_data = false;
   node->end_stream_received = false;
+  node->used_bytes = 0;
 
   assert(node->refcount == 1);
   assert(!node->requestsHook.is_linked());

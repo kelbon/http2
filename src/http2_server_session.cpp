@@ -67,6 +67,7 @@ struct response_bro {
 server_session::server_session(h2connection_ptr con, http2_server_options opts, http2_server& s)
     : connection(std::move(con)), options(opts), server(&s) {
   assert(connection);
+  connection->used_bytes_limit = options.limit_requests_memory_usage_bytes;
 }
 
 server_session::~server_session() {
