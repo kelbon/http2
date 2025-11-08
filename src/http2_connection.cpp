@@ -618,7 +618,6 @@ dd::task<void> h2connection::receive_headers_with_continuation(http2_frame_t fra
   assert(!(frame.header.flags & flags::END_HEADERS));
   assert(oneachframe && whendone);
 
-  // TODO потоковое получение здесь?
   frame.validate_streamid();
   frame.removePadding();
   frame.ignoreDeprecatedPriority();

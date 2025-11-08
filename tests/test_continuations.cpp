@@ -13,6 +13,7 @@ SERVER_TEST("server continuations") {
       {":scheme", "http"},
       {":authority", addr.address().to_string()},
   };
+  // `server` used indirectly by sending request
   auto bytes = client.encode_headers(hdrs);
   co_await client.sendRawHdr(1, bytes, /*end_stream=*/true, /*split=*/true);
   auto rsp = co_await client.receiveRsp();

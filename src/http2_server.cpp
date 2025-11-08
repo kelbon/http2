@@ -397,6 +397,18 @@ void http2_server::run() {
   ioctx().run();
 }
 
+http2_server_options& http2_server::get_options() noexcept {
+  return m_impl->options;
+}
+
+const http2_server_options& http2_server::get_options() const noexcept {
+  return m_impl->options;
+}
+
+void http2_server::set_ssl_context(ssl_context_ptr c) noexcept {
+  m_impl->sslctx = std::move(c);
+}
+
 // multi threaded server
 
 void mt_server::initialize() {

@@ -96,6 +96,11 @@ struct http2_server {
   // similar to ioctx().run(), for common interface with mt_server
   void run();
 
+  http2_server_options& get_options() noexcept;
+  const http2_server_options& get_options() const noexcept;
+  // only for tests
+  void set_ssl_context(ssl_context_ptr) noexcept;
+
  private:
   friend struct http2_tester;
 };

@@ -167,8 +167,9 @@ void server_session::onRequestReady(h2stream& n) noexcept {
   }
 }
 
-bool server_session::rstStreamServer(rst_stream rstframe) {
-  connection->validateRstFrame(rstframe);
+bool server_session::rstStreamServer(rst_stream rstframe, bool skip_validation) {
+  if (!skip_validation)
+    connection->validateRstFrame(rstframe);
   h2stream* n = connection->findResponseByStreamid(rstframe.header.streamId);
   if (!n) {
     auto it =
@@ -190,7 +191,7 @@ void server_session::rstStreamAfterError(stream_error const& e) {
   rst.header = rst.make_header(e.streamid);
   rst.errorCode = e.errc;
   // reuse rst stream like if someone sent it
-  rstStreamServer(rst);
+  rstStreamServer(rst, /*skip_validation=*/true);
   send_rst_stream(connection, e.streamid, e.errc).start_and_detach();
 }
 
