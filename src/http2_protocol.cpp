@@ -444,8 +444,7 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
 memory_limit_exceeded:
   HTTP2_LOG(WARN, "memory limit exceeded while parsing http request for stream {}", s.streamid,
             s.connection->name);
-  // just maintain dynamic table
-  hpack::decode_headers_block(d, std::span{in, e}, [](std::string_view, std::string_view) {});
+  hpack::ignore_headers_block(d, in, e);
   throw stream_error(errc_e::ENHANCE_YOUR_CALM, s.streamid,
                      "memory limit exceeded when parsing request headers");
 }
