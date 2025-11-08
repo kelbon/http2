@@ -548,8 +548,7 @@ void h2connection::ignoreFrame(http2_frame_t frame) {
       laststartedstreamid = std::max(laststartedstreamid, frame.header.streamId);
       // decode before all to ensure decoder will be in correct state
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-19
-      // maintain hpack dynamic table
-      hpack::decode_headers_block(decoder, frame.data, [&](std::string_view, std::string_view) {});
+      hpack::ignore_headers_block(decoder, frame.data);
 
       if (is_closed_stream(frame.header.streamId)) {
         throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamId,
@@ -628,9 +627,8 @@ dd::task<void> h2connection::receive_headers_with_continuation(http2_frame_t fra
   bytes_t bytes(frame.data.begin(), frame.data.end());
 
   on_scope_failure(decode_anyway) {
-    // maintain dyntab
     try {
-      hpack::decode_headers_block(decoder, bytes, [](std::string_view, std::string_view) {});
+      hpack::ignore_headers_block(decoder, bytes);
     } catch (std::exception& e) {
       // may be part of data only received, error expectable
       HTTP2_LOG(WARN, "error while decoding CONTINUATIONS: {}", e.what(), name);
