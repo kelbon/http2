@@ -10,7 +10,7 @@ dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t laststreamid, errc_
   if (!con || con->isDropped()) {
     co_return false;
   }
-  HTTP2_LOG(TRACE, "sending goaway frame: errc: {}, laststreamid: {}, dbginfo: {}", e2str(errc), streamid,
+  HTTP2_LOG(TRACE, "sending goaway frame: errc: {}, laststreamid: {}, dbginfo: {}", e2str(errc), laststreamid,
             dbginfo, con->name);
   if (errc == errc_e::NO_ERROR) {
     if (con->gracefulshutdownGoawaySended) {

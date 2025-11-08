@@ -52,7 +52,6 @@ enum struct ping_e { RESPONSE = 1, ERROR = 2 };
 
 enum struct window_e { RETURN = 0, SKIP = 1 };
 
-using error_codes_e = errc_e;
 using setting_id_e = settings_identifier_e;
 
 struct header {
@@ -111,9 +110,6 @@ struct test_h2connection {
   std::optional<uint32_t> m_headerTabSize;
 
  public:
-  static constexpr uint32_t DEFAULT_WINDOW_SIZE = INITIAL_WINDOW_SIZE_FOR_CONNECTION_OVERALL;
-  static constexpr auto COMMON_TIMEOUT = 5s;
-
   bool is_client() const noexcept {
     return is_client_con;
   }
@@ -175,17 +171,20 @@ struct test_h2connection {
   // sends PING frame answer (ACK == true)
   dd::task<void> sendPong(uint64_t opaqueData);
 
-  dd::task<void> receiveGoAway(stream_id_t lastStreamId, error_codes_e errorCode, ping_e ping,
+  dd::task<void> receiveGoAway(stream_id_t lastStreamId, errc_e errorCode, ping_e ping,
                                deadline_t deadline = deadline_after(5s),
                                std::source_location = std::source_location::current());
-  dd::task<void> sendGoAway(stream_id_t lastStreamId, error_codes_e error, std::string_view debug = {});
+  dd::task<void> sendGoAway(stream_id_t lastStreamId, errc_e error, std::string_view debug = {});
 
-  dd::task<void> receiveRstStream(stream_id_t streamId, error_codes_e, deadline_t = deadline_after(5s),
+  dd::task<void> receiveRstStream(stream_id_t streamId, errc_e, deadline_t = deadline_after(5s),
                                   std::source_location = std::source_location::current());
-  dd::task<void> sendRstStream(stream_id_t streamId, error_codes_e);
+  dd::task<void> sendRstStream(stream_id_t streamId, errc_e);
 
-  // sends HEADERS frame and if `body` present - DATA frame. Always sets END_STREAM
-  dd::task<void> sendReq(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {});
+  dd::task<void> sendHeaders(stream_id_t streamid, std::vector<header> headers, bool endstream);
+
+  // sends HEADERS frame and if `body` present - DATA frame. Sends END_STREAM only if `endstream` == true
+  dd::task<void> sendReq(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
+                         bool endstream = true);
   // sends HEADERS frame and if `body` present - DATA frame. Sends END_STREAM only if `endstream` == true
   dd::task<void> sendRsp(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
                          bool endstream = true);
@@ -204,7 +203,7 @@ struct test_h2connection {
   dd::task<void> sendData(stream_id_t streamId, std::string_view body, bool end_stream);
   // sends HEADERS frame with raw `headers` bytes, does not check `headers` correctness
   // if `split` is true headers will be splitted into random count of CONTINUATION frames
-  dd::task<void> sendRawHdr(stream_id_t streamId, std::span<byte_t> headers, bool end_stream = true,
+  dd::task<void> sendRawHdr(stream_id_t streamId, std::span<const byte_t> headers, bool end_stream = true,
                             bool split = false);
   dd::task<void> sendRawContinuation(stream_id_t streamId, std::span<byte_t> headers, bool end_headers);
 
@@ -238,6 +237,10 @@ struct test_h2connection {
   void setHeaderTableSize(uint32_t size) {
     con->decoder.dyntab.set_user_protocol_max_size(size);
     m_headerTabSize = size;
+  }
+
+  h2connection_ptr get_inner_connection() const noexcept {
+    return con;
   }
 };
 
@@ -350,16 +353,14 @@ dd::task<void> wait_until(PRED pred, asio::io_context& ctx, deadline_t deadline 
   }
 }
 
-inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& ended) {
+inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& ended, std::exception_ptr& e) {
   on_scope_exit {
     ended = true;
   };
   try {
     co_await test;
-  } catch (std::exception& e) {
-    FAIL(std::format("test {} failed with exception, err: {}", testname, e.what()));
   } catch (...) {
-    FAIL(std::format("test {} failed with unknown exception", testname));
+    e = std::current_exception();
   }
 }
 
@@ -369,21 +370,26 @@ void server_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_sect
   internet_address addr(asio::ip::address_v4::loopback(), /*port_num=*/0);
   addr = server.listen({.addr = addr, .reuse_address = true});
   bool test_ended = false;
-  (void)run_test(name, Foo(server, addr, server.ioctx(), toplvl_section), test_ended);
+  std::exception_ptr ex;
+  (void)run_test(name, Foo(server, addr, server.ioctx(), toplvl_section), test_ended, ex);
   deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
   fuzzing::fuzzer fuz(moko3::get_testbox().randg());
   fuz.run_until(deadline, test_ended, server.ioctx());
+  if (ex)
+    std::rethrow_exception(std::move(ex));
 }
-
+// TODO tls?
 template <auto* Foo>
 void client_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_section) {
-  // start real client, дать адрес куда коннектится и мб даже создать уже фейк соединение
   http2::http2_client client;
   bool test_ended = false;
-  (void)run_test(name, Foo(client, client.ioctx(), toplvl_section), test_ended);
+  std::exception_ptr ex;
+  (void)run_test(name, Foo(client, client.ioctx(), toplvl_section), test_ended, ex);
   deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
   fuzzing::fuzzer fuz(moko3::get_testbox().randg());
   fuz.run_until(deadline, test_ended, client.ioctx());
+  if (ex)
+    std::rethrow_exception(std::move(ex));
 }
 
 #define UNIQUE_TEST_NAME LOGIC_GUARDS_CONCAT(_test, __LINE__, __LINE__)

@@ -69,7 +69,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
 
   // called when client sent RST_STREAM
   // returns false if no such stream
-  bool rstStreamServer(rst_stream);
+  bool rstStreamServer(rst_stream, bool skip_validation = false);
 
   void rstStreamAfterError(stream_error const&);
 

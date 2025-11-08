@@ -46,7 +46,7 @@ test_h2connection::test_h2connection(h2connection_ptr ccon, bool client) noexcep
     con->name.set_prefix(SERVER_SESSION_PREFIX);
 }
 
-dd::task<void> test_h2connection::receiveGoAway(uint32_t lastStreamId, error_codes_e errorCode, ping_e ping,
+dd::task<void> test_h2connection::receiveGoAway(uint32_t lastStreamId, errc_e errorCode, ping_e ping,
                                                 deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
 
@@ -58,8 +58,7 @@ dd::task<void> test_h2connection::receiveGoAway(uint32_t lastStreamId, error_cod
   REQUIRE(gf.lastStreamId == lastStreamId);
 }
 
-dd::task<void> test_h2connection::sendGoAway(uint32_t lastStreamId, error_codes_e errc,
-                                             std::string_view debugInfo) {
+dd::task<void> test_h2connection::sendGoAway(uint32_t lastStreamId, errc_e errc, std::string_view debugInfo) {
   FAKE_HTTP2_LOG(INFO, "");
 
   std::vector<byte_t> bytes;
@@ -68,7 +67,7 @@ dd::task<void> test_h2connection::sendGoAway(uint32_t lastStreamId, error_codes_
   return sendRawFrame(std::move(bytes));
 }
 
-dd::task<void> test_h2connection::sendRstStream(uint32_t streamId, error_codes_e errc) {
+dd::task<void> test_h2connection::sendRstStream(uint32_t streamId, errc_e errc) {
   FAKE_HTTP2_LOG(INFO, "");
 
   std::vector<byte_t> bytes;
@@ -77,8 +76,8 @@ dd::task<void> test_h2connection::sendRstStream(uint32_t streamId, error_codes_e
   return sendRawFrame(std::move(bytes));
 }
 
-dd::task<void> test_h2connection::receiveRstStream(uint32_t streamId, error_codes_e error,
-                                                   deadline_t deadline, std::source_location sl) {
+dd::task<void> test_h2connection::receiveRstStream(uint32_t streamId, errc_e error, deadline_t deadline,
+                                                   std::source_location sl) {
   FAKE_HTTP2_LOG(INFO, "");
 
   h2frame f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, sl);
@@ -263,43 +262,54 @@ dd::task<void> test_h2connection::sendRsp(stream_id_t streamid, std::vector<head
   co_await sendFrame(std::move(data));
 }
 
-dd::task<void> test_h2connection::sendReq(stream_id_t streamid, std::vector<header> headers,
-                                          http_body_bytes body) {  // always END_STREAM
-  REQUIRE(is_client());
-  return sendRsp(streamid, std::move(headers), std::move(body), /*endstream=*/true);
+dd::task<void> test_h2connection::sendHeaders(stream_id_t streamid, std::vector<header> headers,
+                                              bool endstream) {
+  FAKE_HTTP2_LOG(INFO, "");
+  // reuse sendReq, which will only send one HEADERS frame
+  return sendRsp(streamid, std::move(headers), {}, endstream);
 }
 
-dd::task<void> test_h2connection::sendRawHdr(uint32_t streamId, std::span<byte_t> headers, bool end_stream,
-                                             bool split) {
-  FAKE_HTTP2_LOG(INFO, "");
-  h2frame f;
-  f.hdr = {
-      .length = uint32_t(headers.size()),
-      .type = frame_e::HEADERS,
-      .flags = split ? flags::EMPTY_FLAGS : flags::END_HEADERS,
-      .streamId = streamId,
-  };
-  f.data.assign(headers.begin(), headers.end());
-  if (end_stream)
-    f.hdr.flags |= flags::END_STREAM;
+dd::task<void> test_h2connection::sendReq(stream_id_t streamid, std::vector<header> headers,
+                                          http_body_bytes body, bool endstream) {
+  REQUIRE(is_client());
+  return sendRsp(streamid, std::move(headers), std::move(body), endstream);
+}
 
-  auto hdrf = f;
-  hdrf.data.clear();
-  hdrf.hdr.length = 0;
-  co_await sendFrame(std::move(hdrf));
-  if (!split)
-    co_return;
-  fuzzing::fuzzer fuz;
-  f.hdr.type = frame_e::CONTINUATION;
-  for (std::span chunk : fuz.chunks(f.data)) {
-    h2frame cf;
-    cf.hdr = f.hdr;
-    cf.hdr.flags = flags::EMPTY_FLAGS;
-    cf.hdr.length = chunk.size();
-    cf.data.assign(chunk.begin(), chunk.end());
-    co_await sendFrame(std::move(cf));
+dd::task<void> test_h2connection::sendRawHdr(uint32_t streamId, std::span<const byte_t> headers,
+                                             bool end_stream, bool split) {
+  FAKE_HTTP2_LOG(INFO, "");
+  if (split) {
+    fuzzing::fuzzer fuz;
+    bool first = true;
+    for (std::span chunk : fuz.chunks(headers)) {
+      h2frame f;
+      f.hdr.length = uint32_t(chunk.size());
+      f.hdr.streamId = streamId;
+      f.hdr.type = first ? frame_e::HEADERS : frame_e::CONTINUATION;
+      if (first && end_stream)
+        f.hdr.flags |= flags::END_STREAM;
+      // stuped msvc stl asserts when comparting iterators from different spans
+      // even if they are to same array
+      //  chunk.end() == headers.end()
+      if (chunk.data() + chunk.size() == headers.data() + headers.size())  // last chunk
+        f.hdr.flags |= flags::END_HEADERS;
+      first = false;
+      f.data.assign(chunk.begin(), chunk.end());
+
+      co_await sendFrame(std::move(f));
+    }
+  } else {  // !split
+    h2frame f;
+    f.hdr.length = uint32_t(headers.size());
+    f.hdr.type = frame_e::HEADERS;
+    f.hdr.flags = flags::END_HEADERS;
+    f.hdr.streamId = streamId;
+    if (end_stream)
+      f.hdr.flags |= flags::END_STREAM;
+    f.data.assign(headers.begin(), headers.end());
+
+    co_await sendFrame(std::move(f));
   }
-  co_await sendRawContinuation(streamId, {}, /*end_headers=*/true);
 }
 
 dd::task<void> test_h2connection::sendRawContinuation(stream_id_t streamId, std::span<byte_t> headers,
@@ -337,7 +347,7 @@ dd::task<void> test_h2connection::sendData(uint32_t streamId, std::string_view b
   f.hdr.length = uint32_t(body.size());
   f.hdr.streamId = streamId;
   f.hdr.flags = endStream ? flags::END_STREAM : flags::EMPTY_FLAGS;
-
+  f.data.assign(body.begin(), body.end());
   return sendFrame(std::move(f));
 }
 
@@ -419,7 +429,12 @@ dd::task<void> test_h2connection::sendRawFrame(std::vector<byte_t> bytes) {
 }
 
 dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_location loc) {
+  bool done = false;  // avoid dangling
+
   auto f = [&](test_h2connection& self) -> dd::task<h2frame> {
+    on_scope_exit {
+      done = true;
+    };
     h2frame frame;
     std::array<byte_t, FRAME_HEADER_LEN> hdr;
     io_error_code ec;
@@ -438,8 +453,17 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
     }
     co_return frame;
   };
-
-  co_return co_await f(*this);
+  asio::steady_timer timer(con->ioctx);
+  timer.expires_at(d.tp);
+  timer.async_wait([&](const io_error_code& ec) {
+    if (ec != asio::error::operation_aborted) {
+      FAKE_HTTP2_LOG(ERROR, "receiveFrame: deadline reached {}", sourceloc_str(loc));
+      con->shutdown(reqerr_e::TIMEOUT);
+    }
+  });
+  h2frame res = co_await f(*this);
+  timer.cancel();
+  co_return res;
 }
 
 dd::task<void> test_h2connection::sendClientMagic() {
@@ -451,11 +475,20 @@ dd::task<void> test_h2connection::sendClientMagic() {
 
 dd::task<void> test_h2connection::waitConnectionDropped(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
-
+  asio::steady_timer timer(con->ioctx);
+  timer.expires_at(deadline.tp);
+  bool timedout = false;
+  timer.async_wait([&](const io_error_code& ec) {
+    if (ec != asio::error::operation_aborted) {
+      timedout = true;
+      con->shutdown(reqerr_e::TIMEOUT);
+    }
+  });
   io_error_code ec;
   byte_t buf[512];
-  while (!ec)
+  while (!ec && !timedout)
     co_await con->read(buf, ec);
+  REQUIRE(!timedout);
 }
 
 void test_h2connection::close() {

@@ -17,11 +17,11 @@ macro(add_http2_test NAME)
     target_link_libraries(test_${NAME} PUBLIC fake_http2lib ${ARGN})
 
     set_target_properties(test_${NAME} PROPERTIES CXX_STANDARD 20)
+    target_compile_definitions(test_${NAME} PRIVATE HTTP2_TLS_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(test_${NAME} test_${NAME})
 endmacro()
 
 add_http2_test(smoke_tls)
-target_compile_definitions(test_smoke_tls PRIVATE HTTP2_TLS_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_http2_test(smoke_notls)
 add_http2_test(merged_segments)
@@ -30,5 +30,6 @@ add_http2_test(fuzz_continuations http2_fuzzinglib echoserverlib)
 add_http2_test(h2spec http2_fuzzinglib echoserverlib Boost::process)
 add_http2_test(connect_requests http2_fuzzinglib echoserverlib Boost::process Boost::stacktrace)
 add_http2_test(continuations)
+add_http2_test(limits)
 
 file(COPY test_server.crt test_server.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

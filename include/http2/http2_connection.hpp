@@ -562,6 +562,7 @@ struct h2connection {
 };
 
 inline bool h2stream::use_bytes(size_t n) noexcept {
+  // its safe to overflow, because its size_t
   if (connection->used_bytes + n > connection->used_bytes_limit) [[unlikely]]
     return false;
   connection->used_bytes += n;
