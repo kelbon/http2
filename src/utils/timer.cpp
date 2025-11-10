@@ -9,7 +9,7 @@ namespace http2 {
 struct timer_t::impl {
   boost::asio::steady_timer timer;
   std::optional<duration> period;
-  move_only_function<void()> fn;
+  move_only_fn_soos<void()> fn;
   bool armed = false;
 
   explicit impl(boost::asio::io_context& ctx) : timer(ctx) {
@@ -70,7 +70,7 @@ bool timer_t::cancel() noexcept {
   return true;
 }
 
-void timer_t::set_callback(move_only_function<void()> fn) {
+void timer_t::set_callback(move_only_fn_soos<void()> fn) {
   m_impl->fn = std::move(fn);
 }
 

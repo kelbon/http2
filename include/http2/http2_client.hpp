@@ -129,11 +129,16 @@ struct http2_client {
  public:
   // 'host' used for connecting when required
   // by default creates localhost client
+  // creates non-tls client
   explicit http2_client(endpoint host = endpoint(asio::ip::address_v4::loopback()),
                         http2_client_options opts = {})
       : http2_client(std::move(host), std::move(opts), &default_transport_factory) {
   }
 
+  // example of creating tls client:
+  //   http2_client myclient(host, http2_client_options{}, [](boost::asio::io_context& ctx) {
+  //                return default_tls_transport_factory(ctx);
+  //   });
   explicit http2_client(endpoint host, http2_client_options,
                         move_only_fn<any_transport_factory(asio::io_context&)>);
 
