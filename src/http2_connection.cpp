@@ -168,7 +168,7 @@ void h2stream::receiveResponseData(http2_frame_t frame) {
             std::string_view((char const*)frame.data.data(), frame.data.size()), name());
 }
 
-void h2stream::receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t frame) {
+void h2stream::receiveRequestHeaders(http2_frame_t frame) {
   assert(frame.header.streamId == streamid);
   assert(frame.header.type == frame_e::HEADERS);
   assert(frame.header.flags & flags::END_HEADERS);
