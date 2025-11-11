@@ -319,7 +319,7 @@ void server_session::startRequestAssemble(const http2_frame_t& frame) {
   // Note: после этого detach() стрим остаётся без владельца
   // это учитывается в onRequestReady и finishServerRequest
   h2stream& node = *n.detach();
-  node.receiveRequestHeaders(connection->decoder, frame);
+  node.receiveRequestHeaders(frame);
   if (node.end_stream_received) {  // setted in receiveRequestHeaders
     // Note: manages 'node' lifetime
     onRequestReady(node);

@@ -179,7 +179,7 @@ struct h2stream {
   // server side
   // expects required pseudoheaders like :path
   // precondition: padding removed
-  void receiveRequestHeaders(hpack::decoder& decoder, http2_frame_t frame);
+  void receiveRequestHeaders(http2_frame_t frame);
 
   // server side
   // adds frame data octets to request body

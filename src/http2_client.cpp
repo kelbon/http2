@@ -158,10 +158,11 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     // this gate closed only in graceful_stop and only after all startConnecting already done
     assert(!self->m_connectionPartsGate.is_closed());
 
-    startReaderFor(self, newConnection);
     self->m_connection->writer.handle = nullptr;
     assert(self->m_options.max_continuation_len_bytes <= MAX_CONTINUATION_LEN);
     self->m_connection->max_continuation_len = self->m_options.max_continuation_len_bytes;
+
+    startReaderFor(self, newConnection);
     // writer itself sets writer handle in connection
     auto sleepcb = [self](duration_t d, io_error_code& ec) { return self->sleep(d, ec); };
     auto onnetworkerr = [self] { self->drop_connection(reqerr_e::NETWORK_ERR); };
