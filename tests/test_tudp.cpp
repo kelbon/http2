@@ -66,7 +66,7 @@ dd::task<void> tudp_client_notls(boost::asio::io_context& ctx) {
   io_error_code ec;
 
   boost::asio::ip::udp::endpoint ep(http2::asio::ip::address_v4::loopback(), 3334);
-  co_await sock.lowest_layer().connect(ep, ec);
+  co_await sock.connect(ep, ec);
   REQUIRE(!ec);
   char bytes[] = "hello world";
   size_t written = co_await net.write(sock, {(byte_t*)+bytes, sizeof(bytes) - 1}, ec);
@@ -86,5 +86,6 @@ int main() {
   while (!ok2) {
     ctx.poll();
   }
+  ctx.poll();
   return 0;
 }

@@ -2,7 +2,7 @@
 
 namespace tudp {
 
-struct tudp_client_socket::impl : tudp_socket_base {
+struct tudp_client_socket::impl : tudp_socket_base, std::enable_shared_from_this<tudp_client_socket::impl> {
  private:
   friend struct tudp_client_socket;
 
@@ -35,8 +35,6 @@ struct tudp_client_socket::impl : tudp_socket_base {
     this->dcid = dcid;
 
     sock.connect(remoteendpoint);
-    start_write_loop();
-    start_read_loop();
   }
 
   impl(impl&&) = delete;
@@ -121,7 +119,7 @@ struct tudp_client_socket::impl : tudp_socket_base {
   void start_read_loop() {
     tudp_reader_buf.resize(TUDP_MAX_DATAGRAM_SIZE);
     sock.async_receive(boost::asio::mutable_buffer(tudp_reader_buf.data(), tudp_reader_buf.size()),
-                       read_loop_callback{this});
+                       read_loop_callback{shared_from_this()});
   }
 
   // вызывается когда получен ACK на конкретный пакет
@@ -205,7 +203,9 @@ struct tudp_client_socket::impl : tudp_socket_base {
   };
 
   struct read_loop_callback {
-    impl* self = nullptr;
+    // в Boost asio только для udp сокетов .cancel отменяет не сразу, а в позже в следующих циклах ioctx
+    // так что без шареда возможна ситуация, когда сокет уже удалён, а операция вызвана без ошибки
+    std::shared_ptr<impl> self = nullptr;
 
     void operator()(const io_error_code& ec, size_t readen) {
       if (ec) {
@@ -213,10 +213,13 @@ struct tudp_client_socket::impl : tudp_socket_base {
           HTTP2_DO_LOG(WARN, "read loop ends with error: {}", ec.message());
         return;
       }
+      if (self.use_count() == 1)
+        return;
       self->receive_packet(std::span<const byte_t>(self->tudp_reader_buf.data(), readen));
       // loop
       self->sock.async_receive(
-          boost::asio::mutable_buffer(self->tudp_reader_buf.data(), self->tudp_reader_buf.size()), *this);
+          boost::asio::mutable_buffer(self->tudp_reader_buf.data(), self->tudp_reader_buf.size()),
+          std::move(*this));
     }
   };
 };

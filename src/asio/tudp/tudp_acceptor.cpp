@@ -352,7 +352,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     udpsock.cancel();  // гарантируем что только 1 цикл
     buf.resize(TUDP_MAX_DATAGRAM_SIZE);
     udpsock.async_receive_from(boost::asio::mutable_buffer(buf.data(), buf.size()), sender_ep,
-                               read_from_loop_callback{this});
+                               read_from_loop_callback{shared_from_this()});
   }
 
   // precondition: !accepted_already.empty()
@@ -495,7 +495,8 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   }
 
   struct read_from_loop_callback {
-    impl* self = nullptr;
+    // см. tudp_client_socket.cpp аналогичное место с read_loop_callback
+    std::shared_ptr<impl> self = nullptr;
 
     void operator()(const io_error_code& ec, size_t readen) {
       if (ec) {
@@ -503,10 +504,12 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
           HTTP2_DO_LOG(WARN, "read loop(acceptor) ends with error: {}", ec.message());
         return;
       }
+      if (self.use_count() == 1)
+        return;
       self->receive_packet(std::span<const byte_t>(self->buf.data(), readen));
       // loop
       self->udpsock.async_receive_from(boost::asio::mutable_buffer(self->buf.data(), self->buf.size()),
-                                       self->sender_ep, *this);
+                                       self->sender_ep, std::move(*this));
     }
   };
 };
