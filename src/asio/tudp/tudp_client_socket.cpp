@@ -6,7 +6,7 @@ struct tudp_client_socket::impl : tudp_socket_base, std::enable_shared_from_this
  private:
   friend struct tudp_client_socket;
 
-  boost::asio::ip::udp::socket sock;
+  udp::socket sock;
   // tudp impl-reader state
   // invariant: when connected size() >= TUDP_MAX_DATAGRAM_SIZE
   bytes_t tudp_reader_buf;
@@ -29,7 +29,7 @@ struct tudp_client_socket::impl : tudp_socket_base, std::enable_shared_from_this
   // remoteendpoint - адрес сервера
   // scid - опционально свой connection id
   impl(boost::asio::io_context& ctx, boost::asio::ip::udp::endpoint remoteendpoint, cid_t dcid,
-       cid_t scid = generate_connection_id()) noexcept
+       cid_t scid = generate_connection_id())
       : impl(ctx) {
     this->scid = scid;
     this->dcid = dcid;

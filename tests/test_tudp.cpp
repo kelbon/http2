@@ -46,9 +46,14 @@ dd::task<void> tudp_client(boost::asio::io_context& ctx) {
 
 inline bool ok2 = false;
 
+// Note: используем уже порт 3335, а не 3334 как предыдущая часть теста, потому что линукс не даёт быстро
+// пересоздать сокет (кажется что-то лежит в errqueue и это невозможно исправить нормально)
+// на том же адресе+порте и начинает спамить connection_refused на стороне клиента (втф это
+// udp сокет..)
+
 dd::task<void> tudp_server_notls(boost::asio::io_context& ctx) {
   tudp::tudp_acceptor acceptor(ctx,
-                               boost::asio::ip::udp::endpoint{boost::asio::ip::address_v4::loopback(), 3334});
+                               boost::asio::ip::udp::endpoint{boost::asio::ip::address_v4::loopback(), 3335});
   io_error_code ec;
   tudp::tudp_server_socket sock(ctx);
 
@@ -65,7 +70,7 @@ dd::task<void> tudp_client_notls(boost::asio::io_context& ctx) {
   tudp::tudp_client_socket sock(ctx);
   io_error_code ec;
 
-  boost::asio::ip::udp::endpoint ep(http2::asio::ip::address_v4::loopback(), 3334);
+  boost::asio::ip::udp::endpoint ep(http2::asio::ip::address_v4::loopback(), 3335);
   co_await sock.connect(ep, ec);
   REQUIRE(!ec);
   char bytes[] = "hello world";
