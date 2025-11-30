@@ -250,7 +250,7 @@ void tudp_client_socket::async_receive_unordered(move_only_fn_soos<void(std::spa
   return pimpl->async_receive_unordered(std::move(cb));
 }
 
-void tudp_client_socket::async_send_unordered(std::span<const byte_t> packet,
+void tudp_client_socket::async_send_unordered(std::span<byte_t> packet,
                                               move_only_fn_soos<void(const io_error_code&)> cb) {
   return pimpl->async_send_unordered(packet, std::move(cb));
 }

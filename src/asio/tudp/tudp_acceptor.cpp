@@ -146,7 +146,7 @@ void tudp_server_socket::async_receive_unordered(move_only_fn_soos<void(std::spa
   return pimpl->async_receive_unordered(std::move(cb));
 }
 
-void tudp_server_socket::async_send_unordered(std::span<const byte_t> packet,
+void tudp_server_socket::async_send_unordered(std::span<byte_t> packet,
                                               move_only_fn_soos<void(const io_error_code&)> cb) {
   return pimpl->async_send_unordered(packet, std::move(cb));
 }
@@ -274,10 +274,10 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     } else {
       stun_response_waiter = std::move(cb);
     }
-    std::shared_ptr req = std::make_shared<std::array<byte_t, 20>>(stun_build_binding_request(stun_tid));
-
-    udpsock.async_send_to(boost::asio::const_buffer(req->data(), req->size()), stun_server_addr,
-                          [req, stun_server_addr](io_error_code const& ec, size_t) {
+    std::unique_ptr req = std::make_unique<std::array<byte_t, 20>>(stun_build_binding_request(stun_tid));
+    auto buf = boost::asio::const_buffer(req->data(), req->size());
+    udpsock.async_send_to(buf, stun_server_addr,
+                          [req = std::move(req), stun_server_addr](io_error_code const& ec, size_t) {
                             if (ec)
                               HTTP2_LOG_WARN("acceptor fails to write STUN request, err: {}", ec.message());
                           });
@@ -373,9 +373,11 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
 
   void send_ack_to(boost::asio::ip::udp::endpoint p, cid_t scid, cid_t dcid, uint64_t nmb) noexcept {
     // ignores possible bad alloc
-    std::shared_ptr acks = std::make_shared<bytes_t>(form_ack_datagram(scid, dcid, nmb));
-    udpsock.async_send_to(boost::asio::const_buffer(acks->data(), acks->size()), p,
-                          [acks](const io_error_code& ec, size_t s) { assert(ec || s == acks->size()); });
+    bytes_t acks(form_ack_datagram(scid, dcid, nmb));
+    auto buf = boost::asio::const_buffer(acks.data(), acks.size());
+    udpsock.async_send_to(buf, p, [acks = std::move(acks)](const io_error_code& ec, size_t s) {
+      assert(ec || s == acks.size());
+    });
   }
 
   // находит соединение по ID ИСХОДА
@@ -466,8 +468,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   }
 
   void send_pong_to(udp::endpoint u, cid_t scid, cid_t dcid) {
-    auto buf = form_pong_datagram(scid, dcid);
-    std::shared_ptr ptr = std::make_shared<decltype(buf)>(buf);
+    std::unique_ptr ptr = std::make_unique<std::array<byte_t, 17>>(form_pong_datagram(scid, dcid));
     boost::asio::const_buffer asiobuf(ptr->data(), ptr->size());
     udpsock.async_send_to(asiobuf, u, [_ = std::move(ptr)](const io_error_code&, size_t) {});
   }

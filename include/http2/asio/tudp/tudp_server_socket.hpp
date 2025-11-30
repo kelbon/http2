@@ -28,7 +28,8 @@ struct tudp_server_socket {
 
   std::optional<bytes_t> try_receive_unordered();
   void async_receive_unordered(move_only_fn_soos<void(std::span<const byte_t>)> cb);
-  void async_send_unordered(std::span<const byte_t> packet, move_only_fn_soos<void(const io_error_code&)> cb);
+  // precondition: пакет должен начинаться с TUDP_UD_PREFIX_LEN нулей
+  void async_send_unordered(std::span<byte_t> packet, move_only_fn_soos<void(const io_error_code&)> cb);
 
   // потоковый интерфейс
 

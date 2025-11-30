@@ -61,8 +61,10 @@ struct tudp_unordered_data_datagram {
 // -1 используется чтобы не ломать последовательность DATA фреймов
 inline constexpr uint64_t TUDP_CONNECT_PACKET_NMB = uint64_t(-1);
 
-inline std::array<byte_t, 17> unordered_data_prefix(cid_t scid, cid_t dcid) {
-  std::array<byte_t, 17> r;
+inline constexpr size_t TUDP_UD_PREFIX_LEN = 17;
+
+inline std::array<byte_t, TUDP_UD_PREFIX_LEN> unordered_data_prefix(cid_t scid, cid_t dcid) {
+  std::array<byte_t, TUDP_UD_PREFIX_LEN> r;
   r[0] = byte_t(tudp_datagram_type::UNORDERED_DATA);
   memcpy(r.data() + 1, &scid, sizeof(cid_t));
   memcpy(r.data() + 9, &dcid, sizeof(cid_t));

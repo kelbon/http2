@@ -113,13 +113,15 @@ struct tudp_socket_base {
     reader_unordered = std::move(cb);
   }
 
-  // precondition: пакет должен начинаться с `unordered_data_prefix(this->get_scid(), this->get_dcid())`
+  // precondition: пакет должен начинаться с TUDP_UD_PREFIX_LEN нулей
   // packet.size() <= 64`000
-  void async_send_unordered(std::span<const byte_t> packet,
-                            move_only_fn_soos<void(const io_error_code&)> cb) {
+  void async_send_unordered(std::span<byte_t> packet, move_only_fn_soos<void(const io_error_code&)> cb) {
     assert(packet.size() <= 64000);
     assert(dcid && "unconnected");
-    assert(std::ranges::equal(std::span(packet).subspan(17), unordered_data_prefix(scid, dcid)));
+    assert(packet.size() >= TUDP_UD_PREFIX_LEN &&
+           std::count(packet.data(), packet.data() + TUDP_UD_PREFIX_LEN, 0) == TUDP_UD_PREFIX_LEN);
+    auto prefix = unordered_data_prefix(scid, dcid);
+    memcpy(packet.data(), prefix.data(), prefix.size());
     do_async_send(std::span(packet),
                   [cb = std::move(cb)](io_error_code const& ec, size_t) mutable { cb(ec); });
   }
