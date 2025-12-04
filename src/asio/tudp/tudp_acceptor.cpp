@@ -208,6 +208,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
 
   // invariant: во время работы size() >= TUDP_MAX_DATAGRAM_SIZE
   bytes_t buf;
+  boost::asio::io_context& ioctx;
   // каждый tudp_server_socket::impl держит shared_ptr на *this и каждый из них нельзя мувать
   // в деструкторе они убирают себя из connections, тем самым гарантируя, что не переживут создателя
   // invariant: не содержит нулей (ни cid, ни сокетов)
@@ -215,6 +216,8 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   std::unordered_map<cid_t, tudp_server_socket::impl*> connections;
   // назначено только во время accept
   move_only_fn_soos<void(const io_error_code&)> accept_callback;
+  std::optional<udp::endpoint> accept_from_ep;
+  boost::asio::steady_timer accept_from_timer;
   // массив source connection id пришедших запросов на соединение
   std::deque<std::pair<cid_t, udp::endpoint>> accepted_already;
   // этот сокет нужен для bind и прослушивания адреса
@@ -233,11 +236,12 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   //  (https://www.rfc-editor.org/rfc/rfc4787.html#section-4.3)
 
  public:
-  impl(boost::asio::io_context& ctx, udp::endpoint ep, bool reuse_address) : udpsock(ctx), my_endpoint(ep) {
+  impl(boost::asio::io_context& ctx, udp::endpoint ep, bool reuse_address)
+      : ioctx(ctx), accept_from_timer(ctx), udpsock(ctx), my_endpoint(ep) {
     udpsock.open(ep.protocol());
 
     if (reuse_address)
-      udpsock.set_option(boost::asio::socket_base::reuse_address(true));
+      udpsock.set_option(boost::asio::socket_base::reuse_address(reuse_address));
     udpsock.bind(ep);
   }
 
@@ -314,7 +318,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     } while (route(s.scid));  // избегаем совпадения (маловероятного)
 
     if (!accepted_already.empty()) {
-      on_accept(s, cb);
+      on_accept(pop_accepted(), s, cb);
       return;
     }
     accept_callback = [this, res = &s, cb = std::move(cb)](io_error_code const& ec) mutable {
@@ -323,14 +327,70 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
         return;
       }
       // использует `accepted_already`
-      on_accept(*res, cb);
+      on_accept(pop_accepted(), *res, cb);
     };
+  }
+
+  void async_accept_from(udp::endpoint ep, tudp_server_socket& ss,
+                         move_only_fn_soos<void(const io_error_code&)> cb) {
+    assert(ss.pimpl);
+    tudp_server_socket::impl& s = *ss.pimpl;
+    assert(s.scid == 0 && s.dcid == 0);  // already connected
+    if (!listens)
+      listen();
+    do {
+      s.scid = generate_connection_id();  // server connection id
+    } while (route(s.scid));  // избегаем совпадения (маловероятного)
+    // начинаем периодически писать коннект запросы
+    accept_from_timer.expires_after(std::chrono::milliseconds(100));
+    accept_from_timer.async_wait(write_connect_loop_cb(shared_from_this(), s.scid));
+
+    if (std::optional x = pop_with_endpoint(ep)) {
+      on_accept(std::move(*x), s, cb);
+      return;
+    }
+    accept_from_ep = ep;
+    accept_callback = [this, res = &s, cb = std::move(cb)](io_error_code const& ec) mutable {
+      if (ec) {
+        boost::asio::post(udpsock.get_executor(), std::bind_front(std::move(cb), ec));
+        return;
+      }
+      // вызывается только после складывания туда пары с правильным endpoint
+      std::optional x = pop_with_endpoint(*accept_from_ep);
+      assert(x);
+      accept_from_timer.cancel();
+      on_accept(std::move(*x), *res, cb);
+    };
+  }
+
+  dd::task<std::optional<tudp_server_socket>> accept_from(udp::endpoint ep, http2::deadline_t deadline) {
+    boost::asio::steady_timer timer(udpsock.get_executor());
+
+    timer.expires_at(deadline.tp);
+    timer.async_wait([this](io_error_code const& ec) {
+      if (!ec)
+        cancel_accept();
+    });
+    tudp_server_socket sock(ioctx);
+    bool success = false;
+    co_await dd::suspend_and_t{[&](std::coroutine_handle<> me) {
+      async_accept_from(ep, sock, [&](const io_error_code& ec) {
+        if (!ec)
+          success = true;
+        boost::asio::post(ioctx, me);
+      });
+    }};
+    if (success)
+      co_return sock;
+    co_return std::nullopt;
   }
 
   void cancel_accept() {
     if (accept_callback) {
       std::exchange(accept_callback, {})(boost::asio::error::operation_aborted);
     }
+    accept_from_ep = std::nullopt;
+    accept_from_timer.cancel();
   }
 
   void cancel_stun_request() {
@@ -355,10 +415,27 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
                                read_from_loop_callback{shared_from_this()});
   }
 
-  // precondition: !accepted_already.empty()
-  void on_accept(tudp_server_socket::impl& s, std::invocable<io_error_code> auto&& cb) {
-    auto [dcid, ep] = accepted_already.front();
+  std::optional<std::pair<uint64_t, udp::endpoint>> pop_with_endpoint(const udp::endpoint& ep) {
+    auto it = accepted_already.begin();
+    for (; it != accepted_already.end(); ++it) {
+      if (it->second == ep) {
+        auto res = std::move(*it);
+        accepted_already.erase(it);
+        return res;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::pair<uint64_t, udp::endpoint> pop_accepted() {
+    std::pair x = std::move(accepted_already.front());
     accepted_already.pop_front();
+    return x;
+  }
+  // precondition: !accepted_already.empty()
+  void on_accept(std::pair<uint64_t, udp::endpoint> p, tudp_server_socket::impl& s,
+                 std::invocable<io_error_code> auto&& cb) {
+    auto [dcid, ep] = p;
 
     s.dcid = dcid;
     s.start_write_loop();
@@ -418,9 +495,11 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
       }
       accepted_already.push_back({dg.scid, sender_ep});
       if (accept_callback) {
-        // калбек пошлёт ACK когда кто-то примет соединение.
-        // А до этих пор клиент будет дальше отправлять повторы
-        std::exchange(accept_callback, {})(io_error_code{});
+        if (!accept_from_ep || *accept_from_ep == sender_ep) {
+          // калбек пошлёт ACK когда кто-то примет соединение.
+          // А до этих пор клиент будет дальше отправлять повторы
+          std::exchange(accept_callback, {})(io_error_code{});
+        }
       }
       return true;
     }
@@ -495,6 +574,28 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
       handle_unparsable_packet(data);
   }
 
+  struct write_connect_loop_cb {
+    std::shared_ptr<impl> self = nullptr;
+    cid_t scid = 0;
+
+    void operator()(const io_error_code& ec) {
+      if (ec) {
+        if (ec != boost::asio::error::operation_aborted) [[unlikely]]
+          HTTP2_DO_LOG(WARN, "read loop(acceptor) ends with error: {}", ec.message());
+        return;
+      }
+      if (self.use_count() == 1)
+        return;
+      assert(self->accept_from_ep);
+      bytes_t b = form_data_datagram(scid, 0, TUDP_CONNECT_PACKET_NMB, {});
+      // вероятно тут крайне сложно получить ошибку
+      self->udpsock.send_to(boost::asio::const_buffer(b.data(), b.size()), *self->accept_from_ep);
+      // loop
+      self->accept_from_timer.expires_after(std::chrono::milliseconds(100));
+      self->accept_from_timer.async_wait(*this);
+    }
+  };
+
   struct read_from_loop_callback {
     // см. tudp_client_socket.cpp аналогичное место с read_loop_callback
     std::shared_ptr<impl> self = nullptr;
@@ -565,6 +666,16 @@ void tudp_acceptor::close() {
 
 void tudp_acceptor::async_accept(tudp_server_socket& s, move_only_fn_soos<void(const io_error_code&)> cb) {
   pimpl->async_accept(s, std::move(cb));
+}
+
+void tudp_acceptor::async_accept_from(udp::endpoint ep, tudp_server_socket& s,
+                                      move_only_fn_soos<void(const io_error_code&)> cb) {
+  pimpl->async_accept_from(ep, s, std::move(cb));
+}
+
+dd::task<std::optional<tudp_server_socket>> tudp_acceptor::accept_from(udp::endpoint ep,
+                                                                       http2::deadline_t deadline) {
+  return pimpl->accept_from(std::move(ep), deadline);
 }
 
 void tudp_acceptor::cancel_accept() {

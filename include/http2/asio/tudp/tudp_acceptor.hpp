@@ -59,6 +59,14 @@ struct tudp_acceptor {
 
   void async_accept(tudp_server_socket& s, move_only_fn_soos<void(const io_error_code&)> cb);
 
+  // принимает соединение только от конкретного ендпоинта
+  // во время accept непрерывно посылает свои connect пакеты туда же
+  // (на той стороне тоже должен быть async_accept_from)
+  void async_accept_from(udp::endpoint, tudp_server_socket& s,
+                         move_only_fn_soos<void(const io_error_code&)> cb);
+
+  dd::task<std::optional<tudp_server_socket>> accept_from(udp::endpoint ep, http2::deadline_t deadline);
+
   // отменяет до этого начатую операцию async_accept или не делает ничего, если такой операции нет
   // `cb` вызывается в operation_aborted
   // может быть использовано для отмены по таймауту

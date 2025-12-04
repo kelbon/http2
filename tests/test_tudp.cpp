@@ -13,7 +13,8 @@ dd::task<void> tudp_server(boost::asio::io_context& ctx) {
   auto sslctx =
       make_ssl_context_for_server(HTTP2_TLS_DIR "/test_server.crt", HTTP2_TLS_DIR "/test_server.key");
   tudp::tudp_acceptor acceptor(ctx,
-                               boost::asio::ip::udp::endpoint{boost::asio::ip::address_v4::loopback(), 3334});
+                               // NOTE: not loopback! лупбек не эквивалентно этому и ломается
+                               boost::asio::ip::udp::endpoint{boost::asio::ip::udp::v4(), 3334});
   acceptor.close();  // testing reuse after stop
   io_error_code ec;
   boost::asio::ssl::stream<tudp::tudp_server_socket> sock(ctx, sslctx->ctx);
@@ -52,8 +53,7 @@ inline bool ok2 = false;
 // udp сокет..)
 
 dd::task<void> tudp_server_notls(boost::asio::io_context& ctx) {
-  tudp::tudp_acceptor acceptor(ctx,
-                               boost::asio::ip::udp::endpoint{boost::asio::ip::address_v4::loopback(), 3335});
+  tudp::tudp_acceptor acceptor(ctx, boost::asio::ip::udp::endpoint{boost::asio::ip::udp::v4(), 3335});
   io_error_code ec;
   tudp::tudp_server_socket sock(ctx);
 
