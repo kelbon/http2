@@ -374,7 +374,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     tudp_server_socket sock(ioctx);
     bool success = false;
     co_await dd::suspend_and_t{[&](std::coroutine_handle<> me) {
-      async_accept_from(ep, sock, [&](const io_error_code& ec) {
+      async_accept_from(ep, sock, [&, me](const io_error_code& ec) {
         if (!ec)
           success = true;
         boost::asio::post(ioctx, me);
