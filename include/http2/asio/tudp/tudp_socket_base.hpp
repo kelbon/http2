@@ -62,7 +62,7 @@ struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
   // выставлено только если `reader` != nullptr
   std::span<byte_t> reader_wants;
   // ожидающий следующего пакета неупорядоченных данных
-  move_only_fn_soos<void(std::span<const byte_t>)> reader_unordered;
+  move_only_fn_soos<void(std::span<const byte_t>, io_error_code const&)> reader_unordered;
   std::deque<bytes_t> unordered_packets;
   // периодически проверяет `sent` и отсылает пакеты снова, если долго не получено подтверждение
   boost::asio::steady_timer ack_requester;
@@ -102,12 +102,12 @@ struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
   }
 
   // читает из потока неупорядоченных пакетов. Никак не влияет на стримовый поток
-  void async_receive_unordered(move_only_fn_soos<void(std::span<const byte_t>)> cb) {
+  void async_receive_unordered(move_only_fn_soos<void(std::span<const byte_t>, io_error_code const&)> cb) {
     assert(!reader_unordered);
     std::optional packet = try_receive_unordered();
     if (packet) {
       boost::asio::post(get_executor(),
-                        [cb = std::move(cb), p = std::move(packet)]() mutable { cb(*std::move(p)); });
+                        [cb = std::move(cb), p = std::move(packet)]() mutable { cb(*std::move(p), {}); });
       return;
     }
     reader_unordered = std::move(cb);
@@ -239,7 +239,7 @@ struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
     assert(scid == dg.dcid);
     assert(dg.scid == dcid);
     if (reader_unordered) {
-      std::exchange(reader_unordered, {})(dg.payload);
+      std::exchange(reader_unordered, {})(dg.payload, {});
     } else {
       unordered_packets.push_back(bytes_t(dg.payload.begin(), dg.payload.end()));
     }
@@ -252,6 +252,9 @@ struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
     if (reader) {
       std::exchange(reader, {})(e, 0);
       reader_wants = {};
+    }
+    if (reader_unordered) {
+      std::exchange(reader_unordered, {})({}, e);
     }
   }
 

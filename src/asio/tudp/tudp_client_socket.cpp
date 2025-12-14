@@ -249,7 +249,8 @@ std::optional<bytes_t> tudp_client_socket::try_receive_unordered() {
   return pimpl->try_receive_unordered();
 }
 
-void tudp_client_socket::async_receive_unordered(move_only_fn_soos<void(std::span<const byte_t>)> cb) {
+void tudp_client_socket::async_receive_unordered(
+    move_only_fn_soos<void(std::span<const byte_t>, io_error_code const&)> cb) {
   return pimpl->async_receive_unordered(std::move(cb));
 }
 
