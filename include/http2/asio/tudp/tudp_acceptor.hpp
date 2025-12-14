@@ -57,15 +57,10 @@ struct tudp_acceptor {
 
   void close();
 
-  void async_accept(tudp_server_socket& s, move_only_fn_soos<void(const io_error_code&)> cb);
-
   // принимает соединение только от конкретного ендпоинта
-  // во время accept непрерывно посылает свои connect пакеты туда же
+  // во время accept непрерывно посылает свои hello пакеты ep
   // (на той стороне тоже должен быть async_accept_from)
   // family (v4/v6) `ep` должен совпадать с тем который в был в конструкторе
-  void async_accept_from(udp::endpoint, tudp_server_socket& s,
-                         move_only_fn_soos<void(const io_error_code&)> cb);
-
   dd::task<tudp_server_socket> accept_from(udp::endpoint ep, io_error_code& ec,
                                            http2::deadline_t deadline = deadline_t::never());
 

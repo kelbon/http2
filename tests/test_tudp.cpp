@@ -7,7 +7,7 @@
 #include "moko3/macros.hpp"
 
 using namespace http2;
-
+#if 0
 inline bool ok = false;
 
 dd::task<void> tudp_server(boost::asio::io_context& ctx) {
@@ -79,10 +79,10 @@ dd::task<void> tudp_client_notls(boost::asio::io_context& ctx) {
   REQUIRE(!ec);
   REQUIRE(written == sizeof(bytes) - 1);
 }
-
+#endif
 inline bool ok3 = false;
 
-dd::task<void> tudp_server_notls_accept_from(boost::asio::io_context& ctx) {
+dd::task<void> tudp_accept_from1(boost::asio::io_context& ctx) {
   tudp::tudp_acceptor acceptor(ctx, boost::asio::ip::udp::endpoint{boost::asio::ip::udp::v4(), 3336});
   io_error_code ec;
   tudp::tudp_server_socket sock =
@@ -95,7 +95,7 @@ dd::task<void> tudp_server_notls_accept_from(boost::asio::io_context& ctx) {
   ok3 = true;
 }
 
-dd::task<void> tudp_client_notls_accept_from(boost::asio::io_context& ctx) {
+dd::task<void> tudp_accept_from2(boost::asio::io_context& ctx) {
   co_await net.sleep(ctx, std::chrono::milliseconds(500));
   tudp::tudp_acceptor acceptor(ctx, boost::asio::ip::udp::endpoint{boost::asio::ip::udp::v4(), 3337});
   io_error_code ec;
@@ -110,6 +110,7 @@ dd::task<void> tudp_client_notls_accept_from(boost::asio::io_context& ctx) {
 
 int main() {
   boost::asio::io_context ctx;
+#if 0
   tudp_server(ctx).start_and_detach();
   tudp_client(ctx).start_and_detach();
   while (!ok) {
@@ -120,8 +121,10 @@ int main() {
   while (!ok2) {
     ctx.poll();
   }
-  tudp_server_notls_accept_from(ctx).start_and_detach();
-  tudp_client_notls_accept_from(ctx).start_and_detach();
+#endif
+
+  tudp_accept_from1(ctx).start_and_detach();
+  tudp_accept_from2(ctx).start_and_detach();
   while (!ok3) {
     ctx.poll();
   }
