@@ -1,4 +1,5 @@
 
+#include "http2/asio/asio_executor.hpp"
 #include "http2/asio/tudp/tudp.hpp"
 
 #include "http2/asio/awaiters.hpp"
@@ -79,6 +80,34 @@ dd::task<void> tudp_client_notls(boost::asio::io_context& ctx) {
   REQUIRE(written == sizeof(bytes) - 1);
 }
 
+inline bool ok3 = false;
+
+dd::task<void> tudp_server_notls_accept_from(boost::asio::io_context& ctx) {
+  tudp::tudp_acceptor acceptor(ctx, boost::asio::ip::udp::endpoint{boost::asio::ip::udp::v4(), 3336});
+  io_error_code ec;
+  tudp::tudp_server_socket sock =
+      co_await acceptor.accept_from({http2::asio::ip::address_v4::loopback(), 3337}, ec);
+  REQUIRE(!ec);
+  char buf[100];
+  size_t readen = co_await net.read_some(sock, {(byte_t*)buf, 100}, ec);
+  REQUIRE(!ec);
+  REQUIRE(std::string_view(buf, readen) == "hello world");
+  ok3 = true;
+}
+
+dd::task<void> tudp_client_notls_accept_from(boost::asio::io_context& ctx) {
+  co_await net.sleep(ctx, std::chrono::milliseconds(500));
+  tudp::tudp_acceptor acceptor(ctx, boost::asio::ip::udp::endpoint{boost::asio::ip::udp::v4(), 3337});
+  io_error_code ec;
+  tudp::tudp_server_socket sock =
+      co_await acceptor.accept_from({http2::asio::ip::address_v4::loopback(), 3336}, ec);
+  REQUIRE(!ec);
+  char bytes[] = "hello world";
+  size_t written = co_await net.write(sock, {(byte_t*)+bytes, sizeof(bytes) - 1}, ec);
+  REQUIRE(!ec);
+  REQUIRE(written == sizeof(bytes) - 1);
+}
+
 int main() {
   boost::asio::io_context ctx;
   tudp_server(ctx).start_and_detach();
@@ -89,6 +118,11 @@ int main() {
   tudp_server_notls(ctx).start_and_detach();
   tudp_client_notls(ctx).start_and_detach();
   while (!ok2) {
+    ctx.poll();
+  }
+  tudp_server_notls_accept_from(ctx).start_and_detach();
+  tudp_client_notls_accept_from(ctx).start_and_detach();
+  while (!ok3) {
     ctx.poll();
   }
   ctx.poll();

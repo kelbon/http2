@@ -2,7 +2,7 @@
 
 namespace tudp {
 
-struct tudp_client_socket::impl : tudp_socket_base, std::enable_shared_from_this<tudp_client_socket::impl> {
+struct tudp_client_socket::impl : tudp_socket_base {
  private:
   friend struct tudp_client_socket;
 
@@ -20,6 +20,9 @@ struct tudp_client_socket::impl : tudp_socket_base, std::enable_shared_from_this
   }
 
  public:
+  std::shared_ptr<impl> shared_from_this() noexcept {
+    return std::static_pointer_cast<impl>(tudp_socket_base::shared_from_this());
+  }
   // создаёт незаконнекченный сокет (требуется async_connect)
   explicit impl(boost::asio::io_context& ctx) noexcept : tudp_socket_base(ctx), sock(ctx), ping_timer(ctx) {
   }

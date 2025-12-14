@@ -42,7 +42,7 @@ struct tudp_socket_options {
 // своего рода TCP реализованное над UDP
 // * параллельно этому можно посылать и принимать неупорядоченные пакеты - обычные UDP датаграммы с маленьким
 // тегом от tudp - просто для переиспользования одного сокета и удобства
-struct tudp_socket_base {
+struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
  protected:
   // source connection id
   cid_t scid = 0;
@@ -291,11 +291,11 @@ struct tudp_socket_base {
     // гарантируем один цикл записи
     ack_requester.cancel();
     ack_requester.expires_after(options.ack_check_period);
-    ack_requester.async_wait(ack_requester_callback{this});
+    ack_requester.async_wait(ack_requester_callback{shared_from_this()});
   }
 
   struct ack_requester_callback {
-    tudp_socket_base* self = nullptr;
+    std::shared_ptr<tudp_socket_base> self = nullptr;
 
     void operator()(io_error_code const& ec) {
       if (ec)

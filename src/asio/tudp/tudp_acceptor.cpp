@@ -73,6 +73,10 @@ struct tudp_server_socket::impl : tudp_socket_base {
   }
 
  public:
+  std::shared_ptr<impl> shared_from_this() noexcept {
+    return std::static_pointer_cast<impl>(tudp_socket_base::shared_from_this());
+  }
+
   boost::asio::ip::udp::endpoint local_endpoint() const noexcept {
     return owner_sock().local_endpoint();
   }
@@ -102,7 +106,7 @@ struct tudp_server_socket::impl : tudp_socket_base {
  private:
   // вызывается когда получен ACK на конкретный пакет
   void receive_ack(uint64_t nmb) {
-    if (nmb > sent_packet_nmb) [[unlikely]] {
+    if (nmb > sent_packet_nmb && nmb != TUDP_CONNECT_PACKET_NMB) [[unlikely]] {
       HTTP2_DO_LOG(WARN, "ack packet which is not sent by this connection");
       return;
     }
@@ -218,6 +222,10 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   move_only_fn_soos<void(const io_error_code&)> accept_callback;
   std::optional<udp::endpoint> accept_from_ep;
   boost::asio::steady_timer accept_from_timer;
+  cid_t accept_from_scid = 0;
+  // если true то accept_from_ep != nullopt
+  // accept_from_timer ещё взведён, ждём ack от противоположной стороны чтобы завершить accept_from
+  bool waiting_ack = false;
   // массив source connection id пришедших запросов на соединение
   std::deque<std::pair<cid_t, udp::endpoint>> accepted_already;
   // этот сокет нужен для bind и прослушивания адреса
@@ -334,6 +342,10 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   void async_accept_from(udp::endpoint ep, tudp_server_socket& ss,
                          move_only_fn_soos<void(const io_error_code&)> cb) {
     assert(ss.pimpl);
+    if (ep.protocol() != local_endpoint().protocol()) {
+      cb(boost::asio::error::address_family_not_supported);
+      return;
+    }
     tudp_server_socket::impl& s = *ss.pimpl;
     assert(s.scid == 0 && s.dcid == 0);  // already connected
     if (!listens)
@@ -341,6 +353,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     do {
       s.scid = generate_connection_id();  // server connection id
     } while (route(s.scid));  // избегаем совпадения (маловероятного)
+    accept_from_scid = s.scid;
     // начинаем периодически писать коннект запросы
     accept_from_timer.expires_after(std::chrono::milliseconds(100));
     accept_from_timer.async_wait(write_connect_loop_cb(shared_from_this(), s.scid));
@@ -355,6 +368,8 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
         boost::asio::post(udpsock.get_executor(), std::bind_front(std::move(cb), ec));
         return;
       }
+      assert(waiting_ack);
+      waiting_ack = false;
       // вызывается только после складывания туда пары с правильным endpoint
       std::optional x = pop_with_endpoint(*accept_from_ep);
       assert(x);
@@ -363,7 +378,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     };
   }
 
-  dd::task<std::optional<tudp_server_socket>> accept_from(udp::endpoint ep, http2::deadline_t deadline) {
+  dd::task<tudp_server_socket> accept_from(udp::endpoint ep, io_error_code& ec, http2::deadline_t deadline) {
     boost::asio::steady_timer timer(udpsock.get_executor());
 
     timer.expires_at(deadline.tp);
@@ -372,17 +387,15 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
         cancel_accept();
     });
     tudp_server_socket sock(ioctx);
-    bool success = false;
+
     co_await dd::suspend_and_t{[&](std::coroutine_handle<> me) {
-      async_accept_from(ep, sock, [&, me](const io_error_code& ec) {
-        if (!ec)
-          success = true;
+      async_accept_from(ep, sock, [&, me](const io_error_code& ec2) {
+        ec = ec2;
         boost::asio::post(ioctx, me);
       });
     }};
-    if (success)
-      co_return sock;
-    co_return std::nullopt;
+
+    co_return sock;
   }
 
   void cancel_accept() {
@@ -391,6 +404,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     }
     accept_from_ep = std::nullopt;
     accept_from_timer.cancel();
+    accept_from_scid = 0;
   }
 
   void cancel_stun_request() {
@@ -490,15 +504,22 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
         return true;
       }
       if (already_accepted(dg.scid)) {
-        // не отправляем ACK, потому что ACK отправит tudp_server_socket который возьмёт соединение
+        if (accept_from_ep && *accept_from_ep == sender_ep) {
+          // мы и есть получатель соединения, так что отправляем ACK
+          send_ack_to(sender_ep, accept_from_scid, dg.scid, dg.packet_nmb);
+        } else {
+          // не отправляем ACK, потому что ACK отправит tudp_server_socket который возьмёт соединение
+        }
         return true;
       }
       accepted_already.push_back({dg.scid, sender_ep});
       if (accept_callback) {
-        if (!accept_from_ep || *accept_from_ep == sender_ep) {
+        if (!accept_from_ep) {
           // калбек пошлёт ACK когда кто-то примет соединение.
           // А до этих пор клиент будет дальше отправлять повторы
           std::exchange(accept_callback, {})(io_error_code{});
+        } else if (*accept_from_ep == sender_ep) {
+          waiting_ack = true;  // позже при получении ACK разбудим калбек accept_from
         }
       }
       return true;
@@ -518,6 +539,14 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   [[nodiscard]] bool receive_ack_dg(tudp_ack_datagram const& dg) noexcept {
     HTTP2_LOG_TRACE("tudp server received ack, dcid: {}, scid: {}, plsz: {} ", dg.dcid, dg.scid,
                     dg.payload.size());
+    if (waiting_ack) {
+      assert(accept_from_ep);
+      if (*accept_from_ep == sender_ep) {
+        accepted_already.push_front({dg.scid, sender_ep});
+        std::exchange(accept_callback, {})(io_error_code{});
+        return true;
+      }
+    }
     if (tudp_server_socket::impl* s = route(dg.dcid)) [[likely]] {
       if (s->destination != sender_ep) [[unlikely]]
         s->destination = sender_ep;  // клиент переехал
@@ -581,12 +610,12 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     void operator()(const io_error_code& ec) {
       if (ec) {
         if (ec != boost::asio::error::operation_aborted) [[unlikely]]
-          HTTP2_DO_LOG(WARN, "read loop(acceptor) ends with error: {}", ec.message());
+          HTTP2_DO_LOG(WARN, "write loop(acceptor) ends with error: {}", ec.message());
         return;
       }
-      if (self.use_count() == 1)
+      if (self.use_count() == 1 || !self->accept_from_ep)
         return;
-      assert(self->accept_from_ep);
+      assert(self->accept_from_ep->protocol() == self->udpsock.local_endpoint().protocol());
       bytes_t b = form_data_datagram(scid, 0, TUDP_CONNECT_PACKET_NMB, {});
       // вероятно тут крайне сложно получить ошибку
       self->udpsock.send_to(boost::asio::const_buffer(b.data(), b.size()), *self->accept_from_ep);
@@ -602,9 +631,10 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
 
     void operator()(const io_error_code& ec, size_t readen) {
       if (ec) {
-        if (ec != boost::asio::error::operation_aborted) [[unlikely]]
-          HTTP2_DO_LOG(WARN, "read loop(acceptor) ends with error: {}", ec.message());
-        return;
+        if (ec == boost::asio::error::operation_aborted) [[unlikely]]
+          return;
+        else
+          ;  // HTTP2_DO_LOG(WARN, "read loop(acceptor) error: {}", ec.message());
       }
       if (self.use_count() == 1)
         return;
@@ -673,9 +703,9 @@ void tudp_acceptor::async_accept_from(udp::endpoint ep, tudp_server_socket& s,
   pimpl->async_accept_from(ep, s, std::move(cb));
 }
 
-dd::task<std::optional<tudp_server_socket>> tudp_acceptor::accept_from(udp::endpoint ep,
-                                                                       http2::deadline_t deadline) {
-  return pimpl->accept_from(std::move(ep), deadline);
+dd::task<tudp_server_socket> tudp_acceptor::accept_from(udp::endpoint ep, io_error_code& ec,
+                                                        http2::deadline_t deadline) {
+  return pimpl->accept_from(std::move(ep), ec, deadline);
 }
 
 void tudp_acceptor::cancel_accept() {
