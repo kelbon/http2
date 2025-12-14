@@ -5,7 +5,7 @@
 #include "http2/asio/tudp/stun.hpp"
 #include "http2/asio/tudp/tudp_server_socket.hpp"
 #include "http2/utils/timer.hpp"
-
+#include <fstream>  // TODO rm
 namespace tudp {
 
 struct inactive_detector {
@@ -119,6 +119,13 @@ struct tudp_server_socket::impl : tudp_socket_base {
     // filter duplicates
     if (!already_received_packet_nmbs.has_point(dg.packet_nmb)) [[likely]] {
       already_received_packet_nmbs.add_point(dg.packet_nmb);
+      static std::ofstream dbg_file("tudp_debug_out.log");  // TODO rm
+      dbg_file << std::format("received packet #{} from {}, len: {}, me: {}.\ncontent: [", dg.packet_nmb,
+                              dg.scid, dg.payload.size(), dg.dcid);
+      for (auto& p : received) {
+        dbg_file << p.first << ',';
+      }
+      dbg_file << ']' << '\n';
       received.try_emplace(dg.packet_nmb, bytes_t(dg.payload.begin(), dg.payload.end()));
       if (reader) {
         size_t readen = try_read(reader_wants);
@@ -543,12 +550,13 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   [[nodiscard]] bool receive_ack_dg(tudp_ack_datagram const& dg) noexcept {
     HTTP2_LOG_TRACE("tudp server received ack, dcid: {}, scid: {}, plsz: {} ", dg.dcid, dg.scid,
                     dg.payload.size());
+    bool result = false;
     if (waiting_ack) {
       assert(accept_from_ep);
       if (*accept_from_ep == sender_ep) {
         accepted_already.push_front({dg.scid, sender_ep});
         std::exchange(accept_callback, {})(io_error_code{});
-        return true;
+        result = true;
       }
     }
     if (tudp_server_socket::impl* s = route(dg.dcid)) [[likely]] {
@@ -557,7 +565,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
       s->receive_ack_dg(dg);
       return true;
     }
-    return false;
+    return result;
   }
 
   [[nodiscard]] bool receive_unordered_data_dg(tudp_unordered_data_datagram const& dg) noexcept {
