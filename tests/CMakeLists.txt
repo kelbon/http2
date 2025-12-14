@@ -31,5 +31,6 @@ add_http2_test(h2spec http2_fuzzinglib echoserverlib Boost::process)
 add_http2_test(connect_requests http2_fuzzinglib echoserverlib Boost::process Boost::stacktrace)
 add_http2_test(continuations)
 add_http2_test(limits)
+add_http2_test(tudp)
 
 file(COPY test_server.crt test_server.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

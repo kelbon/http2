@@ -6,6 +6,7 @@
 #include <anyany/anyany.hpp>
 
 #include "http2/asio/aio_context.hpp"
+#include "http2/utils/fn_ref.hpp"
 
 namespace http2 {
 
@@ -14,8 +15,6 @@ struct timer_t {
   using clock_type = std::chrono::steady_clock;
   using time_point = clock_type::time_point;
   using duration = clock_type::duration;
-  template <typename Signature>
-  using move_only_function = aa::any_with<aa::call<Signature>, aa::move>;
 
   struct impl;
 
@@ -52,7 +51,7 @@ struct timer_t {
   // do not touches setted callback
   bool cancel() noexcept;
 
-  void set_callback(move_only_function<void()>);
+  void set_callback(move_only_fn_soos<void()>);
 };
 
 }  // namespace http2

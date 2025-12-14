@@ -21,6 +21,7 @@ namespace http2 {
 using internet_address = asio::ip::tcp::endpoint;
 
 // [ip or fqdn] and port
+// fqdn - Fully Qualified Domain Name
 struct endpoint {
   std::variant<std::string, asio::ip::address> addr;
   asio::ip::port_type port = 0;
@@ -74,6 +75,14 @@ struct endpoint {
   }
   const asio::ip::address* ipaddr() const noexcept {
     return std::get_if<asio::ip::address>(&addr);
+  }
+
+  std::string fqdn_str() const noexcept {
+    if (auto* x = fqdn()) {
+      return *x;
+    } else {
+      return ipaddr()->to_string();
+    }
   }
 
   std::string to_string() const {

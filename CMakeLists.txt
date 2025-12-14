@@ -42,6 +42,9 @@ add_library(http2lib ${CMAKE_CURRENT_SOURCE_DIR}/src/http_base.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/unique_name.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/factory.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tudp/tudp_acceptor.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tudp/tudp_client_socket.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tudp/stun.cpp
             )
 
 target_include_directories(http2lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

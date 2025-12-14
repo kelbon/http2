@@ -21,4 +21,7 @@ using fn_cptr = aa::cptr<aa::call<SIGNATURE>>;
 template <typename Signature>
 using move_only_fn = aa::basic_any_with<aa::default_allocator, 0, aa::call<Signature>>;
 
+template <typename Signature>
+using move_only_fn_soos = aa::any_with<aa::call<Signature>, aa::move>;
+
 }  // namespace http2

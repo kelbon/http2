@@ -89,11 +89,11 @@ struct frame_header {
       ++out;
     };
     uint32_t len = htonl_value(length);
-    out = std::copy_n(as_bytes(len).data() + 1, 3, out);
+    out = hpack::noexport::copy_n_fast((char*)as_bytes(len).data() + 1, 3, out);
     pushByte(uint8_t(type));
     pushByte(flags);
     stream_id_t id = htonl_value(streamId);
-    out = std::copy_n((uint8_t*)&id, sizeof(id), out);
+    out = hpack::noexport::copy_n_fast((char*)&id, sizeof(id), out);
     return out;
   }
 
@@ -219,7 +219,7 @@ struct rst_stream {
     assert(streamid != 0);
     out = make_header(streamid).form(out);
     htonli(ec);
-    return std::copy_n(as_bytes(ec).data(), 4, out);
+    return hpack::noexport::copy_n_fast((char*)as_bytes(ec).data(), 4, out);
   }
 
   [[nodiscard]] static rst_stream parse(frame_header h, std::span<byte_t const> bytes);
@@ -263,7 +263,7 @@ struct [[gnu::packed]] setting_t {
   static O form(setting_t s, O out) {
     s.identifier = htonl_value(s.identifier);
     s.value = htonl_value(s.value);
-    return std::copy_n(as_bytes(s).data(), sizeof(s), out);
+    return hpack::noexport::copy_n_fast((char*)as_bytes(s).data(), sizeof(s), out);
   }
 
   [[nodiscard]] static setting_t parse(std::span<byte_t const, 6> bytes) noexcept {
@@ -424,7 +424,7 @@ struct ping_frame {
         .streamId = 0,
     };
     out = h.form(out);
-    return std::copy_n((char*)&data, 8, out);
+    return hpack::noexport::copy_n_fast((char*)&data, 8, out);
   }
 
   [[nodiscard]] static ping_frame parse(frame_header h, std::span<byte_t const> bytes);
@@ -463,9 +463,9 @@ struct goaway_frame {
             .form(out);
     htonli(lastStreamId);
     htonli(errorCode);
-    out = std::copy_n(as_bytes(lastStreamId).data(), 4, out);
-    out = std::copy_n(as_bytes(errorCode).data(), 4, out);
-    return std::copy_n(debugInfo.data(), debugInfo.size(), out);
+    out = hpack::noexport::copy_n_fast((char*)as_bytes(lastStreamId).data(), 4, out);
+    out = hpack::noexport::copy_n_fast((char*)as_bytes(errorCode).data(), 4, out);
+    return hpack::noexport::copy_n_fast(debugInfo.data(), debugInfo.size(), out);
   }
 };
 
@@ -493,7 +493,7 @@ struct window_update_frame {
         }
             .form(out);
     htonli(increment);
-    return std::copy_n(as_bytes(increment).data(), sizeof(increment), out);
+    return hpack::noexport::copy_n_fast((char*)as_bytes(increment).data(), sizeof(increment), out);
   }
 
   [[nodiscard]] static window_update_frame parse(frame_header header, std::span<byte_t const> bytes);
@@ -503,7 +503,7 @@ struct continuation_frame {};
 
 template <std::output_iterator<hpack::byte_t> O>
 static O form_connection_initiation(settings_t settings, O out) {
-  out = std::copy_n(CONNECTION_PREFACE, sizeof(CONNECTION_PREFACE), out);
+  out = hpack::noexport::copy_n_fast((const char*)+CONNECTION_PREFACE, sizeof(CONNECTION_PREFACE), out);
   return settings_frame::form(settings, out);
 }
 
