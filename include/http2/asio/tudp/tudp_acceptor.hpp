@@ -62,7 +62,6 @@ struct tudp_acceptor {
   // принимает соединение только от конкретного ендпоинта
   // во время accept непрерывно посылает свои connect пакеты туда же
   // (на той стороне тоже должен быть async_accept_from)
-  // вызываем калбек только после получения ACK от противоположной стороны
   // family (v4/v6) `ep` должен совпадать с тем который в был в конструкторе
   void async_accept_from(udp::endpoint, tudp_server_socket& s,
                          move_only_fn_soos<void(const io_error_code&)> cb);

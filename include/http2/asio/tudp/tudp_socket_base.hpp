@@ -298,12 +298,15 @@ struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
   }
 
   struct ack_requester_callback {
-    std::shared_ptr<tudp_socket_base> self = nullptr;
+    std::weak_ptr<tudp_socket_base> weak_self;
 
     void operator()(io_error_code const& ec) {
       if (ec)
         return;
       // loop
+      auto self = weak_self.lock();
+      if (!self)
+        return;
       self->ack_requester.expires_after(self->options.ack_check_period);
       self->ack_requester.async_wait(*this);
 

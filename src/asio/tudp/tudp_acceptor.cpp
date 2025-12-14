@@ -224,9 +224,6 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   std::optional<udp::endpoint> accept_from_ep;
   boost::asio::steady_timer accept_from_timer;
   cid_t accept_from_scid = 0;
-  // если true то accept_from_ep != nullopt
-  // accept_from_timer ещё взведён, ждём ack от противоположной стороны чтобы завершить accept_from
-  bool waiting_ack = false;
   // массив source connection id пришедших запросов на соединение
   std::deque<std::pair<cid_t, udp::endpoint>> accepted_already;
   // этот сокет нужен для bind и прослушивания адреса
@@ -369,11 +366,10 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
         boost::asio::post(udpsock.get_executor(), std::bind_front(std::move(cb), ec));
         return;
       }
-      assert(waiting_ack);
-      waiting_ack = false;
       // вызывается только после складывания туда пары с правильным endpoint
       std::optional x = pop_with_endpoint(*accept_from_ep);
       assert(x);
+      accept_from_ep = std::nullopt;
       accept_from_timer.cancel();
       on_accept(std::move(*x), *res, cb);
     };
@@ -456,6 +452,8 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
     s.start_write_loop();
     s.creator = shared_from_this();
     s.destination = ep;
+    // посылаем ответное hello с подтверждением
+    s.send_packet(s.scid, 0, TUDP_CONNECT_PACKET_NMB, {});
     // Note: устанавливать опции в серверный сокет нужно до accept..
     s.detector.start([&s] { s.shutdown(); }, s.options.idle_timeout);
     connections.try_emplace(s.scid, &s);
@@ -500,9 +498,6 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
                     dg.payload.size());
     if (is_connect_request(dg)) [[unlikely]] {
       if (auto* c = already_connected_to(dg.scid)) {
-        // отправляем ответное hello, на случай если это попытка соединиться из accept_from
-        bytes_t hello = form_hello_datagram(c->scid);
-        udpsock.send_to(boost::asio::const_buffer(hello.data(), hello.size()), sender_ep);
         // дублирование сообщения или потерялся ACK и отправитель продублировал connect запрос
         send_ack_to(sender_ep, c->scid, dg.scid, dg.packet_nmb);
         return true;
@@ -518,12 +513,10 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
       }
       accepted_already.push_back({dg.scid, sender_ep});
       if (accept_callback) {
-        if (!accept_from_ep) {
+        if (!accept_from_ep || *accept_from_ep == sender_ep) {
           // калбек пошлёт ACK когда кто-то примет соединение.
           // А до этих пор клиент будет дальше отправлять повторы
           std::exchange(accept_callback, {})(io_error_code{});
-        } else if (*accept_from_ep == sender_ep) {
-          waiting_ack = true;  // позже при получении ACK разбудим калбек accept_from
         }
       }
       return true;
@@ -543,22 +536,13 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   [[nodiscard]] bool receive_ack_dg(tudp_ack_datagram const& dg) noexcept {
     HTTP2_LOG_TRACE("tudp server received ack, dcid: {}, scid: {}, plsz: {} ", dg.dcid, dg.scid,
                     dg.payload.size());
-    bool result = false;
-    if (waiting_ack) {
-      assert(accept_from_ep);
-      if (*accept_from_ep == sender_ep) {
-        accepted_already.push_front({dg.scid, sender_ep});
-        std::exchange(accept_callback, {})(io_error_code{});
-        result = true;
-      }
-    }
     if (tudp_server_socket::impl* s = route(dg.dcid)) [[likely]] {
       if (s->destination != sender_ep) [[unlikely]]
         s->destination = sender_ep;  // клиент переехал
       s->receive_ack_dg(dg);
       return true;
     }
-    return result;
+    return false;
   }
 
   [[nodiscard]] bool receive_unordered_data_dg(tudp_unordered_data_datagram const& dg) noexcept {
@@ -609,7 +593,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
   }
 
   struct write_connect_loop_cb {
-    std::shared_ptr<impl> self = nullptr;
+    std::weak_ptr<impl> weak_self;
     cid_t scid = 0;
 
     void operator()(const io_error_code& ec) {
@@ -618,7 +602,8 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
           HTTP2_DO_LOG(WARN, "write loop(acceptor) ends with error: {}", ec.message());
         return;
       }
-      if (self.use_count() == 1 || !self->accept_from_ep)
+      auto self = weak_self.lock();
+      if (!self || !self->accept_from_ep)
         return;
       assert(self->accept_from_ep->protocol() == self->udpsock.local_endpoint().protocol());
       bytes_t b = form_hello_datagram(scid);
@@ -632,7 +617,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
 
   struct read_from_loop_callback {
     // см. tudp_client_socket.cpp аналогичное место с read_loop_callback
-    std::shared_ptr<impl> self = nullptr;
+    std::weak_ptr<impl> weak_self;
 
     void operator()(const io_error_code& ec, size_t readen) {
       if (ec) {
@@ -641,7 +626,8 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
         else
           ;  // HTTP2_DO_LOG(WARN, "read loop(acceptor) error: {}", ec.message());
       }
-      if (self.use_count() == 1)
+      auto self = weak_self.lock();
+      if (!self)
         return;
       self->receive_packet(std::span<const byte_t>(self->buf.data(), readen));
       // loop
