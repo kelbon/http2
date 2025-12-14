@@ -193,10 +193,11 @@ struct tudp_socket_base : std::enable_shared_from_this<tudp_socket_base> {
     io_error_code ec;
     size_t written = try_write({(const byte_t*)buf.data(), buf.size()}, ec);
     if (ec) [[unlikely]] {
-      cb(ec, 0);
+      boost::asio::post(get_executor(), std::bind_front(std::move(cb), ec, 0));
       return;
     }
-    cb(io_error_code{}, written);
+    // prevent stack overflow
+    boost::asio::post(get_executor(), std::bind_front(std::move(cb), io_error_code{}, written));
   }
 
   void shutdown() noexcept {
