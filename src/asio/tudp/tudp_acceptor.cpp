@@ -5,7 +5,7 @@
 #include "http2/asio/tudp/stun.hpp"
 #include "http2/asio/tudp/tudp_server_socket.hpp"
 #include "http2/utils/timer.hpp"
-#include <fstream>  // TODO rm
+
 namespace tudp {
 
 struct inactive_detector {
@@ -119,13 +119,6 @@ struct tudp_server_socket::impl : tudp_socket_base {
     // filter duplicates
     if (!already_received_packet_nmbs.has_point(dg.packet_nmb)) [[likely]] {
       already_received_packet_nmbs.add_point(dg.packet_nmb);
-      static std::ofstream dbg_file("tudp_debug_out.log");  // TODO rm
-      dbg_file << std::format("received packet #{} from {}, len: {}, me: {}.\ncontent: [", dg.packet_nmb,
-                              dg.scid, dg.payload.size(), dg.dcid);
-      for (auto& p : received) {
-        dbg_file << p.first << ',';
-      }
-      dbg_file << ']' << '\n';
       received.try_emplace(dg.packet_nmb, bytes_t(dg.payload.begin(), dg.payload.end()));
       if (reader) {
         size_t readen = try_read(reader_wants);
