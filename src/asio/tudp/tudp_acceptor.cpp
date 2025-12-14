@@ -499,6 +499,9 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
                     dg.payload.size());
     if (is_connect_request(dg)) [[unlikely]] {
       if (auto* c = already_connected_to(dg.scid)) {
+        // отправляем ответное hello, на случай если это попытка соединиться из accept_from
+        bytes_t hello = form_hello_datagram(c->scid);
+        udpsock.send_to(boost::asio::const_buffer(hello.data(), hello.size()), sender_ep);
         // дублирование сообщения или потерялся ACK и отправитель продублировал connect запрос
         send_ack_to(sender_ep, c->scid, dg.scid, dg.packet_nmb);
         return true;
@@ -616,7 +619,7 @@ struct tudp_acceptor::impl : std::enable_shared_from_this<tudp_acceptor::impl> {
       if (self.use_count() == 1 || !self->accept_from_ep)
         return;
       assert(self->accept_from_ep->protocol() == self->udpsock.local_endpoint().protocol());
-      bytes_t b = form_data_datagram(scid, 0, TUDP_CONNECT_PACKET_NMB, {});
+      bytes_t b = form_hello_datagram(scid);
       // вероятно тут крайне сложно получить ошибку
       self->udpsock.send_to(boost::asio::const_buffer(b.data(), b.size()), *self->accept_from_ep);
       // loop

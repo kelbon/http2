@@ -273,9 +273,14 @@ static inline std::chrono::steady_clock::time_point timestamp() noexcept {
 [[nodiscard]] inline bool is_connect_request(tudp_data_datagram const& dg) noexcept {
   return dg.payload.size() == 0 /* connect запрос */
          && dg.dcid == 0        /* клиент ещё не знает номер dcid */
-         && dg.scid != 0;
+         && dg.scid != 0 && dg.packet_nmb == TUDP_CONNECT_PACKET_NMB;
 }
 
+// hello отправляется обоими клиентами друг другу в начале, на hello следует ACK
+// Каждый клиент перед тем как понимает что соединён должен получить hello + ack
+[[nodiscard]] inline bytes_t form_hello_datagram(cid_t scid) {
+  return form_data_datagram(scid, 0, TUDP_CONNECT_PACKET_NMB, {});
+}
 // UDP packet size max + запас под служебные байты
 inline constexpr size_t TUDP_MAX_DATAGRAM_SIZE = 70'000;
 
