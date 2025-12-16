@@ -15,7 +15,7 @@ docs/
 cmake-build-*
 cmake_build
 .cache
-
+.clangd
 .vs/
 .vscode/
 .trash/

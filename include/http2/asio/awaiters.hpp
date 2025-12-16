@@ -96,8 +96,9 @@ struct asio_awaiter<void, CallbackUser> {
   }
 };
 
+template <typename P>
 struct resolve_operation {
-  asio::ip::tcp::resolver& resolver;
+  asio::ip::basic_resolver<P>& resolver;
   endpoint ep;
 
   template <typename T>
@@ -114,7 +115,7 @@ struct resolve_operation {
     } else {
       auto* ip = ep.ipaddr();
       assert(ep.ipaddr() != nullptr);
-      resolver.async_resolve(asio::ip::tcp::endpoint(*ip, ep.get_port()), std::forward<T>(cb));
+      resolver.async_resolve(typename P::endpoint(*ip, ep.get_port()), std::forward<T>(cb));
     }
   }
 };
@@ -240,9 +241,9 @@ struct accept_operation {
   }
 };
 
-template <typename Protocol, typename Socket>
+template <typename Acceptor, typename Socket>
 struct accept_operation_with_socket {
-  asio::basic_socket_acceptor<Protocol>& acceptor;
+  Acceptor& acceptor;
   Socket& s;
 
   template <typename T>
@@ -259,17 +260,17 @@ struct net_t {
                                                io_error_code& ec) {
     return asio_awaiter<asio::basic_stream_socket<Protocol>, accept_operation<Protocol>>(ec, acceptor);
   }
-  template <typename Protocol, typename Socket>
-  KELCORO_CO_AWAIT_REQUIRED static auto accept(asio::basic_socket_acceptor<Protocol>& acceptor,
-                                               Socket& socket, io_error_code& ec) {
-    return asio_awaiter<void, accept_operation_with_socket<Protocol, Socket>>(ec, acceptor, socket);
+  template <typename Acceptor, typename Socket>
+  KELCORO_CO_AWAIT_REQUIRED static auto accept(Acceptor& acceptor, Socket& socket, io_error_code& ec) {
+    return asio_awaiter<void, accept_operation_with_socket<Acceptor, Socket>>(ec, acceptor, socket);
   }
 
   // returns resolve results
-  KELCORO_CO_AWAIT_REQUIRED static auto resolve(asio::ip::tcp::resolver& resolver, endpoint ep,
+  template <typename P>
+  KELCORO_CO_AWAIT_REQUIRED static auto resolve(asio::ip::basic_resolver<P>& resolver, endpoint ep,
                                                 io_error_code& ec) {
-    using resolve_results_t = asio::ip::tcp::resolver::results_type;
-    return asio_awaiter<resolve_results_t, resolve_operation>(ec, resolver, std::move(ep));
+    using resolve_results_t = typename asio::ip::basic_resolver<P>::results_type;
+    return asio_awaiter<resolve_results_t, resolve_operation<P>>(ec, resolver, std::move(ep));
   }
 
   // returns endpoint (to who connected)
