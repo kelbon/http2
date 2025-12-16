@@ -83,6 +83,10 @@ struct merged_segments {
   size_t segments_count() const noexcept {
     return segments.size();
   }
+
+  void clear() noexcept {
+    segments.clear();
+  }
 };
 
 }  // namespace http2
