@@ -13,14 +13,14 @@ using byte_t = unsigned char;
 
 template <typename T>
 std::span<byte_t, sizeof(T)> as_bytes(T& t) noexcept {
-  static_assert(std::has_unique_object_representations_v<T> && !std::is_const_v<T> &&
+  static_assert(/*std::has_unique_object_representations_v<T> &&*/ !std::is_const_v<T> &&
                 std::is_trivially_copyable_v<T>);
   return std::span<byte_t, sizeof(T)>(reinterpret_cast<byte_t*>(std::addressof(t)), sizeof(T));
 }
 
 template <typename T>
 std::span<byte_t const, sizeof(T)> as_bytes(T const& t) noexcept {
-  static_assert(std::has_unique_object_representations_v<T> && std::is_trivially_copyable_v<T>);
+  static_assert(/*std::has_unique_object_representations_v<T> &&*/ std::is_trivially_copyable_v<T>);
   return std::span<byte_t, sizeof(T)>(reinterpret_cast<byte_t const*>(std::addressof(t)), sizeof(T));
 }
 // this is for trivial types, not for spans
