@@ -70,15 +70,12 @@ static void close_tcp_sock(auto& tcp_sock) {
   io_error_code ec;
   ec = tcp_sock.cancel(ec);
   // dont stop on errors, i need to stop connection somehow
-  if (ec)
-    HTTP2_LOG_ERROR("[HTTP2] [shutdown] TCP socket cancel, err {}", ec.what());
+  (void)ec;
   // Do not do SSL shutdown, useless errors and wasting time
   ec = tcp_sock.shutdown(asio::socket_base::shutdown_both, ec);
-  if (ec)
-    HTTP2_LOG_ERROR("[HTTP2] [shutdown] TCP socket shutdown, err: {}", ec.what());
+  (void)ec;
   ec = tcp_sock.close(ec);
-  if (ec)
-    HTTP2_LOG_ERROR("[HTTP2] [shutdown], TCP socket close err: {}", ec.what());
+  (void)ec;
 }
 
 void asio_tls_connection::shutdown() noexcept {
@@ -156,10 +153,8 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, dea
   if (timeoutflag)
     throw timeout_exception();
 
-  if (results.empty() || ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.message());
-    throw network_exception(ec);
-  }
+  if (results.empty() || ec)
+    throw network_exception("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.message());
   tcp::socket tcp_sock(ioctx);
 
   timer.cancel();
@@ -173,10 +168,8 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, dea
 
   co_await net.connect(tcp_sock, results, ec);
 
-  if (ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
-    throw network_exception(ec);
-  }
+  if (ec)
+    throw network_exception("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
   options.apply(tcp_sock);
   co_return any_connection_t(new asio_connection(std::move(tcp_sock)));
 }
@@ -208,10 +201,8 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
   auto results = co_await net.resolve(resolver, endpoint, ec);
   if (timeoutflag)
     throw timeout_exception();
-  if (results.empty() || ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.what());
-    throw network_exception(ec);
-  }
+  if (results.empty() || ec)
+    throw network_exception("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.what());
   asio::ip::tcp::socket tcp_sock(ioctx);
 
   timer.cancel();
@@ -227,10 +218,8 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
 
   if (timeoutflag)
     throw timeout_exception();
-  if (ec) {
-    HTTP2_LOG_ERROR("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
-    throw network_exception(ec);
-  }
+  if (ec)
+    throw network_exception("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
   options.apply(tcp_sock);
   assert(sslctx);
   std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), sslctx));
@@ -245,10 +234,8 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
   co_await net.handshake(res->sock, ssl::stream_base::handshake_type::client, ec);
   if (timeoutflag)
     throw timeout_exception();
-  if (ec) {
-    HTTP2_LOG_ERROR("[TCP/SSL] cannot ssl handshake: {}", ec.message());
-    throw network_exception(ec);
-  }
+  if (ec)
+    throw network_exception("[TCP/SSL] cannot ssl handshake: {}", ec.message());
   co_return any_connection_t(std::move(res));
 }
 

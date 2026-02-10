@@ -65,7 +65,6 @@ struct http2_server::impl {
   dd::gate sessionsgate;
   http2_server_options options;
   http2_server* creator = nullptr;
-  unique_name name;
   tcp_connection_options tcpopts;
   move_only_fn<void(asio::ip::tcp::socket)> acceptcb;
 #ifndef NDEBUG
@@ -75,8 +74,14 @@ struct http2_server::impl {
     return io;
   }
 
-  explicit impl(tcp_connection_options tcpopts) : io(), tcpopts(std::move(tcpopts)) {
-    name.set_prefix(SERVER_PREFIX);
+  const log_context& logctx() const noexcept {
+    return options.logctx;
+  }
+
+  explicit impl(tcp_connection_options tcpopts, http2_server_options opts)
+      : io(), options(std::move(opts)), tcpopts(std::move(tcpopts)) {
+    options.logctx.name = unique_name{};  // generate new (for different names for each server in mt_server)
+    options.logctx.name.set_prefix(SERVER_PREFIX);
   }
 
   internet_address listen(server_endpoint a) {
@@ -92,7 +97,7 @@ struct http2_server::impl {
     };
     acceptConnections(sessionsgate.hold(), lit).start_and_detach();
     eraselistener.no_longer_needed();
-    HTTP2_LOG(INFO, "Server listening on {}:{}", binded.address().to_string(), a.addr.port(), name);
+    HTTP2_LOG(logctx(), INFO, "Server listening on {}:{}", binded.address().to_string(), a.addr.port());
     return binded;
   }
 
@@ -100,7 +105,7 @@ struct http2_server::impl {
     assert(std::this_thread::get_id() == tid);
     assert(lit != listeners.end());
     on_scope_exit {
-      HTTP2_LOG(TRACE, "stops listening", name);
+      HTTP2_LOG_TRACE(logctx(), "stops listening");
       listeners.erase(lit);
     };
     std::string addrstr = [&] {
@@ -117,20 +122,20 @@ struct http2_server::impl {
       co_await net.accept(*lit, socket, ec);
       assert(std::this_thread::get_id() == tid);
       if (ec == asio::error::operation_aborted) {
-        HTTP2_LOG(TRACE, "listening on {} stopped", addrstr, name);
+        HTTP2_LOG_TRACE(logctx(), "listening on {} stopped", addrstr);
         if (sessionsgate.is_closed())
           co_return;
         else
           continue;
       }
       if (ec) {
-        HTTP2_LOG(ERROR, "accept failed on {}, err: {}", addrstr, ec.message(), name);
+        HTTP2_LOG(logctx(), ERROR, "accept failed on {}, err: {}", addrstr, ec.message());
         if (sessionsgate.is_closed())
           co_return;
         else
           continue;
       }
-      HTTP2_LOG(TRACE, "accepted connection", name);
+      HTTP2_LOG_TRACE(logctx(), "accepted connection");
       if (!sessionsgate.is_closed()) {
         if (!acceptcb)
           sessionLifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
@@ -138,9 +143,9 @@ struct http2_server::impl {
           acceptcb(std::move(socket));
       }
     }
-    HTTP2_LOG(TRACE, "acceptConnections: gate is closed", name);
+    HTTP2_LOG_TRACE(logctx(), "acceptConnections: gate is closed");
   } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "acceptConnections failed with err {}", e.what(), name);
+    HTTP2_LOG(logctx(), ERROR, "acceptConnections failed with err {}", e.what());
   }
 
   dd::task<h2connection_ptr> createConnection(asio::ip::tcp::socket socket) {
@@ -148,24 +153,24 @@ struct http2_server::impl {
     try {
       tcpopts.apply(socket);
       if (sslctx) {
-        HTTP2_LOG(TRACE, "start TLS session", name);
+        HTTP2_LOG_TRACE(logctx(), "start TLS session");
 
         any_connection_t tcpcon(new asio_tls_connection(std::move(socket), sslctx));
         io_error_code ec;
         co_await net.handshake(static_cast<asio_tls_connection*>(tcpcon.get())->sock,
                                asio::ssl::stream_base::server, ec);
         if (ec) {
-          HTTP2_LOG(ERROR, "error during ssl handshake: {}", ec.message(), name);
+          HTTP2_LOG(logctx(), ERROR, "error during ssl handshake: {}", ec.message());
           co_return nullptr;
         }
         co_return new h2connection(std::move(tcpcon), ioctx());
       } else {
-        HTTP2_LOG(TRACE, "start non-tls session", name);
+        HTTP2_LOG_TRACE(logctx(), "start non-tls session");
         any_connection_t tcpcon(new asio_connection(std::move(socket)));
         co_return new h2connection(std::move(tcpcon), ioctx());
       }
     } catch (std::exception const& e) {
-      HTTP2_LOG(ERROR, "connection creation failure: {}", e.what(), name);
+      HTTP2_LOG(logctx(), ERROR, "connection creation failure: {}", e.what());
       co_return nullptr;
     }
   }
@@ -180,7 +185,7 @@ struct http2_server::impl {
     }
     if (sessionsgate.is_closed()) {
       http2con->shutdown(reqerr_e::CANCELLED);
-      HTTP2_LOG(INFO, "session completed, but server stopped (server session is not created)", name);
+      HTTP2_LOG(logctx(), INFO, "session completed, but server stopped (server session is not created)");
       co_return;
     }
 
@@ -189,8 +194,12 @@ struct http2_server::impl {
     // firstly insert session into list, so server will drop it if stops during session establishing
     server_session_ptr session_ptr = new server_session(std::move(http2con), options, *creator);
     server_session& session = *session_ptr;
-    session.connection->name.set_prefix(SERVER_SESSION_PREFIX);
-    HTTP2_LOG(TRACE, "starting server session {}", name, session.name());
+    session.connection->logctx.name.set_prefix(SERVER_SESSION_PREFIX);
+
+    session.connection->logctx.lvl = logctx().lvl;
+    session.connection->logctx.dolog = logctx().dolog;
+
+    HTTP2_LOG_TRACE(session.logctx(), "server {} new session", logctx().name);
 
     sessions.push_back(session);
     on_scope_exit {
@@ -201,19 +210,19 @@ struct http2_server::impl {
       asio::steady_timer timer(session_ptr->server->ioctx());
       co_await net.sleep(timer, d, ec);
     };
-    auto requestTerminateInactive = [session_ptr, nm = this->name] {
-      HTTP2_LOG(TRACE, "{} drops connection due client inactivity", nm, session_ptr->name());
+    auto requestTerminateInactive = [session_ptr, nm = this->logctx().name] {
+      HTTP2_LOG_TRACE(session_ptr->logctx(), "{} drops connection due client inactivity", nm);
       session_ptr->requestTerminate();
     };
     auto requestTerminate = [session_ptr] {
-      HTTP2_LOG(TRACE, "writer drops connection", session_ptr->name());
+      HTTP2_LOG_TRACE(session_ptr->logctx(), "writer drops connection");
       session_ptr->requestTerminate();
     };
 
     try {
       timer_t timer(ioctx());
       timer.set_callback([session_ptr] {
-        HTTP2_LOG(ERROR, "connection timeout", session_ptr->name());
+        HTTP2_LOG(session_ptr->logctx(), ERROR, "connection timeout");
         session_ptr->connection->shutdown(reqerr_e::TIMEOUT);
       });
       timer.arm(options.connectionTimeout);
@@ -221,13 +230,13 @@ struct http2_server::impl {
       session.established = true;
       timer.cancel();
       if (sessions.size() > options.limit_clients_count) [[unlikely]] {
-        HTTP2_LOG_WARN("connection dropped due server`s clients limit exceeding", session.name());
+        HTTP2_LOG(session.logctx(), WARN, "connection dropped due server`s clients limit exceeding");
         (void)co_await send_goaway(session.connection, 0, errc_e::NO_ERROR,
                                    "server's clients limit exceeded, try later");
         goto drop_session;
       }
     } catch (std::exception& e) {
-      HTTP2_LOG(ERROR, "server -> client connection establishment failed, err: {}", e.what(), name);
+      HTTP2_LOG(logctx(), ERROR, "server -> client connection establishment failed, err: {}", e.what());
       goto drop_session;
     }
 
@@ -249,7 +258,7 @@ struct http2_server::impl {
       // considered idle and connection will be dropped
       // Its not easy to handle, so its just expected, that client will use ping if nothing happens
       if (!session.connection->pingdeadlinetimer.armed()) {
-        HTTP2_LOG(TRACE, "detect nothing happens, arm idle deadline timer", session.name());
+        HTTP2_LOG_TRACE(session.logctx(), "detect nothing happens, arm idle deadline timer");
         session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
       }
     });
@@ -259,7 +268,7 @@ struct http2_server::impl {
       // give time for sending goaway
       co_await net.sleep(ioctx(), std::chrono::milliseconds(1));
     }
-    HTTP2_LOG(TRACE, "reader stops, waiting stop", session.name());
+    HTTP2_LOG_TRACE(session.logctx(), "reader stops, waiting stop");
   drop_session:
     session.requestTerminate();
     while (session.hasUnfinishedRequests())
@@ -270,14 +279,14 @@ struct http2_server::impl {
     co_await session.connectionPartsGate.close();
     co_await session.responsegate.close();
     co_await yield_on_ioctx(ioctx());  // give `leave` callers time to finish their work
-    HTTP2_LOG(TRACE, "session stop ended", session.name());
+    HTTP2_LOG_TRACE(session.logctx(), "session stop ended");
   } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "session ended with exception: {}", e.what(), name);
+    HTTP2_LOG(logctx(), ERROR, "session ended with exception: {}", e.what());
   }
 
   void stopListeners() {
     assert(std::this_thread::get_id() == tid);
-    HTTP2_LOG(TRACE, "shutdown: listeners size {}", listeners.size(), name);
+    HTTP2_LOG_TRACE(logctx(), "shutdown: listeners size {}", listeners.size());
     for (auto& l : listeners) {
       l.close();
     }
@@ -287,9 +296,9 @@ struct http2_server::impl {
   dd::task<void> shutdown() {
     co_await jump_on_ioctx(ioctx());
     assert(std::this_thread::get_id() == tid);
-    HTTP2_LOG(TRACE, "shutdown started", name);
+    HTTP2_LOG_TRACE(logctx(), "shutdown started");
     on_scope_exit {
-      HTTP2_LOG(TRACE, "shutdown ended", name);
+      HTTP2_LOG_TRACE(logctx(), "shutdown ended");
     };
     auto closeg = sessionsgate.close();
     for (auto& session : sessions) {
@@ -307,9 +316,9 @@ struct http2_server::impl {
   dd::task<void> terminate() {
     co_await jump_on_ioctx(ioctx());
     assert(std::this_thread::get_id() == tid);
-    HTTP2_LOG(TRACE, "terminate started", name);
+    HTTP2_LOG_TRACE(logctx(), "terminate started");
     on_scope_exit {
-      HTTP2_LOG(TRACE, "terminate ended", name);
+      HTTP2_LOG_TRACE(logctx(), "terminate ended");
     };
     auto closeg = sessionsgate.close();
     for (auto& session : sessions) {
@@ -325,11 +334,10 @@ struct http2_server::impl {
 };
 
 http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tcp_connection_options tcpopts)
-    : m_impl(std::make_unique<http2_server::impl>(std::move(tcpopts))) {
+    : m_impl(std::make_unique<http2_server::impl>(std::move(tcpopts), std::move(options))) {
   if (ctx) {
     m_impl->sslctx = std::move(ctx);
   }
-  m_impl->options = options;
   m_impl->creator = this;
 }
 
@@ -339,7 +347,7 @@ http2_server::~http2_server() {
 
 void http2_server::stop() {
   assert(m_impl);
-  HTTP2_LOG(TRACE, "~http2_server", m_impl->name);
+  HTTP2_LOG_TRACE(m_impl->logctx(), "~http2_server");
   m_impl->creator = nullptr;
 #ifndef NDEBUG
   m_impl->tid = std::this_thread::get_id();  // change working thread
@@ -356,7 +364,7 @@ void http2_server::stop() {
     while (!h.done() && ioctx().run_one() != 0)
       ;
   } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "error while ~http2_server: {}", e.what(), m_impl->name);
+    HTTP2_LOG(m_impl->logctx(), ERROR, "error while ~http2_server: {}", e.what());
   }
 }
 
@@ -422,7 +430,8 @@ void mt_server::initialize() {
     auto rawsock = sock.release(ec);
     newsock.assign(p, rawsock);
     if (ec) {
-      HTTP2_LOG_ERROR("error when transfering accepted socket, err: {}", ec.what());
+      HTTP2_LOG(server->m_impl->logctx(), ERROR, "error when transfering accepted socket, err: {}",
+                ec.what());
       return;
     }
     asio::post(server->ioctx(), [&server, s = std::move(newsock)]() mutable {
@@ -449,7 +458,7 @@ void mt_server::run() {
     running = false;
   };
   if (listen_server().server->m_impl->listeners.empty())
-    HTTP2_LOG_WARN("mt_server `run` called, but no one address listen!");
+    throw std::runtime_error("mt_server `run` called, but no one address listen!");
   std::latch all_done(servers.size());
   if (pool) {
     std::span qs = pool->queues_range();
@@ -463,7 +472,7 @@ void mt_server::run() {
           ptr->work_guard = &guard;
           ptr->server->run();
         } catch (std::exception& e) {
-          HTTP2_LOG_ERROR("cannot schedule `run` task: err: {}", e.what());
+          HTTP2_LOG(ptr->server->m_impl->logctx(), ERROR, "cannot schedule `run` task: err: {}", e.what());
         }
       });
     }

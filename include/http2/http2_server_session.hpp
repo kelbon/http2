@@ -156,8 +156,8 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // для успешного завершения писатель вызывает connection.finishRequest
   void finishServerRequest(h2stream&) noexcept;
 
-  const unique_name& name() const noexcept {
-    return connection->name;
+  const log_context& logctx() const noexcept {
+    return connection->logctx;
   }
 };
 

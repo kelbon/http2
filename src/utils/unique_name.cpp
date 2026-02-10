@@ -2,6 +2,7 @@
 #include "http2/utils/unique_name.hpp"
 
 #include <random>
+#include <iostream>
 
 static void fill_str_random(char* b, char* e) {
   constexpr std::string_view chars = "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890";
@@ -27,6 +28,10 @@ unique_name::unique_name() {
 
 void unique_name::set_prefix(char prefix) noexcept {
   m_str[1] = prefix;
+}
+
+void default_log_function(log_level_e, std::string_view fmt_str, std::format_args args) {
+  std::cout << std::vformat(fmt_str, std::move(args));
 }
 
 }  // namespace http2

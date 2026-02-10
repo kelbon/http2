@@ -157,13 +157,13 @@ dd::task<void> main_coro(http2::http2_client& client) {
   co_await make_test_websocket_request(client);
 
   all_good = true;
-  HTTP2_LOG_INFO("success");
+  std::cout << "SUCCESS" << std::endl;
 }
 
 int main() try {
   std::thread([] {
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    HTTP2_LOG_ERROR("test timeout!");
+    std::cout << "TEST TIMEOUT" << std::endl;
     std::exit(-1);
   }).detach();
 
@@ -184,6 +184,6 @@ int main() try {
 
   return 0;
 } catch (std::exception& e) {
-  HTTP2_LOG_ERROR("{}", e.what());
+  std::cout << "ERROR: " << e.what() << std::endl;
   return 9;
 }

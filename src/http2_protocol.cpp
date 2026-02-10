@@ -442,8 +442,7 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
   // authority not checked, since its possible to not receive authority (client not required to sent it)
   return;
 memory_limit_exceeded:
-  HTTP2_LOG(WARN, "memory limit exceeded while parsing http request for stream {}", s.streamid,
-            s.connection->name);
+  HTTP2_LOG(s.logctx(), WARN, "memory limit exceeded while parsing http request for stream {}", s.streamid);
   hpack::ignore_headers_block(d, in, e);
   throw stream_error(errc_e::ENHANCE_YOUR_CALM, s.streamid,
                      "memory limit exceeded when parsing request headers");

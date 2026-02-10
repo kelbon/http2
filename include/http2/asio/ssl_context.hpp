@@ -1,6 +1,7 @@
 #pragma once
 
 #include "http2/asio/aio_context.hpp"
+#include "http2/utils/unique_name.hpp"
 
 #include <boost/intrusive_ptr.hpp>
 
@@ -40,12 +41,15 @@ struct ssl_context {
   }
 };
 
-ssl_context_ptr make_ssl_context_for_http2(std::span<const std::filesystem::path> additional_certs);
+ssl_context_ptr make_ssl_context_for_http2(std::span<const std::filesystem::path> additional_certs,
+                                           const log_context& = empty_log_context);
 
-ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::path> additional_certs);
+ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::path> additional_certs,
+                                            const log_context& = empty_log_context);
 
 // returns null on error
 ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certificate,
-                                            std::filesystem::path server_private_key);
+                                            std::filesystem::path server_private_key,
+                                            const log_context& = empty_log_context);
 
 }  // namespace http2

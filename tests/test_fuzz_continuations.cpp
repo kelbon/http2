@@ -7,6 +7,8 @@
 #include "fuzzer.hpp"
 #include <kelcoro/algorithm.hpp>
 
+#include <iostream>
+
 using namespace http2::fuzzing;
 namespace asio = boost::asio;
 
@@ -15,7 +17,7 @@ using namespace std::chrono_literals;
 int main() try {
   std::thread([] {
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    HTTP2_LOG_ERROR("test timeout!");
+    std::cout << "TEST TIMEOUT" << std::endl;
     std::exit(-1);
   }).detach();
 
@@ -53,9 +55,9 @@ int main() try {
     return std::suspend_never{};
   }).start_and_detach();
   fuz.run_until([&] { return done; }, server.ioctx(), client1.ioctx());
-  HTTP2_LOG_INFO("FUZZING TEST: SUCCESS");
+  std::cout << "FUZZING TEST: SUCCESS" << std::endl;
   return 0;
 } catch (...) {
-  HTTP2_LOG_ERROR("unknown error");
+  std::cout << "UNKNOWN ERROR" << std::endl;
   return 9;
 }

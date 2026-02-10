@@ -31,8 +31,8 @@ static void server_handle_utility_frame(http2_frame_t frame, server_session& ses
       return;
     case RST_STREAM:
       if (!session.rstStreamServer(rst_stream::parse(frame.header, frame.data))) {
-        HTTP2_LOG(INFO, "client finished stream (id: {}) which is not exists", frame.header.streamId,
-                  session.name());
+        HTTP2_LOG(session.logctx(), INFO, "client finished stream (id: {}) which is not exists",
+                  frame.header.streamId);
       }
       return;
     case GOAWAY: {
@@ -71,9 +71,9 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   auto guard = session.connectionPartsGate.hold();
   assert(session.connection);
   using enum frame_e;
-  HTTP2_LOG(TRACE, "reader started", session.name());
+  HTTP2_LOG_TRACE(session.logctx(), "reader started");
   on_scope_exit {
-    HTTP2_LOG(TRACE, "reader ended", session.name());
+    HTTP2_LOG_TRACE(session.logctx(), "reader ended");
   };
   h2connection& con = *session.connection;
   io_error_code ec;
@@ -144,7 +144,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     } catch (stream_error& _e) {
       // workaround windows ABI https://github.com/llvm/llvm-project/issues/153949
       auto& e = _e;
-      HTTP2_LOG(ERROR, "stream exception in reader. err: {}", e.what(), session.name());
+      HTTP2_LOG(session.logctx(), ERROR, "stream exception in reader. err: {}", e.what());
       session.rstStreamAfterError(e);
       // do not require connection close
     }
@@ -156,23 +156,23 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   }
   unreachable();
 } catch (hpack::protocol_error& e) {
-  HTTP2_LOG(ERROR, "hpack error happens in reader, err: {}", e.what(), session.name());
+  HTTP2_LOG(session.logctx(), ERROR, "hpack error happens in reader, err: {}", e.what());
   send_goaway(session.connection, session.connection->lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR,
               e.what())
       .start_and_detach();
   co_return reqerr_e::PROTOCOL_ERR;
 } catch (protocol_error& e) {
-  HTTP2_LOG(ERROR, "exception in reader. err: {}", e.what(), session.name());
+  HTTP2_LOG(session.logctx(), ERROR, "exception in reader. err: {}", e.what());
   send_goaway(session.connection, MAX_STREAM_ID, e.errc, e.what()).start_and_detach();
   co_return reqerr_e::PROTOCOL_ERR;
 } catch (goaway_exception& gae) {
-  HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), session.name());
+  HTTP2_LOG(session.logctx(), ERROR, "goaway received, {}", gae.what());
   co_return reqerr_e::CANCELLED;
 } catch (std::exception& se) {
-  HTTP2_LOG(INFO, "unexpected exception in reader {}", se.what(), session.name());
+  HTTP2_LOG(session.logctx(), INFO, "unexpected exception in reader {}", se.what());
   co_return reqerr_e::UNKNOWN_ERR;
 } catch (...) {
-  HTTP2_LOG(INFO, "unknown exception happens in reader", session.name());
+  HTTP2_LOG(session.logctx(), INFO, "unknown exception happens in reader");
   co_return reqerr_e::UNKNOWN_ERR;
 }
 
