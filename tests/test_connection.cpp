@@ -9,11 +9,11 @@
 #include "fuzzer.hpp"
 
 #define FAKE_HTTP2_LOG(TYPE, STR, ...)       \
-  HTTP2_LOG(TYPE,                            \
+  HTTP2_LOG(this->con->logctx, TYPE,         \
             STR                              \
             " in {} "                        \
             "{}" __VA_OPT__(, ) __VA_ARGS__, \
-            __func__, "[FAKE]", this->con->name)
+            __func__, "[FAKE]")
 
 namespace http2 {
 
@@ -41,9 +41,9 @@ namespace http2 {
 test_h2connection::test_h2connection(h2connection_ptr ccon, bool client) noexcept
     : con(std::move(ccon)), is_client_con(client) {
   if (is_client())
-    con->name.set_prefix(CLIENT_CONNECTION_PREFIX);
+    con->logctx.name.set_prefix(CLIENT_CONNECTION_PREFIX);
   else
-    con->name.set_prefix(SERVER_SESSION_PREFIX);
+    con->logctx.name.set_prefix(SERVER_SESSION_PREFIX);
 }
 
 dd::task<void> test_h2connection::receiveGoAway(uint32_t lastStreamId, errc_e errorCode, ping_e ping,
@@ -441,16 +441,20 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
     co_await self.con->read(hdr, ec);
     REQUIRE(!ec);
     frame.hdr = frame_header::parse(hdr);
+#ifdef HTTP2_ENABLE_TRACE
     if (frame.hdr.type != frame_e::GOAWAY)
-      FAKE_HTTP2_LOG(DEBUG, "receive frame: {}", frame.hdr);
+      FAKE_HTTP2_LOG(TRACE, "receive frame: {}", frame.hdr);
+#endif
     REQUIRE(frame.hdr.length <= self.m_maxFrameSize);
     frame.data.resize(frame.hdr.length);
     co_await self.con->read(frame.data, ec);
     REQUIRE(!ec);
+#ifdef HTTP2_ENABLE_TRACE
     if (frame.hdr.type == frame_e::GOAWAY) {
       auto gf = goaway_frame::parse(frame.hdr, frame.data);
-      FAKE_HTTP2_LOG(DEBUG, "receive GOAWAY frame, ec: {}, debugInfo: {}", e2str(gf.errorCode), gf.debugInfo);
+      FAKE_HTTP2_LOG(TRACE, "receive GOAWAY frame, ec: {}, debugInfo: {}", e2str(gf.errorCode), gf.debugInfo);
     }
+#endif
     co_return frame;
   };
   asio::steady_timer timer(con->ioctx);

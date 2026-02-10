@@ -58,8 +58,8 @@ namespace http2 {
 void http2_client::notifyConnectionWaiters(h2connection_ptr result) noexcept {
   // assume only i have access to waiters
   auto waiters = std::move(m_connectionWaiters);
-  HTTP2_LOG(TRACE, "resuming connection waiters, count: {}", waiters.size(),
-            result ? result->name.str() : "<null>");
+  if (result)
+    HTTP2_LOG_TRACE(result->logctx, "resuming connection waiters, count: {}", waiters.size());
   assert(m_connectionWaiters.empty());  // check boost really works as expected
   waiters.clear_and_dispose([&](noexport::waiter_of_connection* w) {
     assert(!w->result);
@@ -113,7 +113,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     self->m_connectionGate.leave();
   };
   if (self->stopRequested()) {
-    HTTP2_LOG(TRACE, "connection tries to create when stop requested, ignored", self->name());
+    HTTP2_LOG_TRACE(self->logctx(), "connection tries to create when stop requested, ignored");
     self->notifyConnectionWaiters(nullptr);
     co_return;
   }
@@ -131,7 +131,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     // * no new requests, all stopped.
     {
       auto lock = self->lockConnections();
-      HTTP2_LOG(TRACE, "creating connection", self->name());
+      HTTP2_LOG_TRACE(self->logctx(), "creating connection");
       on_scope_exit {
         lock.release();
         // assume all connection waiters will observe new connection.
@@ -142,6 +142,10 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       };
       any_connection_t tcpCon = co_await self->m_factory->createConnection(self->get_host(), deadline);
       h2connection_ptr con = new h2connection(std::move(tcpCon), self->ioctx());
+
+      con->logctx.lvl = self->m_options.logctx.lvl;
+      con->logctx.dolog = self->m_options.logctx.dolog;
+
       timer_t timer(self->ioctx());
       timer.arm(deadline.tp);
       timer.set_callback([con] { con->shutdown(reqerr_e::TIMEOUT); });
@@ -183,7 +187,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       }
     });
   } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "exception while trying to connect: {}", e.what(), self->name());
+    HTTP2_LOG(self->logctx(), ERROR, "exception while trying to connect: {}", e.what());
     // if we created connection, but failed when starting reader / writer - drop
     self->drop_connection(reqerr_e::UNKNOWN_ERR);
   }
@@ -205,8 +209,9 @@ static void handle_utility_frame(http2_frame_t frame, h2connection& con) {
       return;
     case RST_STREAM:
       if (!con.rstStreamClient(rst_stream::parse(frame.header, frame.data))) {
-        HTTP2_LOG(INFO, "server finished stream (id: {}) which is not exists (maybe timeout or canceled)",
-                  frame.header.streamId, con.name);
+        HTTP2_LOG(con.logctx, INFO,
+                  "server finished stream (id: {}) which is not exists (maybe timeout or canceled)",
+                  frame.header.streamId);
       }
       return;
     case GOAWAY: {
@@ -249,10 +254,10 @@ dd::job http2_client::startReaderFor(http2_client* self, h2connection_ptr c) {
   assert(self && c);
   assert(!self->m_connectionPartsGate.is_closed());
 
-  HTTP2_LOG(TRACE, "reader started {}", self->name(), c->name);
+  HTTP2_LOG_TRACE(c->logctx, "reader started {}", self->logctx().name);
 
   on_scope_exit {
-    HTTP2_LOG(TRACE, "reader ended {}", self->name(), c->name);
+    HTTP2_LOG_TRACE(c->logctx, "reader ended {}", self->logctx().name);
   };
   auto guard = self->m_connectionPartsGate.hold();
 
@@ -343,24 +348,24 @@ dd::job http2_client::startReaderFor(http2_client* self, h2connection_ptr c) {
       }
     }
   } catch (hpack::protocol_error& e) {
-    HTTP2_LOG(ERROR, "exception while decoding headers block (HPACK), err: {}", e.what(), con.name);
+    HTTP2_LOG(c->logctx, ERROR, "exception while decoding headers block (HPACK), err: {}", e.what());
     goaway_info.errc = errc_e::COMPRESSION_ERROR;
     goaway_info.dbginfo = e.what();
     goto protocol_error;
   } catch (protocol_error& e) {
-    HTTP2_LOG(INFO, "exception: {}", e.what(), c->name);
+    HTTP2_LOG(c->logctx, INFO, "exception: {}", e.what());
     goaway_info = std::move(e);
     goto protocol_error;
   } catch (goaway_exception& gae) {
-    HTTP2_LOG(ERROR, "goaway received, {}", gae.what(), c->name);
+    HTTP2_LOG(c->logctx, ERROR, "goaway received, {}", gae.what());
     reason = reqerr_e::SERVER_CANCELLED_REQUEST;
     goto dropConnection;
   } catch (std::exception& se) {
-    HTTP2_LOG(INFO, "unexpected exception {}", se.what(), c->name);
+    HTTP2_LOG(c->logctx, INFO, "unexpected exception {}", se.what());
     reason = reqerr_e::UNKNOWN_ERR;
     goto dropConnection;
   } catch (...) {
-    HTTP2_LOG(INFO, "unknown exception happens", c->name);
+    HTTP2_LOG(c->logctx, INFO, "unknown exception happens");
     reason = reqerr_e::UNKNOWN_ERR;
     goto dropConnection;
   }
@@ -384,13 +389,13 @@ protocol_error:
 network_error:
   reason = ec == boost::asio::error::operation_aborted ? reqerr_e::CANCELLED : reqerr_e::NETWORK_ERR;
   if (reason == reqerr_e::NETWORK_ERR) {
-    HTTP2_LOG(TRACE, "reader drops connection after network err: {}", ec.what(), con.name);
+    HTTP2_LOG_TRACE(c->logctx, "reader drops connection after network err: {}", ec.what());
   }
 dropConnection:
   self->drop_connection(reason);
 connection_dropped:
   if (!self->m_connectionWaiters.empty() && !self->alreadyConnecting()) {
-    HTTP2_LOG(TRACE, "client initiates reconnect after graceful shutdown or out of streams", con.name);
+    HTTP2_LOG_TRACE(con.logctx, "client initiates reconnect after graceful shutdown or out of streams");
     co_await dd::this_coro::destroy_and_transfer_control_to(
         startConnecting(self, deadline_after(self->m_options.connectionTimeout)).handle);
   }
@@ -398,7 +403,7 @@ connection_dropped:
 }
 
 http2_client::~http2_client() {
-  HTTP2_LOG(TRACE, "~http2_client", name());
+  HTTP2_LOG_TRACE(logctx(), "~http2_client");
   cancel_all();
   // make sure client was closed correctly before destroy
   assert(!m_connection);
@@ -410,10 +415,10 @@ http2_client::http2_client(endpoint host, http2_client_options opts,
                            move_only_fn<any_transport_factory(asio::io_context&)> tf)
     : m_host(std::move(host)), m_options(opts), m_factory(tf(m_ioctx)) {
   assert(m_factory);
-  m_name.set_prefix(CLIENT_PREFIX);
+  m_options.logctx.name.set_prefix(CLIENT_PREFIX);
   m_options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, m_options.maxReceiveFrameSize);
   m_options.max_continuation_len_bytes = std::min(m_options.max_continuation_len_bytes, MAX_CONTINUATION_LEN);
-  HTTP2_LOG(TRACE, "http2_client created", name());
+  HTTP2_LOG_TRACE(logctx(), "http2_client created");
 }
 
 noexport::waiter_of_connection::~waiter_of_connection() {
@@ -485,8 +490,8 @@ dd::task<int> http2_client::send_request(on_header_fn_ptr onHeader, on_data_part
   assert(!request.path.empty());
   request.scheme = con->tcpCon->is_https() ? scheme_e::HTTPS : scheme_e::HTTP;
   stream_id_t streamid = con->nextStreamid();
-  HTTP2_LOG(TRACE, "sending http2 request, path: {}, method: {}, streamid: {}", request.path,
-            e2str(request.method), streamid, con->name);
+  HTTP2_LOG_TRACE(con->logctx, "sending http2 request, path: {}, method: {}, streamid: {}", request.path,
+                  e2str(request.method), streamid);
 
   stream_ptr node = con->new_stream_node(std::move(request), deadline, onHeader, onDataPart, streamid);
 
@@ -521,8 +526,8 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
   assert(!request.path.empty());
   request.scheme = con->tcpCon->is_https() ? scheme_e::HTTPS : scheme_e::HTTP;
   stream_id_t streamid = con->nextStreamid();
-  HTTP2_LOG(TRACE, "sending http2 streaming request, path: {}, method: {}, streamid: {}", request.path,
-            e2str(request.method), streamid, con->name);
+  HTTP2_LOG_TRACE(con->logctx, "sending http2 streaming request, path: {}, method: {}, streamid: {}",
+                  request.path, e2str(request.method), streamid);
 
   stream_ptr node = con->newStreamingRequestNode(std::move(request), deadline, on_header, on_data_part,
                                                  streamid, std::move(makebody));
@@ -617,7 +622,7 @@ dd::task<int> http2_client::send_connect_request(
   }
   request.scheme = con->tcpCon->is_https() ? scheme_e::HTTPS : scheme_e::HTTP;
   stream_id_t streamid = con->nextStreamid();
-  HTTP2_LOG(TRACE, "sending CONNECT request, streamid: {}", streamid, con->name);
+  HTTP2_LOG_TRACE(con->logctx, "sending CONNECT request, streamid: {}", streamid);
 
   http_response rsp;
 
@@ -661,9 +666,9 @@ dd::task<int> http2_client::send_connect_request(
 }
 
 dd::task<void> http2_client::graceful_stop() {
-  HTTP2_LOG(TRACE, "http2_client::graceful_stop started", name());
+  HTTP2_LOG_TRACE(logctx(), "http2_client::graceful_stop started");
   on_scope_exit {
-    HTTP2_LOG(TRACE, "http2_client::graceful_stop ended", name());
+    HTTP2_LOG_TRACE(logctx(), "http2_client::graceful_stop ended");
   };
   io_error_code ec;
   h2connection_ptr con = m_connection;  // prevent destroy for graceful shutdown.

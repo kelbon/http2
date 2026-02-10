@@ -5,6 +5,7 @@
 #include "http2/errors.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/logger.hpp"
+#include "http2/utils/unique_name.hpp"
 
 #include <filesystem>
 #include <optional>
@@ -136,22 +137,23 @@ struct tcp_connection_options {
       asio::socket_base::send_buffer_size send_sz_option(send_buffer_size);
       tcp_sock.set_option(send_sz_option);
       tcp_sock.get_option(send_sz_option);
-      if (send_sz_option.value() != send_buffer_size) {
-        HTTP2_LOG_WARN("tcp sendbuf size option not fully applied, requested: {}, actual: {}",
-                       send_buffer_size, send_sz_option.value());
-      }
+      // if (send_sz_option.value() != send_buffer_size) {
+      //   HTTP2_LOG_WARN("tcp sendbuf size option not fully applied, requested: {}, actual: {}",
+      //                  send_buffer_size, send_sz_option.value());
+      // }
     }
     {
       asio::socket_base::receive_buffer_size rsv_sz_option(receive_buffer_size);
       tcp_sock.set_option(rsv_sz_option);
       tcp_sock.get_option(rsv_sz_option);
-      if (rsv_sz_option.value() != receive_buffer_size) {
-        HTTP2_LOG_WARN("tcp receive buf size option not fully applied, requested: {}, actual: {}",
-                       send_buffer_size, rsv_sz_option.value());
-      }
+      // if (rsv_sz_option.value() != receive_buffer_size) {
+      //   HTTP2_LOG_WARN("tcp receive buf size option not fully applied, requested: {}, actual: {}",
+      //                  send_buffer_size, rsv_sz_option.value());
+      // }
     }
-  } catch (std::exception& e) {
-    HTTP2_LOG_WARN("Cannot apply tcp settings to socket, err: {}", e.what());
+  } catch (std::exception& /*e*/) {
+    // its not critical if options are not applied
+    // HTTP2_LOG_WARN("Cannot apply tcp settings to socket, err: {}", e.what());
   }
 };
 

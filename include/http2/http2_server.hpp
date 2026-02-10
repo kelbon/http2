@@ -63,7 +63,7 @@ struct http2_server {
   virtual dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(http_request,
                                                                                           memory_queue_ptr,
                                                                                           request_context) {
-    HTTP2_LOG_ERROR("handle_request_stream is not overriden, but `answer_before_data` returns true");
+    assert(false);
     std::terminate();
   }
 

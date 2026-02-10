@@ -30,7 +30,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   assert(node);
   if (!node->connection)
     co_return;
-  HTTP2_LOG(TRACE, "sending interim response with status {}", status, node->connection->name);
+  HTTP2_LOG_TRACE(node->connection->logctx, "sending interim response with status {}", status);
   bytes_t bytes(FRAME_HEADER_LEN);
   node->connection->start_headers_block(*node, /*force_disable_hpack=(unknown here)*/ false, bytes);
   auto out = std::back_inserter(bytes);
@@ -52,7 +52,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   co_await node->connection->write(bytes, ec);
   if (ec) {
     if (ec != boost::asio::error::operation_aborted)
-      HTTP2_LOG(ERROR, "cannot send interim response, err: {}", ec.message(), node->connection->name);
+      HTTP2_LOG(node->connection->logctx, ERROR, "cannot send interim response, err: {}", ec.message());
   }
 }
 

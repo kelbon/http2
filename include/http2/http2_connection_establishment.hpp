@@ -5,6 +5,7 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_protocol.hpp"
 #include "http2/utils/deadline.hpp"
+#include "http2/utils/unique_name.hpp"
 
 #include <kelcoro/task.hpp>
 
@@ -41,6 +42,7 @@ struct http2_server_options {
   size_t limit_clients_count = size_t(-1);
   // cannot be > 1 GB
   uint32_t max_continuation_len_bytes = uint32_t(-1);
+  log_context logctx = {};
 };
 
 // creates server connection with client

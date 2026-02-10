@@ -4,6 +4,7 @@
 #include "http2/http2_errors.hpp"
 #include "http2/logger.hpp"
 #include "http2/utils/memory.hpp"
+#include "http2/utils/unique_name.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -552,14 +553,12 @@ inline void increment_window_size_trusted(cfint_t& size, int32_t windowSizeIncre
 
 // used when receiving or sending DATA frames
 // precondition: decrease >= 0
-inline void decrease_window_size(cfint_t& size, int32_t decrease) {
+inline void decrease_window_size(cfint_t& size, int32_t decrease, const log_context& logctx) {
   assert(decrease >= 0);
   static_assert(sizeof(cfint_t) > 4);  // for avoiding overflow
   size -= decrease;
-  if (size < 0) [[unlikely]] {
-    HTTP2_LOG(WARN, "window size is < 0 ( {} ) after decreasing by {}", size, decrease,
-              "<unknown connection>");
-  }
+  if (size < 0) [[unlikely]]
+    HTTP2_LOG(logctx, WARN, "window size is < 0 ( {} ) after decreasing by {}", size, decrease);
   // ignore control flow errors from out side, 'size' undeflow not possible
   // since its int64_t
 }

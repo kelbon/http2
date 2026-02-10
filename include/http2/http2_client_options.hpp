@@ -2,6 +2,7 @@
 #pragma once
 
 #include "http2/utils/deadline.hpp"
+#include "http2/utils/unique_name.hpp"
 
 namespace http2 {
 
@@ -24,6 +25,7 @@ struct http2_client_options {
   bool allow_requests_before_server_settings = true;
   // cannot be > 1 GB
   uint32_t max_continuation_len_bytes = uint32_t(-1);
+  log_context logctx = {};
 };
 
 }  // namespace http2

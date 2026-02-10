@@ -173,14 +173,14 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
     }
     framelen = fill_data_header<Streaming>(*work, *con, std::distance(in, dataEnd), in - H2FHL);
     if (framelen <= 0) [[unlikely]] {
-      HTTP2_LOG(TRACE,
-                "cannot send bytes now! unhandled: {}, max_frame_len: {}, "
-                "stream wsz {}, con wsz: {}",
-                std::distance(in, dataEnd), con->remoteSettings.maxFrameSize, work->lrStreamlevelWindowSize,
-                con->receiverWindowSize, con->name);
+      HTTP2_LOG_TRACE(con->logctx,
+                      "cannot send bytes now! unhandled: {}, max_frame_len: {}, "
+                      "stream wsz {}, con wsz: {}",
+                      std::distance(in, dataEnd), con->remoteSettings.maxFrameSize,
+                      work->lrStreamlevelWindowSize, con->receiverWindowSize);
       co_await cbs->sleepcb(std::chrono::nanoseconds(500), ec);
       if (ec) {
-        HTTP2_LOG(ERROR, "something went wrong while sleeping, con: {}", ec.what(), (void*)con.get());
+        HTTP2_LOG(con->logctx, ERROR, "something went wrong while sleeping, err: {}", ec.what());
         if (ec == boost::asio::error::operation_aborted) {
           co_return;
         }
@@ -189,12 +189,12 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
       framelen = 0;  // avoid in += framelen which is < 0
       continue;
     }
-    HTTP2_LOG(TRACE,
-              "FRAME for stream {}, len: {}, unhandled: {}, rws: {}, "
-              "csSlWsz: {}, maxFrameSize: {}, DATA: {}",
-              work->streamid, framelen, std::distance(in, dataEnd), con->receiverWindowSize,
-              work->lrStreamlevelWindowSize, con->remoteSettings.maxFrameSize,
-              std::string_view((char const*)in, framelen), con->name);
+    HTTP2_LOG_TRACE(con->logctx,
+                    "FRAME for stream {}, len: {}, unhandled: {}, rws: {}, "
+                    "csSlWsz: {}, maxFrameSize: {}, DATA: {}",
+                    work->streamid, framelen, std::distance(in, dataEnd), con->receiverWindowSize,
+                    work->lrStreamlevelWindowSize, con->remoteSettings.maxFrameSize,
+                    std::string_view((char const*)in, framelen));
     // send frame
     HTTP2_WAIT_WRITE(*con);
     co_await con->write(std::span(in - H2FHL, framelen + H2FHL), ec);
@@ -202,16 +202,16 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
     if (ec)
       co_return;
     // control flow
-    decrease_window_size(con->receiverWindowSize, framelen);        // connection
-    decrease_window_size(work->lrStreamlevelWindowSize, framelen);  // stream
+    decrease_window_size(con->receiverWindowSize, framelen, con->logctx);           // connection
+    decrease_window_size(work->lrStreamlevelWindowSize, framelen, work->logctx());  // stream
   }  // end loop
-  HTTP2_LOG(TRACE, "DATA for stream {} successfully sended", work->streamid, con->name);
+  HTTP2_LOG_TRACE(con->logctx, "DATA for stream {} successfully sended", work->streamid);
   co_return;
 } catch (std::exception& e) {
   con->finishRequest(*work, reqerr_e::UNKNOWN_ERR);
   send_rst_stream(con, work->streamid, errc_e::CANCEL).start_and_detach();
-  HTTP2_LOG(ERROR, "writing DATA for stream {} ended with error, err: {}", work->streamid, e.what(),
-            con->name);
+  HTTP2_LOG(con->logctx, ERROR, "writing DATA for stream {} ended with error, err: {}", work->streamid,
+            e.what());
 }
 
 // writes CONTINUATION frames
@@ -239,7 +239,7 @@ static dd::task<void> write_continuations(h2connection_ptr con, stream_id_t stre
         .streamId = streamid,
     };
     h.form(b - H2FHL);
-    HTTP2_LOG(TRACE, "writing CONTINUATION frame for stream {}, len: {}", streamid, framesz, con->name);
+    HTTP2_LOG_TRACE(con->logctx, "writing CONTINUATION frame for stream {}, len: {}", streamid, framesz);
     co_await con->write(std::span(b - H2FHL, framesz + H2FHL), ec);
 
     if (ec || con->isDropped())
@@ -249,7 +249,7 @@ static dd::task<void> write_continuations(h2connection_ptr con, stream_id_t stre
 
 static dd::task<void> write_trailers(h2connection& con, stream_id_t streamid, http_headers_t headers,
                                      io_error_code& ec) {
-  HTTP2_LOG(TRACE, "sendind trailers for stream {}", streamid, con.name);
+  HTTP2_LOG_TRACE(con.logctx, "sendind trailers for stream {}", streamid);
   // reserve memory for frame header
   std::vector<byte_t> bytes(H2FHL);
   auto out = std::back_inserter(bytes);
@@ -308,8 +308,8 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
       continue;
     snode.req.body.data.resize(chunk.size(), uninitialized_byte);
     memcpy(snode.req.body.data.data(), chunk.data(), chunk.size());
-    HTTP2_LOG(TRACE, "sendind DATA part for stream {}, len: {}, bodystr: \"{}\"", snode.streamid,
-              snode.req.body.data.size(), snode.req.body.strview(), con->name);
+    HTTP2_LOG_TRACE(con->logctx, "sendind DATA part for stream {}, len: {}, bodystr: \"{}\"", snode.streamid,
+                    snode.req.body.data.size(), snode.req.body.strview());
     co_await write_data</*Streaming=*/true>(node, con, cbs, ec);
 
     if (ec)
@@ -318,8 +318,8 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
 
   if (std::exception_ptr e = chan.take_exception()) {
     con->finishRequestWithUserException(*node, std::move(e));
-    HTTP2_LOG(ERROR, "writing streaming data for stream {} ended with user exception", node->streamid,
-              con->name);
+    HTTP2_LOG(con->logctx, ERROR, "writing streaming data for stream {} ended with user exception",
+              node->streamid);
     co_return;
   }
 
@@ -361,8 +361,8 @@ end:
 } catch (std::exception& e) {
   con->finishRequest(*node, reqerr_e::UNKNOWN_ERR);
   send_rst_stream(con, node->streamid, errc_e::CANCEL).start_and_detach();
-  HTTP2_LOG(ERROR, "writing streaming DATA for stream {} ended with error, err: {}", node->streamid, e.what(),
-            con->name);
+  HTTP2_LOG(con->logctx, ERROR, "writing streaming DATA for stream {} ended with error, err: {}",
+            node->streamid, e.what());
 }
 
 template dd::job write_stream_data<true>(stream_ptr node, h2connection_ptr con, writer_callbacks_ptr cbs);
@@ -375,9 +375,9 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
   // make callbacks easy to copy into write_pending_frames for future use
   writer_callbacks_ptr cbs = new writer_callbacks(std::move(sleepcb), std::move(neterrcb));
 
-  HTTP2_LOG(TRACE, "writer started", con->name);
+  HTTP2_LOG_TRACE(con->logctx, "writer started");
   on_scope_exit {
-    HTTP2_LOG(TRACE, "writer ended", con->name);
+    HTTP2_LOG_TRACE(con->logctx, "writer ended");
   };
 
   io_error_code ec;
@@ -401,8 +401,8 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
 
       if constexpr (IS_CLIENT) {
         while (con->concurrentStreamsNow() >= con->remoteSettings.maxConcurrentStreams) [[unlikely]] {
-          HTTP2_LOG(TRACE, "too many streams, waiting (max is {})", con->remoteSettings.maxConcurrentStreams,
-                    con->name);
+          HTTP2_LOG_TRACE(con->logctx, "too many streams, waiting (max is {})",
+                          con->remoteSettings.maxConcurrentStreams);
           co_await yield_on_ioctx(con->ioctx);
           if (ec || con->isDropped()) {
             if (ec != boost::asio::error::operation_aborted) {
@@ -431,10 +431,11 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
         fhdr.flags = flags_t(node->has_body() ? EMPTY_FLAGS : END_STREAM);
       }
       fhdr.form(headers.data());
-      HTTP2_LOG(TRACE, "sending headers block: stream {}, block size: {}", node->streamid,
-                headers.size() - H2FHL, con->name);
+      HTTP2_LOG_TRACE(con->logctx, "sending headers block: stream {}, block size: {}", node->streamid,
+                      headers.size() - H2FHL);
 #ifdef HTTP2_ENABLE_TRACE
-      trace_request_headers(*node, IS_CLIENT);
+      if (con->logctx.should_log(log_level_e::TRACE)) [[unlikely]]
+        trace_request_headers(*node, IS_CLIENT, con->logctx);
 #endif
       HTTP2_WAIT_WRITE(*con);
       co_await con->write(std::span(headers.data(), fhdr.length + H2FHL), ec);

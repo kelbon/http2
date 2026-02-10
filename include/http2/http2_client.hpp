@@ -95,7 +95,6 @@ struct http2_client {
   dd::gate m_connectionGate;
   // for connection reader/writer
   dd::gate m_connectionPartsGate;
-  unique_name m_name;
 
   // fills requests from raw http2 frames
   static dd::job startReaderFor(http2_client*, h2connection_ptr);
@@ -263,8 +262,8 @@ struct http2_client {
     return m_ioctx;
   }
 
-  [[nodiscard]] unique_name const& name() const noexcept {
-    return m_name;
+  [[nodiscard]] const log_context& logctx() const noexcept {
+    return m_options.logctx;
   }
 
   size_t count_active_requests() const noexcept;

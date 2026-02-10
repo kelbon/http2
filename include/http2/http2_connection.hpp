@@ -212,7 +212,7 @@ struct h2stream {
     }
   };
 
-  std::string_view name() const noexcept;
+  const log_context& logctx() const noexcept;
 };
 
 // Note: shutdown must be called
@@ -278,7 +278,7 @@ struct h2connection {
   bi::slist<h2stream, requests_member_hook_t, bi::constant_time_size<true>> freeNodes;
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;
-  unique_name name;
+  log_context logctx;
   boost::asio::io_context& ioctx;
   // for supporting http2_server_options::limit_requests_memory_usage_bytes
   size_t used_bytes = 0;
@@ -571,7 +571,7 @@ inline bool h2stream::use_bytes(size_t n) noexcept {
 }
 
 #ifdef HTTP2_ENABLE_TRACE
-void trace_request_headers(h2stream const&, bool fromclient);
+void trace_request_headers(h2stream const&, bool fromclient, const log_context& logctx);
 #endif
 
 }  // namespace http2

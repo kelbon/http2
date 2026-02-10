@@ -76,15 +76,15 @@ server_session::server_session(h2connection_ptr con, http2_server_options opts, 
 server_session::~server_session() {
   assert(connection->isDropped() && connection->requests.empty() && connection->responses.empty() &&
          "server session was not closed before destroy");
-  HTTP2_LOG(TRACE, "session ended", name());
+  HTTP2_LOG_TRACE(logctx(), "session ended");
 }
 
 static dd::task<int> send_response(stream_ptr node, server_session& session) {
   assert(node);
   assert(node->status == reqerr_e::RESPONSE_IN_PROGRESS);
-  HTTP2_LOG(TRACE, "sending response for stream {}", node->streamid, session.name());
+  HTTP2_LOG_TRACE(session.logctx(), "sending response for stream {}", node->streamid);
   on_scope_exit {
-    HTTP2_LOG(TRACE, "sent response for stream {}", node->streamid, session.name());
+    HTTP2_LOG_TRACE(session.logctx(), "sent response for stream {}", node->streamid);
     session.onResponseDone();
   };
   if (session.responsegate.is_closed() || session.connection->isDropped() ||
@@ -115,14 +115,14 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   } catch (stream_error& e) {
     // Note: catching stream error, so user can implement other protocol over HTTP/2 with additional
     // requirements
-    HTTP2_LOG(ERROR, "handle request failed: {}", e.what(), session.name());
+    HTTP2_LOG(session.logctx(), ERROR, "handle request failed: {}", e.what());
     HTTP2_ASSUME_THREAD_UNCHANGED_END;
     assert(e.streamid == node->streamid);
     send_rst_stream(session.connection, node->streamid, e.errc).start_and_detach();
     co_return 0;
   } catch (std::exception& e) {
-    HTTP2_LOG(ERROR, "request handling ended with error, streamid: {}, err: {}", node->streamid, e.what(),
-              session.name());
+    HTTP2_LOG(session.logctx(), ERROR, "request handling ended with error, streamid: {}, err: {}",
+              node->streamid, e.what());
     HTTP2_ASSUME_THREAD_UNCHANGED_END;
     send_rst_stream(session.connection, node->streamid, errc_e::INTERNAL_ERROR).start_and_detach();
     co_return 0;
@@ -133,9 +133,9 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   node->req = response_bro::torequest(std::move(rsp));
 
   if (co_await session.responseWritten(*node)) {
-    HTTP2_LOG(TRACE, "response for stream {} successfully written", node->streamid, session.name());
+    HTTP2_LOG_TRACE(session.logctx(), "response for stream {} successfully written", node->streamid);
   } else {
-    HTTP2_LOG(TRACE, "response for stream {} failed", node->streamid, session.name());
+    HTTP2_LOG_TRACE(session.logctx(), "response for stream {} failed", node->streamid);
   }
   co_return 0;
 }
@@ -153,7 +153,7 @@ void server_session::onRequestReady(h2stream& n) noexcept {
   };
   if (!np->responsesHook.is_linked()) {
     // already canceled
-    HTTP2_LOG(TRACE, "stream {} response canceled due session shutdown", np->streamid, name());
+    HTTP2_LOG_TRACE(logctx(), "stream {} response canceled due session shutdown", np->streamid);
     return;
   }
   stream_id_t streamid = np->streamid;
@@ -163,7 +163,7 @@ void server_session::onRequestReady(h2stream& n) noexcept {
     nodedone.no_longer_needed();
   } catch (std::exception& e) {
     send_rst_stream(connection, streamid, errc_e::INTERNAL_ERROR).start_and_detach();
-    HTTP2_LOG(ERROR, "session cannot handle request {} due exception: {}", streamid, e.what(), name());
+    HTTP2_LOG(logctx(), ERROR, "session cannot handle request {} due exception: {}", streamid, e.what());
   }
 }
 
@@ -336,8 +336,8 @@ void server_session::clientSettingsChanged(http2_frame_t newsettings) {
 
 void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
   (void)f;
-  HTTP2_LOG(TRACE, "received goaway from client, laststreamid: {}, dbginfo: {}", f.lastStreamId, f.debugInfo,
-            name());
+  HTTP2_LOG_TRACE(logctx(), "received goaway from client, laststreamid: {}, dbginfo: {}", f.lastStreamId,
+                  f.debugInfo);
   // nothing to do, since server do not start streams
   // and client wants to work until all requests are done (ok just work, then
   // drop connection)
@@ -352,7 +352,7 @@ void server_session::finishServerRequest(h2stream& n) noexcept {
     // request did not assembled yet
     assert(n.task == nullptr);
     connection->forget(n);
-    HTTP2_LOG(TRACE, "stream {} canceled before its asembled", n.streamid, name());
+    HTTP2_LOG_TRACE(logctx(), "stream {} canceled before its asembled", n.streamid);
     // single owner, which was 'detach' in startRequestAssemble
     intrusive_ptr_release(&n);
     onResponseDone();
@@ -390,7 +390,7 @@ void server_session::receive_data(http2_frame_t frame) {
   // applicable only to data
   // Note: includes padding!
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2-1
-  decrease_window_size(connection->myWindowSize, int32_t(frame.header.length));
+  decrease_window_size(connection->myWindowSize, int32_t(frame.header.length), logctx());
   node->receiveRequestData(frame);
   if (node->end_stream_received) {  // setted in receiveRequestData
     // Note: manages 'node' lifetime
