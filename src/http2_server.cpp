@@ -254,10 +254,7 @@ struct http2_server::impl {
         return;
       }
       // nothing happens since last call
-      // Note: if server long handling request and client does not send ping/new requests it will be
-      // considered idle and connection will be dropped
-      // Its not easy to handle, so its just expected, that client will use ping if nothing happens
-      if (!session.connection->pingdeadlinetimer.armed()) {
+      if (!session.connection->pingdeadlinetimer.armed() && !session.hasUnfinishedRequests()) {
         HTTP2_LOG_TRACE(session.logctx(), "detect nothing happens, arm idle deadline timer");
         session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
       }
