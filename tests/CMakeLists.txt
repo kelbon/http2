@@ -32,5 +32,6 @@ add_http2_test(connect_requests http2_fuzzinglib echoserverlib Boost::process Bo
 add_http2_test(continuations)
 add_http2_test(limits)
 add_http2_test(idle_timeout)
+add_http2_test(connects)
 
 file(COPY test_server.crt test_server.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

@@ -108,9 +108,6 @@ struct http2_client {
 
   void notifyConnectionWaiters(h2connection_ptr result) noexcept;
 
-  [[nodiscard]] bool alreadyConnecting() const noexcept {
-    return m_isConnecting > 0;
-  }
   [[nodiscard]] noexport::new_connection_guard lockConnections() noexcept {
     return noexport::new_connection_guard(m_isConnecting);
   }
@@ -156,6 +153,12 @@ struct http2_client {
   }
   http2_client_options const& get_options() const noexcept {
     return m_options;
+  }
+
+  // pre: client is not connected / connecting
+  void set_options(http2_client_options opts) noexcept {
+    assert(!connected() && !connecting());
+    m_options = std::move(opts);
   }
 
   ~http2_client();
@@ -253,9 +256,9 @@ struct http2_client {
   // postcondition: !m_connection. Mostly used by client itself
   void drop_connection(reqerr_e::values_e reason) noexcept;
 
-  // returns true if not connected yet, but connection establishing in progress
-  bool connection_in_progress() const noexcept {
-    return m_notYetReadyConnection != nullptr;
+  // returns true if client is now trying to connect
+  [[nodiscard]] bool connecting() const noexcept {
+    return m_isConnecting > 0;
   }
 
   asio::io_context& ioctx() {
