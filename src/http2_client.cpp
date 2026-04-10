@@ -117,7 +117,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     self->notifyConnectionWaiters(nullptr);
     co_return;
   }
-  if (self->alreadyConnecting()) {
+  if (self->connecting()) {
     // connection awaiters will be awakened by connection when ends
     co_return;
   }
@@ -130,6 +130,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     // * ignore new connection (connections locked)
     // * no new requests, all stopped.
     {
+      // единственное зачем нужен этот "двойной" лок сейчас - избежание ситуации описанной выше
       auto lock = self->lockConnections();
       HTTP2_LOG_TRACE(self->logctx(), "creating connection");
       on_scope_exit {
@@ -394,7 +395,7 @@ network_error:
 dropConnection:
   self->drop_connection(reason);
 connection_dropped:
-  if (!self->m_connectionWaiters.empty() && !self->alreadyConnecting()) {
+  if (!self->m_connectionWaiters.empty() && !self->connecting()) {
     HTTP2_LOG_TRACE(con.logctx, "client initiates reconnect after graceful shutdown or out of streams");
     co_await dd::this_coro::destroy_and_transfer_control_to(
         startConnecting(self, deadline_after(self->m_options.connectionTimeout)).handle);
@@ -440,9 +441,8 @@ bool noexport::waiter_of_connection::await_ready() noexcept {
 std::coroutine_handle<> noexport::waiter_of_connection::await_suspend(std::coroutine_handle<> h) noexcept {
   task = h;
   client->m_connectionWaiters.push_back(*this);
-  if (client->alreadyConnecting()) {
+  if (client->connecting())
     return std::noop_coroutine();
-  }
   return client->startConnecting(client, deadline).handle;
 }
 
@@ -455,9 +455,8 @@ std::coroutine_handle<> noexport::waiter_of_connection::await_suspend(std::corou
 
 void http2_client::drop_connection(reqerr_e::values_e reason) noexcept {
   h2connection_ptr con = std::move(m_connection);
-  if (!con) {
+  if (!con)
     return;
-  }
   // note: i have shared ptr to con, so it will not be destroyed while shutting
   // down and resuming its reader/writer
   con->shutdown(reason);
@@ -689,17 +688,23 @@ dd::task<void> http2_client::graceful_stop() {
     --m_stopRequested;
   };
   // wait all 'connect' coroutines done
-  co_await m_connectionGate.close();
-  co_await yield_on_ioctx(ioctx());
-  // prevent new connection tries and wait all startConnecting coroutines are
-  // done
-  auto lock = lockConnections();
-  assert(!m_notYetReadyConnection);
-  // 1 is my connection lock here.
-  // case when startConnecting on stage creating tcp connection
-  while (m_isConnecting > 1) {
-    co_await sleep(std::chrono::nanoseconds(10), ec);
+  auto closer = m_connectionGate.close();
+  // m_notYetReadyConnection назначается только после создания tcp соединения,
+  // т.е. возможна ситуация, что мы пропустили момент отмены соединения и остались ждать до таймаута
+  // соединения которое сейчас идёт
+  while (m_connectionGate.active_count() > 0) {
+    if (m_notYetReadyConnection) {
+      h2connection_ptr c = std::move(m_notYetReadyConnection);
+      c->shutdown(reqerr_e::CANCELLED);
+      break;
+    }
+    co_await sleep(std::chrono::nanoseconds(1000), ec);
   }
+  co_await closer;
+  assert(m_isConnecting == 0);
+  // даём время последнему вызвавшему m_connectionGate::leave удалиться
+  co_await yield_on_ioctx(ioctx());
+  assert(!m_notYetReadyConnection);
   // notify all not started requests about stop
   notifyConnectionWaiters(nullptr);
   // drop our connection correctly if exists
@@ -707,10 +712,9 @@ dd::task<void> http2_client::graceful_stop() {
 
   co_await m_connectionPartsGate.close();
   co_await yield_on_ioctx(ioctx());
-  m_connectionPartsGate = {};  // reopen
-  m_connectionGate = {};       // reopen
+  m_connectionPartsGate.reopen();
+  m_connectionGate.reopen();
 
-  lock.release();
   assert(!m_connection);
   assert(m_connectionWaiters.empty());
   assert(m_requestsInProgress == 0);
