@@ -22,8 +22,7 @@ namespace http2 {
 
 struct reqerr_e {
   enum values_e : int {
-    DONE = 0,                       // setted when !on_header && !on_data_part, so no status parsed,
-                                    // but success
+    DONE = 0,                       //
     CANCELLED = -1,                 // e.g. handle.destroy() in http2
     TIMEOUT = -3,                   //
     NETWORK_ERR = -4,               //

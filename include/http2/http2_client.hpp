@@ -93,14 +93,11 @@ struct http2_client {
   size_t m_stopRequested = 0;
   //  used to correctly wait in 'stop' while all connect calls will end
   dd::gate m_connectionGate;
-  // for connection reader/writer
-  dd::gate m_connectionPartsGate;
 
   // fills requests from raw http2 frames
   static dd::job startReaderFor(http2_client*, h2connection_ptr);
 
-  // postconditon: returns not null, !returned->dropped && returned->stream_id
-  // <= MAX_STREAM_ID
+  // postconditon: returns not null, !returned->dropped && returned->stream_id <= MAX_STREAM_ID
   // && !client.stop_requestedg
   [[nodiscard]] noexport::waiter_of_connection borrowConnection(deadline_t deadline) noexcept {
     return noexport::waiter_of_connection(this, deadline);
@@ -164,12 +161,9 @@ struct http2_client {
   ~http2_client();
 
   // rethrows exceptions from 'on_header' and 'on_data_part' to caller
-  // if 'on_header' is nullptr, all headers ignored (status parsed if
-  // 'on_data_part' != nullptr) if 'on_data_part' is nullptr, then server answer
-  // ignored # (may be in future) if both nullptr, then request only sended and
-  // then returns immediately returns < 0 if error (reqerr_e), 0 if request
-  // done, but both handlers nullptr and status not parsed > 0 if 3-digit server
-  // response code
+  // if 'on_header' is nullptr, all headers ignored (status parsed)
+  // if 'on_data_part' is nullptr, then DATA ignored
+  // returns < 0 if error (reqerr_e), > 0 if 3-digit server response code
   // precondition: request.method is not CONNECT ( for connect use send_connect_request)
   dd::task<int> send_request(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart, http_request,
                              deadline_t deadline);
@@ -244,8 +238,7 @@ struct http2_client {
   }
 
   // ждёт завершения всех стримов и затем останавливается
-  // postcondition: *this в состоянии как будто только конструктора, connected()
-  // == false
+  // postcondition: *this в состоянии как будто только конструктора, connected() == false
   dd::task<void> graceful_stop();
 
   // cancels all requests or active connections
