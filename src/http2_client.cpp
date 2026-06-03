@@ -160,9 +160,6 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     }
     assert(newConnection);
 
-    // this gate closed only in graceful_stop and only after all startConnecting already done
-    assert(!self->m_connectionPartsGate.is_closed());
-
     self->m_connection->writer.handle = nullptr;
     assert(self->m_options.max_continuation_len_bytes <= MAX_CONTINUATION_LEN);
     self->m_connection->max_continuation_len = self->m_options.max_continuation_len_bytes;
@@ -172,7 +169,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
     auto sleepcb = [self](duration_t d, io_error_code& ec) { return self->sleep(d, ec); };
     auto onnetworkerr = [self] { self->drop_connection(reqerr_e::NETWORK_ERR); };
     start_writer_for_client(newConnection, std::move(sleepcb), std::move(onnetworkerr),
-                            self->get_options().forceDisableHpack, self->m_connectionPartsGate.hold());
+                            self->get_options().forceDisableHpack, {});
 
     if (self->m_options.pingInterval != duration_t::max()) {
       newConnection->pingtimer.arm_periodic(self->m_options.pingInterval);
@@ -253,14 +250,12 @@ static void handle_utility_frame(http2_frame_t frame, h2connection& con) {
 dd::job http2_client::startReaderFor(http2_client* self, h2connection_ptr c) {
   using enum frame_e;
   assert(self && c);
-  assert(!self->m_connectionPartsGate.is_closed());
 
   HTTP2_LOG_TRACE(c->logctx, "reader started {}", self->logctx().name);
 
   on_scope_exit {
     HTTP2_LOG_TRACE(c->logctx, "reader ended {}", self->logctx().name);
   };
-  auto guard = self->m_connectionPartsGate.hold();
 
   h2connection& con = *c;
   io_error_code ec;
@@ -710,9 +705,7 @@ dd::task<void> http2_client::graceful_stop() {
   // drop our connection correctly if exists
   drop_connection(reqerr_e::CANCELLED);
 
-  co_await m_connectionPartsGate.close();
   co_await yield_on_ioctx(ioctx());
-  m_connectionPartsGate.reopen();
   m_connectionGate.reopen();
 
   assert(!m_connection);
