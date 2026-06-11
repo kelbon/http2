@@ -164,6 +164,7 @@ struct http2_client {
   // if 'on_header' is nullptr, all headers ignored (status parsed)
   // if 'on_data_part' is nullptr, then DATA ignored
   // returns < 0 if error (reqerr_e), > 0 if 3-digit server response code
+  // if client not connected yet, connects automatically
   // precondition: request.method is not CONNECT ( for connect use send_connect_request)
   dd::task<int> send_request(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart, http_request,
                              deadline_t deadline);
@@ -171,13 +172,21 @@ struct http2_client {
   // throws on errors
   dd::task<http_response> send_request(http_request, deadline_t);
 
-  dd::task<http_response> send_request(http_request request, duration_t timeout) {
-    return send_request(std::move(request), deadline_after(timeout));
+  dd::task<http_response> send_request_with_trailers(http_request request, http_headers_t trailers,
+                                                     deadline_t deadline) {
+    stream_body_maker_t streambody = [body = std::move(request.body), t = std::move(trailers)](
+                                         http_headers_t& trails,
+                                         request_context) mutable -> streaming_body_t {
+      co_yield std::span(body.data);
+      trails = std::move(t);
+    };
+    return send_streaming_request(std::move(request), std::move(streambody), deadline);
   }
 
   // `makebody` will be called only once, but will be alive atleast until channel is done.
   // Channel may fill trailers if want to send them
   //
+  // if client not connected yet, connects automatically
   // precondition: 'request.body.data` is empty,
   // makebody.has_value() == true
   // channel MUST NOT go to another thread
@@ -187,6 +196,7 @@ struct http2_client {
   // `makebody` will be called only once, but will be alive atleast until channel is done.
   // Channel may fill trailers if want to send them
   //
+  // if client not connected yet, connects automatically
   // precondition: 'request.body.data` is empty,
   // makebody.has_value() == true
   // channel MUST NOT go to another thread
@@ -211,6 +221,7 @@ struct http2_client {
   // `makestream` will be invoked once with response and memory queue from which user can receive data
   // precondition: request.method == CONNECT && request.body.data.empty()
   // returns status of first response, < 0 if connection request was failed
+  // if client not connected yet, connects automatically
   dd::task<int> send_connect_request(
       http_request request,
       move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_context)> makestream,

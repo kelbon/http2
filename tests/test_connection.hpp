@@ -78,6 +78,7 @@ struct hdrs_and_data {
   bool endStream = false;  // if END_STREAM flag was setted
   std::vector<header> headers = {};
   http_body_bytes body = {};
+  std::optional<std::vector<header>> trailers = std::nullopt;
 
   std::string_view findHdr(std::string_view name) {
     auto it = std::find_if(headers.begin(), headers.end(), [name](auto& v) { return v.name == name; });
@@ -92,6 +93,10 @@ struct hdrs_and_data {
     auto it = std::find_if(headers.begin(), headers.end(), [name](auto& v) { return v.name == name; });
     REQUIRE(it != headers.end());
     return it->indexed;
+  }
+
+  std::string_view body_strview() const noexcept {
+    return std::string_view((const char*)body.data(), body.size());
   }
 };
 

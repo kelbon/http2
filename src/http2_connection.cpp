@@ -207,12 +207,13 @@ void h2stream::receiveRequestData(http2_frame_t frame) {
   if (is_half_closed()) {
     throw stream_error(errc_e::STREAM_CLOSED, streamid, "stream already assembled");
   }
-  if (!use_bytes(frame.data.size())) {
-    HTTP2_LOG(connection->logctx, WARN, "memory limit exceeded while receiving DATA for stream {}", streamid);
-    throw stream_error(errc_e::ENHANCE_YOUR_CALM, streamid, "too many bytes used");
-  }
 
   if (!is_input_streaming()) {
+    if (!use_bytes(frame.data.size())) {
+      HTTP2_LOG(connection->logctx, WARN, "memory limit exceeded while receiving DATA for stream {}",
+                streamid);
+      throw stream_error(errc_e::ENHANCE_YOUR_CALM, streamid, "too many bytes used");
+    }
     req.body.data.insert(req.body.data.end(), frame.data.begin(), frame.data.end());
   } else {
     (*onDataPart)(frame.data, frame.header.flags& flags::END_STREAM);
