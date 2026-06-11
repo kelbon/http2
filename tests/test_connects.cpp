@@ -28,5 +28,39 @@ CLIENT_TEST("connects") {
   REQUIRE((steady_clock::now() - n) < client.get_options().connectionTimeout);
 }
 
+CLIENT_TEST("trailers") {
+  http2_client_options opts = client.get_options();
+  opts.allow_requests_before_server_settings = GENERATE(false, true);
+  client.set_options(std::move(opts));
+
+  auto server = co_await fake_server_session(ioctx, {localhost()}, client);
+  co_await emulate_server_connection(server);
+
+  http_request req;
+  std::string bodydata = "hello world";
+  req.body.data.assign(bodydata.begin(), bodydata.end());
+  req.method = http2::http_method_e::GET;
+  req.path = "/mypath";
+  req.headers.push_back(http_header_t{"name", "value"});
+  http_headers_t trailers{{"trail1", "trail_value"}};
+  client.send_request_with_trailers(req, trailers, 10s).start_and_detach();
+
+  hdrs_and_data hd = co_await server.receiveReq();
+  REQUIRE(hd.streamId = 1);
+  REQUIRE(hd.body_strview() == bodydata);
+  REQUIRE(std::find(hd.headers.begin(), hd.headers.end(), req.headers.front()) != hd.headers.end());
+  REQUIRE(hd.trailers && hd.trailers->size() == 1 && hd.trailers->front() == trailers.front());
+
+  // HEADERS + HEADERS (трейлеры без данных)
+  req.body = {};
+  client.send_request_with_trailers(req, trailers, 10s).start_and_detach();
+
+  hd = co_await server.receiveReq();
+  REQUIRE(hd.streamId = 3);
+  REQUIRE(hd.body_strview() == "");
+  REQUIRE(std::find(hd.headers.begin(), hd.headers.end(), req.headers.front()) != hd.headers.end());
+  REQUIRE(hd.trailers && hd.trailers->size() == 1 && hd.trailers->front() == trailers.front());
+}
+
 REGISTER_TEST_LISTENER(moko3::gtest_listener);
 MOKO3_MAIN;

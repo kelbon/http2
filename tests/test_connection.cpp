@@ -210,21 +210,40 @@ dd::task<hdrs_and_data> test_h2connection::receiveReq(deadline_t deadline, std::
   REQUIRE(f.hdr.flags & flags::END_HEADERS);
   hd.streamId = f.hdr.streamId;
   remove_padding_etc(f);
-  std::span headers{f.data.begin(), f.data.end()};
-  std::vector<header> decoded;
-  hpack::decode_headers_block(
-      con->decoder, headers, [this, &decoded](std::string_view name, std::string_view value) {
-        decoded.push_back(
-            {std::string(name), std::string(value), con->decoder.dyntab.find(name, value).value_indexed});
-      });
 
-  hd.headers = std::move(decoded);
+  auto decode_headers = [&](std::span<const byte_t> input, std::vector<header>& out) {
+    hpack::decode_headers_block(con->decoder, input, [&](std::string_view name, std::string_view value) {
+      out.push_back(
+          {std::string(name), std::string(value), con->decoder.dyntab.find(name, value).value_indexed});
+    });
+  };
+
+  decode_headers(std::span(f.data.begin(), f.data.end()), hd.headers);
   hd.endStream = f.hdr.flags & flags::END_STREAM;
 
   if (!hd.endStream) {
-    f = co_await receiveData(hd.streamId, deadline);
-    hd.body = std::move(f.data);
-    hd.endStream = f.hdr.flags & flags::END_STREAM;
+    f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
+    if (f.hdr.type == frame_e::HEADERS) {
+      // трейлеры после хедеров
+      decode_headers(std::span(f.data.begin(), f.data.end()), hd.trailers.emplace());
+      hd.endStream = f.hdr.flags & flags::END_STREAM;
+      REQUIRE(hd.endStream == true);
+      REQUIRE(f.hdr.streamId == hd.streamId);
+    } else {
+      REQUIRE(f.hdr.type == frame_e::DATA);
+      REQUIRE(hd.streamId == f.hdr.streamId);
+      hd.body = std::move(f.data);
+      hd.endStream = f.hdr.flags & flags::END_STREAM;
+      if (!hd.endStream) {
+        // трейлеры после данных
+        f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
+        REQUIRE(f.hdr.type == frame_e::HEADERS);
+        REQUIRE(f.hdr.streamId == hd.streamId);
+        decode_headers(std::span(f.data.begin(), f.data.end()), hd.trailers.emplace());
+        hd.endStream = f.hdr.flags & flags::END_STREAM;
+        REQUIRE(hd.endStream == true);
+      }
+    }
   }
 
   co_return hd;

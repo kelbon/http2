@@ -130,6 +130,7 @@ struct h2stream {
   bool end_stream_received = false;   // marks half-closed stream
   // filled if this a streaming request
   stream_body_maker_t makebody;
+  // ignored for server streaming nodes (websocket etc, exchanging bytes)
   size_t used_bytes = 0;  // used only by server
   ZAL_PIN;
 
@@ -144,6 +145,7 @@ struct h2stream {
   [[nodiscard]] bool is_output_streaming() const noexcept {
     return makebody.has_value();
   }
+  // server side
   bool is_input_streaming() const noexcept {
     return onDataPart != nullptr;
   }

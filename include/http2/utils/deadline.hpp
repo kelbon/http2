@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <chrono>
@@ -12,6 +11,12 @@ struct deadline_t {
   using time_point_t = std::chrono::steady_clock::time_point;
 
   time_point_t tp;
+
+  deadline_t() = default;
+  constexpr deadline_t(time_point_t p) noexcept : tp(p) {
+  }
+  template <typename REP, typename PERIOD>
+  constexpr deadline_t(std::chrono::duration<REP, PERIOD> d) noexcept;
 
   [[nodiscard]] constexpr bool isReached(
       time_point_t point = std::chrono::steady_clock::now()) const noexcept {
@@ -39,6 +44,11 @@ inline deadline_t deadline_after(duration_t duration) noexcept {
   if (tp.max() - tp <= duration) [[unlikely]]
     return deadline_t::never();
   return deadline_t{tp + duration};
+}
+
+template <typename REP, typename PERIOD>
+constexpr deadline_t::deadline_t(std::chrono::duration<REP, PERIOD> d) noexcept
+    : deadline_t(deadline_after(d)) {
 }
 
 }  // namespace http2
