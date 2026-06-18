@@ -128,8 +128,8 @@ any_transport_factory default_tls_transport_factory(boost::asio::io_context& ctx
   return any_transport_factory(new asio_tls_factory(ctx, std::move(options)));
 }
 
-asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options opts)
-    : ioctx(ctx), options(std::move(opts)) {
+asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options opts, starter_t s)
+    : ioctx(ctx), options(std::move(opts)), starter(std::move(s)) {
 }
 
 dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, deadline_t deadline) {
@@ -170,14 +170,17 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, dea
 
   if (ec)
     throw network_exception("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
+  if (starter)
+    co_await starter(tcp_sock, deadline);
   options.apply(tcp_sock);
   co_return any_connection_t(new asio_connection(std::move(tcp_sock)));
 }
 
-asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts)
+asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts, starter_t s)
     : ioctx(ioctx),
       options(std::move(opts)),
-      sslctx(make_ssl_context_for_http2(options.additional_ssl_certificates)) {
+      sslctx(make_ssl_context_for_http2(options.additional_ssl_certificates)),
+      starter(std::move(s)) {
 }
 
 dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint, deadline_t deadline) {
@@ -220,6 +223,8 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
     throw timeout_exception();
   if (ec)
     throw network_exception("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
+  if (starter)
+    co_await starter(tcp_sock, deadline);
   options.apply(tcp_sock);
   assert(sslctx);
   std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), sslctx));

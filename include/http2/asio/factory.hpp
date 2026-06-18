@@ -5,6 +5,8 @@
 
 namespace http2 {
 
+using starter_t = move_only_fn<dd::task<void>(boost::asio::ip::tcp::socket&, deadline_t) const>;
+
 struct asio_connection : connection_i {
   static constexpr size_t readen_capacity = (1 << 14) + 9;
   unsigned char readen[readen_capacity];
@@ -29,8 +31,10 @@ struct asio_connection : connection_i {
 struct asio_factory : transport_factory_i {
   asio::io_context& ioctx;
   tcp_connection_options options;
+  // invoked after tcp handshake, may set socket options etc
+  starter_t starter;
 
-  explicit asio_factory(boost::asio::io_context&, tcp_connection_options = {});
+  explicit asio_factory(boost::asio::io_context&, tcp_connection_options = {}, starter_t = {});
   dd::task<any_connection_t> createConnection(endpoint, deadline_t);
 };
 
@@ -63,8 +67,10 @@ struct asio_tls_factory : transport_factory_i {
   asio::io_context& ioctx;
   tcp_connection_options options;
   ssl_context_ptr sslctx;  // never null
+  // invoked after tcp handshake (before TLS), may set socket options etc
+  starter_t starter;
 
-  explicit asio_tls_factory(asio::io_context&, tcp_connection_options = {});
+  explicit asio_tls_factory(asio::io_context&, tcp_connection_options = {}, starter_t = {});
   dd::task<any_connection_t> createConnection(endpoint, deadline_t) override;
 };
 
