@@ -54,6 +54,8 @@ std::string_view e2str(http_method_e e) noexcept {
       return "CONNECT";
     case TRACE:
       return "TRACE";
+    case QUERY:
+      return "QUERY";
     case UNKNOWN:
       return "UNKNOWN";
     default:
@@ -61,9 +63,11 @@ std::string_view e2str(http_method_e e) noexcept {
   }
 }
 
-void enum_from_string(std::string_view str, http_method_e& e) noexcept {
+bool efromstr(std::string_view str, http_method_e& m) noexcept {
+  // https://datatracker.ietf.org/doc/html/rfc9110#name-methods
+  // "The method token is case-sensitive", все токены в реестре большими буквами
   using enum http_method_e;
-  e = ss::string_switch<http_method_e>(str)
+  m = ss::string_switch<http_method_e>(str)
           .case_("GET", GET)
           .case_("POST", POST)
           .case_("PUT", PUT)
@@ -73,10 +77,13 @@ void enum_from_string(std::string_view str, http_method_e& e) noexcept {
           .case_("CONNECT", CONNECT)
           .case_("OPTIONS", OPTIONS)
           .case_("TRACE", TRACE)
+          .case_("QUERY", QUERY)
           .or_default(UNKNOWN);
+  return m != UNKNOWN;
 }
 
 std::string_view e2str(scheme_e e) noexcept {
+  // маленькие буквы, так как в статической таблице HPACK схемы написаны маленькими http/https
   switch (e) {
     case scheme_e::HTTP:
       return "http";
@@ -89,9 +96,10 @@ std::string_view e2str(scheme_e e) noexcept {
   }
 }
 
-void enum_from_string(std::string_view str, scheme_e& s) noexcept {
+bool efromstr(std::string_view str, scheme_e& s) noexcept {
   using enum scheme_e;
   s = ss::string_switch<scheme_e>(str).case_("http", HTTP).case_("https", HTTPS).or_default(UNKNOWN);
+  return s != UNKNOWN;
 }
 
 stream_body_maker_t streaming_body_with_trailers(streaming_body_t body, http_headers_t trailers) {

@@ -393,7 +393,7 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
       methodParsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
-      enum_from_string(hval, req.method);
+      (void)efromstr(hval, req.method);
     } else if (header.name == ":scheme") {
       if (schemeParsed) {
         throw duplicated_pseudoheader(":scheme");
@@ -401,7 +401,7 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
       schemeParsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
-      enum_from_string(hval, req.scheme);
+      (void)efromstr(hval, req.scheme);
     } else if (header.name == ":authority") {
       if (authorityParsed) {
         throw duplicated_pseudoheader(":authority");
