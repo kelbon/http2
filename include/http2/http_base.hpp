@@ -43,20 +43,28 @@ struct reqerr_e {
 std::string_view e2str(reqerr_e::values_e e) noexcept;
 
 enum struct http_method_e : uint8_t {
-  GET,
-  POST,
-  PUT,
-  DELETE,
-  PATCH,
-  OPTIONS,
-  HEAD,
-  CONNECT,
-  TRACE,
+  // написано для общей информации, библиотеке на это плевать
+  // S = Safe, ничего не меняет на сервере
+  // I - Idempotent повторые запросы после первого не изменяют состояние
+  // C - Cacheable
+  GET,      // S I C
+  POST,     // - - -
+  PUT,      // - I -
+  DELETE,   // - I -
+  PATCH,    // - - -
+  OPTIONS,  // S I -
+  HEAD,     // S I C
+  CONNECT,  // - - -
+  TRACE,    // S I -
+  // https://datatracker.ietf.org/doc/rfc10008/
+  QUERY,    // S I C (GET без исторического идиотизма с запретом body)
   UNKNOWN,  // may be extension or smth
 };
 
 std::string_view e2str(http_method_e e) noexcept;
-void enum_from_string(std::string_view, http_method_e&) noexcept;
+// возвращает false если значение незнакомое
+// выставляет UNKNOWN при незнакомом методе (т.к. кастомные методы это норма)
+bool efromstr(std::string_view, http_method_e&) noexcept;
 
 enum struct scheme_e : uint8_t {
   HTTP,
@@ -65,7 +73,9 @@ enum struct scheme_e : uint8_t {
 };
 
 std::string_view e2str(scheme_e e) noexcept;
-void enum_from_string(std::string_view, scheme_e&) noexcept;
+// возвращает false если значение незнакомое
+// выставляет UNKNOWN при незнакомом значении (т.к. кастомные схемы это норма)
+bool efromstr(std::string_view, scheme_e&) noexcept;
 
 struct http_header_t {
   std::string hname;
