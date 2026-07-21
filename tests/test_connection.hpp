@@ -26,9 +26,6 @@
 
 #include "servers/echo_server.hpp"
 
-#define program_options_file "tests_cli.def"
-#include <clinok/cli_interface.hpp>
-
 using namespace std::chrono_literals;
 
 namespace http2 {
