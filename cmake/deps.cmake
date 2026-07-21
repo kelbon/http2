@@ -13,14 +13,14 @@ CPMAddPackage(
 CPMAddPackage(
   NAME KELCORO
   GIT_REPOSITORY https://github.com/kelbon/kelcoro
-  GIT_TAG v1.4.3
+  GIT_TAG v1.4.4
   OPTIONS "KELCORO_ENABLE_TESTING OFF"
 )
 
 CPMAddPackage(
   NAME ANYANY
   GIT_REPOSITORY https://github.com/kelbon/AnyAny
-  GIT_TAG v1.1.0
+  GIT_TAG v1.2.1
   OPTIONS "AA_ENABLE_TESTING OFF"
 )
 
@@ -56,7 +56,7 @@ find_package(Threads REQUIRED)
 CPMAddPackage(
   NAME STRSWITCH
   GITHUB_REPOSITORY kelbon/strswitch
-  GIT_TAG        v1.1.0
+  GIT_TAG        v1.1.1
   OPTIONS "STRSWITCH_ENABLE_TESTING OFF"
 )
 
@@ -70,13 +70,7 @@ if (KELHTTP2_ENABLE_TESTING)
   CPMAddPackage(
     NAME MOKO3
     GITHUB_REPOSITORY kelbon/moko3
-    GIT_TAG v0.9.2
-  )
-
-  CPMAddPackage(
-    NAME CLINOK
-    GITHUB_REPOSITORY kelbon/clinok
-    GIT_TAG v2.0.1
+    GIT_TAG v0.9.4
   )
 endif()
 
