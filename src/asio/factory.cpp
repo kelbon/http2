@@ -137,12 +137,12 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, dea
 
   tcp::resolver resolver(ioctx);
 
-  asio::steady_timer timer(ioctx);
+  timer_t timer(ioctx);
   bool timeoutflag = false;
 
-  timer.expires_at(deadline.tp);
-  timer.async_wait([&resolver, &timeoutflag](const io_error_code& ec) {
-    if (ec != asio::error::operation_aborted) {
+  timer.arm(deadline);
+  timer.set_callback([&](bool canceled) {
+    if (!canceled) {
       timeoutflag = true;
       resolver.cancel();
     }
@@ -158,9 +158,9 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, dea
   tcp::socket tcp_sock(ioctx);
 
   timer.cancel();
-  timer.expires_at(deadline.tp);
-  timer.async_wait([&tcp_sock, &timeoutflag](const io_error_code& ec) {
-    if (ec != asio::error::operation_aborted) {
+  timer.arm(deadline);
+  timer.set_callback([&](bool canceled) {
+    if (!canceled) {
       timeoutflag = true;
       close_tcp_sock(tcp_sock);
     }
@@ -189,12 +189,12 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
 
   tcp::resolver resolver(ioctx);
 
-  asio::steady_timer timer(ioctx);
+  timer_t timer(ioctx);
   bool timeoutflag = false;
 
-  timer.expires_at(deadline.tp);
-  timer.async_wait([&resolver, &timeoutflag](const io_error_code& ec) {
-    if (ec != asio::error::operation_aborted) {
+  timer.arm(deadline);
+  timer.set_callback([&](bool canceled) {
+    if (!canceled) {
       timeoutflag = true;
       resolver.cancel();
     }
@@ -209,9 +209,9 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
   asio::ip::tcp::socket tcp_sock(ioctx);
 
   timer.cancel();
-  timer.expires_at(deadline.tp);
-  timer.async_wait([&tcp_sock, &timeoutflag](const io_error_code& ec) {
-    if (ec != asio::error::operation_aborted) {
+  timer.arm(deadline);
+  timer.set_callback([&](bool canceled) {
+    if (!canceled) {
       timeoutflag = true;
       close_tcp_sock(tcp_sock);
     }

@@ -37,7 +37,7 @@ dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
 // sends requests, but body will be splitted into random chunks
 dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq req) try {
   auto sleepcb = [&c](duration_t d, io_error_code& ec) -> dd::task<void> {
-    boost::asio::steady_timer timer(c.ioctx());
+    timer_t timer(c.ioctx());
     co_await net.sleep(timer, d, ec);
   };
   auto bodystr =
@@ -121,8 +121,6 @@ struct incr {
 dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem tem, size_t request_count,
                                 size_t max_active_streams, req_weights weights) {
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
-  asio::steady_timer timer(client.ioctx());
-  io_error_code ec;
   // receive server settings before (to get correct max_count_requests_allowed)
   bool b = co_await client.try_connect();
   REQUIRE(b);
@@ -153,15 +151,12 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
     co_await yield_on_ioctx(client.ioctx());
   }
   co_await client.graceful_stop();
-  co_return;
 }
 
 dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem, duration_t dur,
                               size_t max_active_streams, req_weights weights) {
   size_t done = 0;
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
-  asio::steady_timer timer(client.ioctx());
-  io_error_code ec;
   deadline_t deadline = deadline_after(dur);
   // receive server settings before (to get correct max_count_requests_allowed)
   bool b = co_await client.try_connect();

@@ -15,7 +15,6 @@ inline dd::channel<std::span<const byte_t>> streambody() {
 
 struct h2spec_server : http2_server {
   using http2_server::http2_server;
-  asio::steady_timer t;
   bool answer_stream = false;
 
   explicit h2spec_server(log_context ctx = log_context{})
@@ -23,8 +22,7 @@ struct h2spec_server : http2_server {
             .maxReceiveFrameSize = MIN_MAX_FRAME_LEN,  // enables FRAME_SIZE tests
             .maxConcurrentStreams = 10,                // enables h2spec test for it
             .logctx = std::move(ctx),
-        }),
-        t(ioctx()) {
+        }) {
   }
 
   dd::task<http_response> handle_request(http_request r, request_context ctx) override {
