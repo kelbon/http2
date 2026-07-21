@@ -279,7 +279,9 @@ inline dd::task<test_h2connection> fake_server_session(asio::io_context& ctx, se
                                                        ssl_context_ptr servertls = nullptr,
                                                        deadline_t deadline = deadline_after(10s)) {
   timer_t timer(ctx);
-  timer.set_callback([] {
+  timer.set_callback([](bool canceled) {
+    if (canceled)
+      return;
     std::cout << "fake server session cannot be established, deadline reached!" << std::endl;
     std::abort();
   });

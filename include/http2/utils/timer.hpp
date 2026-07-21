@@ -6,6 +6,7 @@
 #include <anyany/anyany.hpp>
 
 #include "http2/asio/aio_context.hpp"
+#include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
 
 namespace http2 {
@@ -32,6 +33,10 @@ struct timer_t {
   // if timer was armed, its canceled first
   void arm(time_point);
 
+  void arm(deadline_t d) {
+    return arm(d.tp);
+  }
+
   // repeat interface of old timer, same as 'arm'
   void rearm(duration d) {
     arm(d);
@@ -51,7 +56,7 @@ struct timer_t {
   // do not touches setted callback
   bool cancel() noexcept;
 
-  void set_callback(move_only_fn_soos<void()>);
+  void set_callback(move_only_fn_soos<void(bool /*canceled*/)>);
 };
 
 }  // namespace http2

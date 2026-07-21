@@ -476,13 +476,13 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
 #endif
     co_return frame;
   };
-  asio::steady_timer timer(con->ioctx);
-  timer.expires_at(d.tp);
-  timer.async_wait([&](const io_error_code& ec) {
-    if (ec != asio::error::operation_aborted) {
-      FAKE_HTTP2_LOG(ERROR, "receiveFrame: deadline reached {}", sourceloc_str(loc));
-      con->shutdown(reqerr_e::TIMEOUT);
-    }
+  timer_t timer(con->ioctx);
+  timer.arm(d);
+  timer.set_callback([&](bool canceled) {
+    if (canceled)
+      return;
+    FAKE_HTTP2_LOG(ERROR, "receiveFrame: deadline reached {}", sourceloc_str(loc));
+    con->shutdown(reqerr_e::TIMEOUT);
   });
   h2frame res = co_await f(*this);
   timer.cancel();
@@ -498,11 +498,11 @@ dd::task<void> test_h2connection::sendClientMagic() {
 
 dd::task<void> test_h2connection::waitConnectionDropped(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
-  asio::steady_timer timer(con->ioctx);
-  timer.expires_at(deadline.tp);
+  timer_t timer(con->ioctx);
+  timer.arm(deadline);
   bool timedout = false;
-  timer.async_wait([&](const io_error_code& ec) {
-    if (ec != asio::error::operation_aborted) {
+  timer.set_callback([&](bool canceled) {
+    if (!canceled) {
       timedout = true;
       con->shutdown(reqerr_e::TIMEOUT);
     }

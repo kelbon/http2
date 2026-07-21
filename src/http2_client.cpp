@@ -87,7 +87,9 @@ struct ping_callback {
     pingtimeout = pingTimeout;
   }
 
-  void operator()() {
+  void operator()(bool canceled) {
+    if (canceled)
+      return;
     // send ping only if nothing happens since last iteration
     if (lastid != con->laststartedstreamid) {
       lastid = con->laststartedstreamid;
@@ -149,7 +151,10 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
 
       timer_t timer(self->ioctx());
       timer.arm(deadline.tp);
-      timer.set_callback([con] { con->shutdown(reqerr_e::TIMEOUT); });
+      timer.set_callback([con](bool canceled) {
+        if (!canceled)
+          con->shutdown(reqerr_e::TIMEOUT);
+      });
       assert(!self->m_notYetReadyConnection);
       self->m_notYetReadyConnection = con;
       on_scope_exit {
@@ -175,10 +180,15 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       newConnection->pingtimer.arm_periodic(self->m_options.pingInterval);
       newConnection->pingtimer.set_callback(ping_callback(newConnection, self, self->m_options.pingTimeout));
       // armed when ping sended, canceled when ping received
-      newConnection->pingdeadlinetimer.set_callback([self] { self->drop_connection(reqerr_e::TIMEOUT); });
+      newConnection->pingdeadlinetimer.set_callback([self](bool canceled) {
+        if (!canceled)
+          self->drop_connection(reqerr_e::TIMEOUT);
+      });
     }
     // newConnection->timeoutWardenTimer will be armed when requests will be added
-    newConnection->timeoutWardenTimer.set_callback([newConnection] {
+    newConnection->timeoutWardenTimer.set_callback([newConnection](bool canceled) {
+      if (canceled)
+        return;
       newConnection->dropTimeouted();
       if (!newConnection->timers.empty()) {
         newConnection->timeoutWardenTimer.arm(newConnection->timers.top()->deadline.tp);
@@ -743,13 +753,13 @@ void http2_client::cancel_all() noexcept {
     notifyConnectionWaiters(nullptr);
     if (m_notYetReadyConnection)
       m_notYetReadyConnection->shutdown(reqerr_e::CANCELLED);
-    if (!m_ioctx.get_executor().running_in_this_thread())
-      m_ioctx.poll();  // do smth pending
+    if (!ioctx().get_executor().running_in_this_thread())
+      ioctx().poll();  // do smth pending
   }
 }
 
 dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {
-  boost::asio::steady_timer timer(ioctx());
+  timer_t timer(ioctx());
   co_await net.sleep(timer, d, ec);
 }
 

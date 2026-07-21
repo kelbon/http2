@@ -6,6 +6,7 @@
 #include "http2/transport_factory.hpp"
 #include "http2/utils/memory.hpp"
 #include "http2/asio/aio_context.hpp"
+#include "http2/utils/timer.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/read.hpp>
@@ -209,18 +210,6 @@ struct read_some_operation {
   }
 };
 
-template <typename Timer>
-struct sleep_operation {
-  Timer& timer;
-  std::chrono::nanoseconds duration;
-
-  template <typename T>
-  void operator()(T&& cb) {
-    timer.expires_after(duration);
-    timer.async_wait(std::forward<T>(cb));
-  }
-};
-
 template <typename Stream>
 struct shutdown_operation {
   Stream& stream;
@@ -330,14 +319,19 @@ struct net_t {
     return asio_awaiter<size_t, read_some_operation<Stream>>(ec, stream, buffer);
   }
 
-  template <typename Timer>
-  KELCORO_CO_AWAIT_REQUIRED static auto sleep(Timer& timer, std::chrono::nanoseconds duration,
-                                              io_error_code& ec) {
-    return asio_awaiter<void, sleep_operation<Timer>>(ec, timer, duration);
+  KELCORO_CO_AWAIT_REQUIRED static auto sleep(timer_t& t, duration_t d, io_error_code& ec) {
+    return dd::this_coro::suspend_and([t = &t, d, ec = &ec](std::coroutine_handle<> h) {
+      t->set_callback([h, ec](bool canceled) {
+        if (canceled)
+          *ec = boost::asio::error::operation_aborted;
+        h.resume();
+      });
+      t->arm(d);
+    });
   }
 
   static dd::task<void> sleep(asio::io_context& io, std::chrono::nanoseconds duration) {
-    asio::steady_timer timer(io);
+    timer_t timer(io);
     io_error_code ec;
     co_await sleep(timer, duration, ec);
     (void)ec;  // ignore error

@@ -207,10 +207,12 @@ struct http2_server::impl {
     };
 
     auto sleepcb = [session_ptr](duration_t d, io_error_code& ec) -> dd::task<void> {
-      asio::steady_timer timer(session_ptr->server->ioctx());
+      timer_t timer(session_ptr->server->ioctx());
       co_await net.sleep(timer, d, ec);
     };
-    auto requestTerminateInactive = [session_ptr, nm = this->logctx().name] {
+    auto requestTerminateInactive = [session_ptr, nm = this->logctx().name](bool canceled) {
+      if (canceled)
+        return;
       HTTP2_LOG_TRACE(session_ptr->logctx(), "{} drops connection due client inactivity", nm);
       session_ptr->requestTerminate();
     };
@@ -221,7 +223,9 @@ struct http2_server::impl {
 
     try {
       timer_t timer(ioctx());
-      timer.set_callback([session_ptr] {
+      timer.set_callback([session_ptr](bool canceled) {
+        if (canceled)
+          return;
         HTTP2_LOG(session_ptr->logctx(), ERROR, "connection timeout");
         session_ptr->connection->shutdown(reqerr_e::TIMEOUT);
       });
@@ -248,7 +252,10 @@ struct http2_server::impl {
                                   session.connectionPartsGate.hold());
 
     session.connection->pingdeadlinetimer.set_callback(requestTerminateInactive);
-    session.connection->pingtimer.set_callback([framecount = size_t(0), &session, server = this]() mutable {
+    // clang-format off
+    session.connection->pingtimer.set_callback([framecount = size_t(0), &session, server = this](bool canceled) mutable {
+      if (canceled)
+        return;
       if (session.framecount != framecount) {
         framecount = session.framecount;
         return;
@@ -259,6 +266,7 @@ struct http2_server::impl {
         session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
       }
     });
+    // clang-format on
     session.connection->pingtimer.arm_periodic(std::chrono::milliseconds(100));
     reader_ec = co_await start_server_reader_for(session);
     if (reader_ec != reqerr_e::DONE) {
