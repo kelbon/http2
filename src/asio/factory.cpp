@@ -206,7 +206,7 @@ any_acceptor asio_factory::create_acceptor(internet_address addr, bool reuse_add
 }
 
 asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts, starter_t s)
-    : asio_tls_factory(ioctx, make_ssl_context_for_http2(options.additional_ssl_certificates), opts,
+    : asio_tls_factory(ioctx, make_ssl_context_for_http2(opts.additional_ssl_certificates), opts,
                        std::move(s)) {
 }
 
