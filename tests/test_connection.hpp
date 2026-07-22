@@ -251,14 +251,14 @@ inline dd::task<test_h2connection> fake_client_connection(
     asio::io_context& ctx, endpoint addr, bool tls,
     deadline_t deadline = deadline_after(DEFAULT_CONN_TIMEOUT),
     std::source_location = std::source_location::current()) {
-  // connection do not attached to factory, so factory may be deleted after createConnection
+  // connection do not attached to factory, so factory may be deleted after create_connection
   if (!tls) {
     asio_factory f(ctx);
-    auto c = co_await f.createConnection(addr, deadline);
+    auto c = co_await f.create_connection_client(addr, deadline);
     co_return test_h2connection(new h2connection(std::move(c), ctx), /*client=*/true);
   } else {
     asio_tls_factory f(ctx);
-    auto c = co_await f.createConnection(addr, deadline);
+    auto c = co_await f.create_connection_client(addr, deadline);
     co_return test_h2connection(new h2connection(std::move(c), ctx), /*client=*/true);
   }
 }
@@ -369,13 +369,13 @@ inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& en
 }
 
 template <auto* Foo>
-void server_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_section) {
-  echo_server server;
+void server_test_impl(std::string_view name, moko3::section_info* section, ssl_context_ptr ssl) {
+  echo_server server(ssl);
   internet_address addr(asio::ip::address_v4::loopback(), /*port_num=*/0);
   addr = server.listen({.addr = addr, .reuse_address = true});
   bool test_ended = false;
   std::exception_ptr ex;
-  (void)run_test(name, Foo(server, addr, server.ioctx(), toplvl_section), test_ended, ex);
+  (void)run_test(name, Foo(server, addr, server.ioctx(), section, /*is_tls_server=*/!!ssl), test_ended, ex);
   deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
   fuzzing::fuzzer fuz(moko3::get_testbox().randg());
   fuz.run_until(deadline, test_ended, server.ioctx());
@@ -384,7 +384,7 @@ void server_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_sect
 }
 // TODO tls?
 template <auto* Foo>
-void client_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_section) {
+void client_test_impl(std::string_view name, moko3::section_info* toplvl_section) {
   http2::http2_client client;
   bool test_ended = false;
   std::exception_ptr ex;
@@ -397,26 +397,35 @@ void client_test_impl(std::string_view name, moko3::top_lvl_section* toplvl_sect
 }
 
 #define UNIQUE_TEST_NAME LOGIC_GUARDS_CONCAT(_test, __LINE__, __LINE__)
+
 // after this macro expected function scope, which will use `server`, `addr`, `ioctx`
 // and return dd::task<void>
-#define SERVER_TEST(NAME)                                                                                  \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,          \
-                                    ::boost::asio::io_context& ioctx, ::moko3::top_lvl_section* _section); \
-  TEST(NAME) {                                                                                             \
-    ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                          \
-  }                                                                                                        \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,          \
-                                    ::boost::asio::io_context& ioctx, ::moko3::top_lvl_section* _section)
+// second arg is optional expression for creating TLS context, is this case test goes twice - with tls and
+// without tls (code can use is_tls_server variable)
+#define SERVER_TEST(NAME, ...)                                                                            \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,         \
+                                    ::boost::asio::io_context& ioctx, ::moko3::section_info* _section,    \
+                                    bool is_tls_server);                                                  \
+  TEST(NAME) {                                                                                            \
+    SECTION("NO TLS", 0) {                                                                                \
+      ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, nullptr);                              \
+    }                                                                                                     \
+    __VA_OPT__(                                                                                           \
+        SECTION("TLS", 1) { ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, __VA_ARGS__); }) \
+  }                                                                                                       \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,         \
+                                    ::boost::asio::io_context& ioctx, ::moko3::section_info* _section,    \
+                                    bool is_tls_server)
 
 // after this macro expected function scope, which will use `client`, `ioctx`
 // and return dd::task<void>
 #define CLIENT_TEST(NAME)                                                                            \
   ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::boost::asio::io_context& ioctx, \
-                                    ::moko3::top_lvl_section* _section);                             \
+                                    ::moko3::section_info* _section);                                \
   TEST(NAME) {                                                                                       \
     ::http2::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                    \
   }                                                                                                  \
   ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::boost::asio::io_context& ioctx, \
-                                    ::moko3::top_lvl_section* _section)
+                                    ::moko3::section_info* _section)
 
 }  // namespace http2

@@ -53,20 +53,17 @@ terminate отсылает goaway и отменяет все запросы на
 
 namespace http2 {
 
-using acceptor_t = boost::asio::ip::tcp::acceptor;
-
 struct http2_server::impl {
   // on top bcs of destroy order
   asio::io_context io;
+  any_transport_factory factory;
   bi::list<server_session> sessions;
-  ssl_context_ptr sslctx = nullptr;  // if nullptr, then server is http (not https)
-  std::list<acceptor_t> listeners;
+  std::list<any_acceptor> listeners;
   // gate for opened sessions / acceptors
   dd::gate sessionsgate;
   http2_server_options options;
   http2_server* creator = nullptr;
-  tcp_connection_options tcpopts;
-  move_only_fn<void(asio::ip::tcp::socket)> acceptcb;
+  move_only_fn<void(any_connection_t)> acceptcb;
 #ifndef NDEBUG
   std::thread::id tid = std::this_thread::get_id();
 #endif
@@ -78,18 +75,18 @@ struct http2_server::impl {
     return options.logctx;
   }
 
-  explicit impl(tcp_connection_options tcpopts, http2_server_options opts)
-      : io(), options(std::move(opts)), tcpopts(std::move(tcpopts)) {
+  explicit impl(factory_maker_t maker, http2_server_options opts, http2_server& owner)
+      : io(), factory(maker(io)), options(std::move(opts)), creator(&owner) {
     options.logctx.name = unique_name{};  // generate new (for different names for each server in mt_server)
     options.logctx.name.set_prefix(SERVER_PREFIX);
   }
 
   internet_address listen(server_endpoint a) {
     assert(std::this_thread::get_id() == tid);
-    acceptor_t& acceptor = listeners.emplace_back(ioctx(), a.addr, a.reuse_address);
+    any_acceptor& acceptor = listeners.emplace_back(factory->create_acceptor(a.addr, a.reuse_address));
     // store resolved endpoint (e.g. if port 0 was used) and store it before acceptConnections
     // (acceptConnections may delete acceptor!)
-    internet_address binded = acceptor.local_endpoint();
+    internet_address binded = acceptor.get_local_endpoint();
     acceptor.listen();
     auto lit = std::prev(listeners.end());
     on_scope_failure(eraselistener) {
@@ -110,7 +107,7 @@ struct http2_server::impl {
     };
     std::string addrstr = [&] {
       try {
-        return lit->local_endpoint().address().to_string();
+        return lit->get_local_endpoint().address().to_string();
       } catch (...) {
         return std::string();
       }
@@ -118,8 +115,7 @@ struct http2_server::impl {
     // note: do not remove listener on scope exit
     while (!sessionsgate.is_closed()) {
       io_error_code ec;
-      asio::ip::tcp::socket socket(ioctx());
-      co_await net.accept(*lit, socket, ec);
+      any_connection_t socket = co_await lit->accept(ec);
       assert(std::this_thread::get_id() == tid);
       if (ec == asio::error::operation_aborted) {
         HTTP2_LOG_TRACE(logctx(), "listening on {} stopped", addrstr);
@@ -148,38 +144,11 @@ struct http2_server::impl {
     HTTP2_LOG(logctx(), ERROR, "acceptConnections failed with err {}", e.what());
   }
 
-  dd::task<h2connection_ptr> createConnection(asio::ip::tcp::socket socket) {
-    assert(std::this_thread::get_id() == tid);
-    try {
-      tcpopts.apply(socket);
-      if (sslctx) {
-        HTTP2_LOG_TRACE(logctx(), "start TLS session");
-
-        any_connection_t tcpcon(new asio_tls_connection(std::move(socket), sslctx));
-        io_error_code ec;
-        co_await net.handshake(static_cast<asio_tls_connection*>(tcpcon.get())->sock,
-                               asio::ssl::stream_base::server, ec);
-        if (ec) {
-          HTTP2_LOG(logctx(), ERROR, "error during ssl handshake: {}", ec.message());
-          co_return nullptr;
-        }
-        co_return new h2connection(std::move(tcpcon), ioctx());
-      } else {
-        HTTP2_LOG_TRACE(logctx(), "start non-tls session");
-        any_connection_t tcpcon(new asio_connection(std::move(socket)));
-        co_return new h2connection(std::move(tcpcon), ioctx());
-      }
-    } catch (std::exception const& e) {
-      HTTP2_LOG(logctx(), ERROR, "connection creation failure: {}", e.what());
-      co_return nullptr;
-    }
-  }
-
   // Note: this code ignores possible bad_alloc and other logs exceptions
-  dd::task<void> sessionLifecycle(dd::gate::holder, asio::ip::tcp::socket socket) try {
+  dd::task<void> sessionLifecycle(dd::gate::holder, any_connection_t socket) try {
     assert(std::this_thread::get_id() == tid);
 
-    h2connection_ptr http2con = co_await createConnection(std::move(socket));
+    h2connection_ptr http2con = new h2connection(std::move(socket), ioctx());
     if (!http2con || !creator) {
       co_return;
     }
@@ -338,12 +307,14 @@ struct http2_server::impl {
   }
 };
 
+http2_server::http2_server(factory_maker_t maker, http2_server_options options)
+    : m_impl(std::make_unique<http2_server::impl>(std::move(maker), std::move(options), *this)) {
+}
+
 http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tcp_connection_options tcpopts)
-    : m_impl(std::make_unique<http2_server::impl>(std::move(tcpopts), std::move(options))) {
-  if (ctx) {
-    m_impl->sslctx = std::move(ctx);
-  }
-  m_impl->creator = this;
+    : http2_server(ctx ? factory_maker<asio_tls_factory>(std::move(ctx), std::move(tcpopts))
+                       : factory_maker<asio_factory>(std::move(tcpopts)),
+                   std::move(options)) {
 }
 
 http2_server::~http2_server() {
@@ -373,7 +344,7 @@ void http2_server::stop() {
   }
 }
 
-void http2_server::set_accept_callback(move_only_fn<void(asio::ip::tcp::socket)> cb) {
+void http2_server::set_accept_callback(move_only_fn<void(any_connection_t)> cb) {
   m_impl->acceptcb = std::move(cb);
 }
 
@@ -418,28 +389,54 @@ const http2_server_options& http2_server::get_options() const noexcept {
   return m_impl->options;
 }
 
-void http2_server::set_ssl_context(ssl_context_ptr c) noexcept {
-  m_impl->sslctx = std::move(c);
-}
-
 // multi threaded server
 
+static void rebind_executor(any_connection_t& connection, asio::io_context& new_ioctx, io_error_code& ec) {
+  // ограничено работает только для известных контекстов
+  if (auto* c = dynamic_cast<asio_connection*>(connection.get())) {
+    asio::ip::tcp::socket newsock(new_ioctx);
+    auto p = c->sock.local_endpoint(ec).protocol();
+    if (ec)
+      return;
+    auto rawsock = c->sock.release(ec);
+    if (ec)
+      return;
+    ec = newsock.assign(p, rawsock, ec);
+    if (ec)
+      return;
+    c->sock = std::move(newsock);
+    return;
+  } else if (auto* c = dynamic_cast<asio_tls_connection*>(connection.get())) {
+    asio::ip::tcp::socket newsock(new_ioctx);
+    auto p = c->sock.lowest_layer().local_endpoint(ec).protocol();
+    if (ec)
+      return;
+    auto rawsock = c->sock.lowest_layer().release(ec);
+    if (ec)
+      return;
+    ec = newsock.assign(p, rawsock, ec);
+    if (ec)
+      return;
+    c->sock.lowest_layer() = std::move(newsock);
+    return;
+  } else {
+    ec = boost::asio::error::operation_not_supported;
+    return;
+  }
+}
+
 void mt_server::initialize() {
-  auto cb = [this](asio::ip::tcp::socket sock) {
+  auto cb = [this](any_connection_t sock) {
     auto& server = next_server().server;
 
-    // rebind socket executor
-    asio::ip::tcp::socket newsock(server->ioctx());
     io_error_code ec;
-    auto p = sock.local_endpoint(ec).protocol();
-    auto rawsock = sock.release(ec);
-    newsock.assign(p, rawsock);
+    rebind_executor(sock, server->ioctx(), ec);
     if (ec) {
       HTTP2_LOG(server->m_impl->logctx(), ERROR, "error when transfering accepted socket, err: {}",
                 ec.what());
       return;
     }
-    asio::post(server->ioctx(), [&server, s = std::move(newsock)]() mutable {
+    asio::post(server->ioctx(), [&server, s = std::move(sock)]() mutable {
       if (server->m_impl->sessionsgate.is_closed()) [[unlikely]]
         return;
       server->m_impl->sessionLifecycle(server->m_impl->sessionsgate.hold(), std::move(s)).start_and_detach();
