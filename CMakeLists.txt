@@ -54,6 +54,7 @@ target_link_libraries(http2lib PUBLIC
     hpacklib
     zallib
     strswitchlib
+    Boost::stacktrace
     Boost::intrusive
     Boost::smart_ptr
     Boost::asio

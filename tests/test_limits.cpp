@@ -1,6 +1,9 @@
 
 #include "test_connection.hpp"
+#include <csignal>
 #include <moko3/moko3.hpp>
+
+#include <boost/stacktrace.hpp>
 
 using namespace http2;
 
@@ -162,4 +165,18 @@ SERVER_TEST("server CONTINUATION limit", test_ssl_ctx()) {
 }
 
 REGISTER_TEST_LISTENER(moko3::gtest_listener);
-MOKO3_MAIN;
+
+void signalHandler(int signum) {
+  std::cerr << "\nCaught signal " << signum << '\n';
+  std::cerr << "Stack trace:\n";
+  std::cerr << boost::stacktrace::stacktrace();
+
+  std::_Exit(EXIT_FAILURE);
+}
+
+int main(int argc, char* argv[]) {
+  std::signal(SIGSEGV, signalHandler);
+  auto& box = ::moko3 ::get_testbox();
+  box.parse_config(argc, argv);
+  return box.run_tests();
+}
