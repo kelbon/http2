@@ -35,7 +35,9 @@ struct asio_factory : transport_factory_i {
   starter_t starter;
 
   explicit asio_factory(boost::asio::io_context&, tcp_connection_options = {}, starter_t = {});
-  dd::task<any_connection_t> createConnection(endpoint, deadline_t);
+
+  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t) override;
+  any_acceptor create_acceptor(internet_address, bool reuse_address) override;
 };
 
 struct asio_tls_connection : connection_i {
@@ -70,8 +72,13 @@ struct asio_tls_factory : transport_factory_i {
   // invoked after tcp handshake (before TLS), may set socket options etc
   starter_t starter;
 
+  // by default creates context for http2 client
   explicit asio_tls_factory(asio::io_context&, tcp_connection_options = {}, starter_t = {});
-  dd::task<any_connection_t> createConnection(endpoint, deadline_t) override;
+  // pre: ctx != nullptr
+  asio_tls_factory(asio::io_context&, ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
+
+  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t) override;
+  any_acceptor create_acceptor(internet_address, bool reuse_address) override;
 };
 
 }  // namespace http2

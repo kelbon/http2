@@ -132,7 +132,7 @@ asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options 
     : ioctx(ctx), options(std::move(opts)), starter(std::move(s)) {
 }
 
-dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, deadline_t deadline) {
+dd::task<any_connection_t> asio_factory::create_connection_client(endpoint endpoint, deadline_t deadline) {
   using tcp = asio::ip::tcp;
 
   tcp::resolver resolver(ioctx);
@@ -176,14 +176,48 @@ dd::task<any_connection_t> asio_factory::createConnection(endpoint endpoint, dea
   co_return any_connection_t(new asio_connection(std::move(tcp_sock)));
 }
 
-asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts, starter_t s)
-    : ioctx(ioctx),
-      options(std::move(opts)),
-      sslctx(make_ssl_context_for_http2(options.additional_ssl_certificates)),
-      starter(std::move(s)) {
+struct asio_acceptor {
+  boost::asio::ip::tcp::acceptor a;
+
+  internet_address get_local_endpoint() const {
+    return a.local_endpoint();
+  }
+
+  internet_address listen() {
+    a.listen();
+    return get_local_endpoint();
+  }
+
+  dd::task<any_connection_t> accept(io_error_code& ec) {
+    asio::ip::tcp::socket socket(a.get_executor());
+    co_await net.accept(a, socket, ec);
+    if (ec)
+      co_return nullptr;
+    co_return any_connection_t(new asio_connection(std::move(socket)));
+  }
+
+  void close() {
+    return a.close();
+  }
+};
+
+any_acceptor asio_factory::create_acceptor(internet_address addr, bool reuse_address) {
+  return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
 }
 
-dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint, deadline_t deadline) {
+asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts, starter_t s)
+    : asio_tls_factory(ioctx, make_ssl_context_for_http2(options.additional_ssl_certificates), opts,
+                       std::move(s)) {
+}
+
+asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, ssl_context_ptr ctx, tcp_connection_options opts,
+                                   starter_t s)
+    : ioctx(ioctx), options(std::move(opts)), sslctx(std::move(ctx)), starter(std::move(s)) {
+  assert(sslctx != nullptr);
+}
+
+dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint endpoint,
+                                                                      deadline_t deadline) {
   namespace ssl = asio::ssl;
   using tcp = asio::ip::tcp;
 
@@ -242,6 +276,41 @@ dd::task<any_connection_t> asio_tls_factory::createConnection(endpoint endpoint,
   if (ec)
     throw network_exception("[TCP/SSL] cannot ssl handshake: {}", ec.message());
   co_return any_connection_t(std::move(res));
+}
+
+struct asio_tls_acceptor {
+  boost::asio::ip::tcp::acceptor a;
+  ssl_context_ptr sslctx;
+
+  internet_address get_local_endpoint() const {
+    return a.local_endpoint();
+  }
+
+  internet_address listen() {
+    a.listen();
+    return get_local_endpoint();
+  }
+
+  dd::task<any_connection_t> accept(io_error_code& ec) {
+    asio::ip::tcp::socket socket(a.get_executor());
+
+    co_await net.accept(a, socket, ec);
+    if (ec)
+      co_return nullptr;
+    std::unique_ptr<asio_tls_connection> tcpcon(new asio_tls_connection(std::move(socket), sslctx));
+    co_await net.handshake(tcpcon->sock, asio::ssl::stream_base::server, ec);
+    if (ec)
+      co_return nullptr;
+    co_return any_connection_t(std::move(tcpcon));
+  }
+
+  void close() {
+    return a.close();
+  }
+};
+
+any_acceptor asio_tls_factory::create_acceptor(internet_address addr, bool reuse_address) {
+  return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}, sslctx};
 }
 
 }  // namespace http2

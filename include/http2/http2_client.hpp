@@ -12,7 +12,7 @@
 
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/list_hook.hpp>
-#include <boost/smart_ptr/intrusive_ptr.hpp>
+#include <boost/intrusive_ptr.hpp>
 
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
@@ -132,8 +132,7 @@ struct http2_client {
   //   http2_client myclient(host, http2_client_options{}, [](boost::asio::io_context& ctx) {
   //                return default_tls_transport_factory(ctx);
   //   });
-  explicit http2_client(endpoint host, http2_client_options,
-                        move_only_fn<any_transport_factory(asio::io_context&)>);
+  explicit http2_client(endpoint host, http2_client_options, factory_maker_t);
 
   http2_client(http2_client&&) = delete;
   void operator=(http2_client&&) = delete;

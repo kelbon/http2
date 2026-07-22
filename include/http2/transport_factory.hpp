@@ -12,6 +12,9 @@
 #include <variant>
 
 #include <kelcoro/task.hpp>
+#include <anyany/anyany.hpp>
+#include <anyany/anyany_macro.hpp>
+
 #include <boost/asio/ip/tcp.hpp>
 
 namespace asio = boost::asio;
@@ -99,12 +102,30 @@ struct endpoint {
         return std::format("{}:{}", ipaddr()->to_string(), port);
     }
   }
+
+  bool operator==(const endpoint&) const = default;
 };
+
+anyany_method2_n(get_local_endpoint_m, get_local_endpoint,
+                 (const& self) requires(self.get_local_endpoint())->internet_address);
+
+// returns local address after binding
+anyany_method2_n(listen_m, listen, (&self) requires(self.listen())->internet_address);
+
+anyany_method2_n(accept_m, accept,
+                 (&self, io_error_code& ec) requires(self.accept(ec))->dd::task<any_connection_t>);
+
+anyany_method2_n(close_m, close, (&self) requires(self.close())->void);
+
+// movable because of SooS == 0
+using any_acceptor =
+    aa::basic_any_with<aa::default_allocator, /*SooS=*/0, get_local_endpoint_m, listen_m, accept_m, close_m>;
 
 struct transport_factory_i {
   // postcondition: .has_value() == true
-  virtual dd::task<any_connection_t> createConnection(endpoint, deadline_t) = 0;
-
+  // client-side
+  virtual dd::task<any_connection_t> create_connection_client(endpoint, deadline_t) = 0;
+  virtual any_acceptor create_acceptor(internet_address, bool reuse_address) = 0;
   virtual ~transport_factory_i() = default;
 };
 
@@ -162,17 +183,14 @@ any_transport_factory default_transport_factory(boost::asio::io_context&);
 any_transport_factory default_tls_transport_factory(
     boost::asio::io_context&, std::vector<std::filesystem::path> additional_tls_certificates = {});
 
-// binds tcp options to factory for passing tcp options to http2_client
-// `Factory` must be constructible from asio::io_context and tcp_connection_options
-// usage:
-//   http2_client(host,
-//                client_options,
-//                factory_with_tcp_options<SomeFactory>(tcp_options)
-//   )
-template <typename Factory>
-auto factory_with_tcp_options(tcp_connection_options opts) {
-  return [opts = std::move(opts)](asio::io_context& ctx) -> any_transport_factory {
-    return any_transport_factory(new Factory(ctx, opts));
+using factory_maker_t = move_only_fn<any_transport_factory(asio::io_context&)>;
+
+// returns function which accepts io_context ref and passes it as first argument, then 'args' to Factory
+// constructor
+template <typename Factory, typename... Args>
+[[nodiscard]] factory_maker_t factory_maker(Args&&... args) {
+  return [... args = std::forward<Args>(args)](asio::io_context& ioctx) mutable -> any_transport_factory {
+    return any_transport_factory(new Factory(ioctx, std::forward<Args>(args)...));
   };
 }
 

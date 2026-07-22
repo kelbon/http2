@@ -1,5 +1,6 @@
 #pragma once
 
+#include "http2/asio/factory.hpp"
 #include "http2/asio/ssl_context.hpp"
 #include "http2/http2_connection_establishment.hpp"
 #include "http2/http_base.hpp"
@@ -26,14 +27,19 @@ struct http2_server {
 
   friend struct mt_server;
   // used by http2::server
-  void set_accept_callback(move_only_fn<void(asio::ip::tcp::socket)>);
+  void set_accept_callback(move_only_fn<void(any_connection_t)>);
 
  public:
   // creates non-tls server
+  // uses asio_factory
   explicit http2_server(http2_server_options options = {}) : http2_server(nullptr, std::move(options)) {
   }
 
+  // pre: m.has_value() == true
+  http2_server(factory_maker_t m, http2_server_options);
+
   // if ssl context ptr is nullptr, then its http server (not https)
+  // uses asio_factory/asio_tls_factory
   explicit http2_server(ssl_context_ptr, http2_server_options = {}, tcp_connection_options = {});
 
   http2_server(std::filesystem::path certificate, std::filesystem::path server_private_key,
@@ -98,8 +104,6 @@ struct http2_server {
 
   http2_server_options& get_options() noexcept;
   const http2_server_options& get_options() const noexcept;
-  // only for tests
-  void set_ssl_context(ssl_context_ptr) noexcept;
 
  private:
   friend struct http2_tester;

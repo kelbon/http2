@@ -36,7 +36,7 @@ int main() try {
       ipv6_endpoint,
       {// avoid sending too many requests because server sets max concurrent streams == 10
        .allow_requests_before_server_settings = false},
-      http2::factory_with_tcp_options<http2::asio_factory>({}));
+      http2::factory_maker<http2::asio_factory>());
 
   clone_reqtem tem;
   auto& r = tem.req;

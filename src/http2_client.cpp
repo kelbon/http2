@@ -143,7 +143,8 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
         self->m_connection = newConnection;
         self->notifyConnectionWaiters(newConnection);
       };
-      any_connection_t tcpCon = co_await self->m_factory->createConnection(self->get_host(), deadline);
+      any_connection_t tcpCon =
+          co_await self->m_factory->create_connection_client(self->get_host(), deadline);
       h2connection_ptr con = new h2connection(std::move(tcpCon), self->ioctx());
 
       con->logctx.lvl = self->m_options.logctx.lvl;
@@ -417,8 +418,7 @@ http2_client::~http2_client() {
   assert(m_requestsInProgress == 0);
 }
 
-http2_client::http2_client(endpoint host, http2_client_options opts,
-                           move_only_fn<any_transport_factory(asio::io_context&)> tf)
+http2_client::http2_client(endpoint host, http2_client_options opts, factory_maker_t tf)
     : m_host(std::move(host)), m_options(opts), m_factory(tf(m_ioctx)) {
   assert(m_factory);
   m_options.logctx.name.set_prefix(CLIENT_PREFIX);
