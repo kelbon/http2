@@ -13,6 +13,14 @@ using starter_t = move_only_fn<dd::task<void>(boost::asio::ip::tcp::socket&, dea
 
 namespace noexport {
 
+struct single_read_assumption {
+  static constexpr size_t readen_capacity = (1 << 14) + 9;
+  unsigned char readen[readen_capacity];
+  unsigned char* readen_start = readen;
+  unsigned char* readen_end = readen;
+  ZAL_PIN;
+};
+
 struct single_writer_guarantee {
   // boost::asio запрещает более одного async_write одновременно
   // https://www.boost.org/doc/libs/latest/doc/html/boost_asio/reference/async_write/overload1.html
@@ -20,6 +28,7 @@ struct single_writer_guarantee {
   bi::slist<writer_node, bi::cache_last<true>> writersqueue;
   std::coroutine_handle<> writer;
   bool allow_write = true;
+  ZAL_PIN;
 
   [[nodiscard]] bool writer_done() const noexcept {
     // writer ожидает новой работы, но её никогда не будет
@@ -35,11 +44,8 @@ struct single_writer_guarantee {
 }  // namespace noexport
 
 struct asio_connection : connection_i {
-  static constexpr size_t readen_capacity = (1 << 14) + 9;
-  unsigned char readen[readen_capacity];
-  unsigned char* readen_start = readen;
-  unsigned char* readen_end = readen;
   asio::ip::tcp::socket sock;
+  noexport::single_read_assumption readdata;
   noexport::single_writer_guarantee writedata;
 
   explicit asio_connection(asio::ip::tcp::socket);
@@ -67,10 +73,7 @@ struct asio_factory : transport_factory_i {
 };
 
 struct asio_tls_connection : connection_i {
-  static constexpr size_t readen_capacity = (1 << 14) + 9;
-  unsigned char readen[readen_capacity];
-  unsigned char* readen_start = readen;
-  unsigned char* readen_end = readen;
+  noexport::single_read_assumption readdata;
   asio::ssl::stream<asio::ip::tcp::socket> sock;
   ssl_context_ptr sslctx;
   noexport::single_writer_guarantee writedata;

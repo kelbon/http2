@@ -65,12 +65,12 @@ static dd::job start_inner_writer_for(auto* self) {
   }
 }
 
-[[nodiscard]] static bool do_try_read(auto& self, std::span<byte_t> buf) noexcept {
-  size_t avail = self.readen_end - self.readen_start;
+[[nodiscard]] static bool do_try_read(noexport::single_read_assumption& rd, std::span<byte_t> buf) noexcept {
+  size_t avail = rd.readen_end - rd.readen_start;
   bool b = avail >= buf.size();
   if (b) {
-    memcpy(buf.data(), self.readen_start, buf.size());
-    self.readen_start += buf.size();
+    memcpy(buf.data(), rd.readen_start, buf.size());
+    rd.readen_start += buf.size();
   }
   return b;
 }
@@ -82,21 +82,20 @@ static dd::job do_read_some(auto& c, std::span<byte_t> userbuf, io_error_code& e
   byte_t* const userbufend = userbuf.data() + userbufsz;
   while (readen < userbufsz) {
     readen += co_await net.read_some_many(c.sock, ec, std::span(userbuf.data() + readen, userbufend),
-                                          std::span(c.readen));
+                                          std::span(c.readdata.readen));
     if (ec) [[unlikely]]
       break;
   }
-  c.readen_end += readen - userbufsz;
+  c.readdata.readen_end += readen - userbufsz;
   co_await dd::this_coro::destroy_and_transfer_control_to(callback);
 }
 
-// TODO readdata?
 static void do_start_read(auto& self, std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   // assumes only one reader at one time
-  size_t avail = self.readen_end - self.readen_start;
+  size_t avail = self.readdata.readen_end - self.readdata.readen_start;
   assert(avail < buf.size());  // start_read must be invoked only if try_read failed
-  memcpy(buf.data(), self.readen_start, avail);
-  self.readen_start = self.readen_end = self.readen;
+  memcpy(buf.data(), self.readdata.readen_start, avail);
+  self.readdata.readen_start = self.readdata.readen_end = self.readdata.readen;
   (void)do_read_some(self, suffix(buf, buf.size() - avail), ec, h);
 }
 
@@ -161,7 +160,7 @@ asio_tls_connection::asio_tls_connection(asio::ip::tcp::socket s, ssl_context_pt
 }
 
 bool asio_tls_connection::try_read(std::span<byte_t> buf) noexcept {
-  return do_try_read(*this, buf);
+  return do_try_read(readdata, buf);
 }
 
 void asio_tls_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
@@ -186,7 +185,7 @@ asio_connection::asio_connection(asio::ip::tcp::socket s) : sock(std::move(s)) {
 }
 
 bool asio_connection::try_read(std::span<byte_t> buf) noexcept {
-  return do_try_read(*this, buf);
+  return do_try_read(readdata, buf);
 }
 
 void asio_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
