@@ -422,9 +422,8 @@ void h2connection::windowUpdate(window_update_frame frame) {
 }
 
 bool h2connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
-  if (isDropped()) {
+  if (isDropped())
     return false;
-  }
 
   HTTP2_LOG_TRACE(logctx, "shutdown");
 
@@ -455,11 +454,17 @@ bool h2connection::prepareToShutdown(reqerr_e::values_e reason) noexcept {
   return true;
 }
 
+static dd::job do_shutdown_connection(h2connection_ptr con) {
+  assert(con);
+  // держит шаред, автономно не трогая ничего другого, возможно в "бекграунде" останавливается
+  co_await con->tcpCon->shutdown();
+}
+
 void h2connection::shutdown(reqerr_e::values_e reason) noexcept {
-  if (!prepareToShutdown(reason)) {
+  if (!prepareToShutdown(reason))
     return;
-  }
-  tcpCon->shutdown();
+  // возможный bad_alloc игнорируется
+  (void)do_shutdown_connection(this);
 }
 
 stream_ptr h2connection::new_stream_node(http_request&& request, deadline_t deadline,

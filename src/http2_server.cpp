@@ -275,9 +275,8 @@ struct http2_server::impl {
       HTTP2_LOG_TRACE(logctx(), "shutdown ended");
     };
     auto closeg = sessionsgate.close();
-    for (auto& session : sessions) {
+    for (auto& session : sessions)
       session.requestShutdown();
-    }
     stopListeners();
     co_await closeg;
     co_await yield_on_ioctx(ioctx());

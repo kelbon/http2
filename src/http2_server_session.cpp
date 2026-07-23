@@ -214,9 +214,8 @@ void server_session::requestShutdown() noexcept {
     }
   }
 
-  if (!hasUnfinishedRequests()) {
+  if (!hasUnfinishedRequests())
     onSessionDone();
-  }
 }
 
 void server_session::requestTerminate() noexcept {

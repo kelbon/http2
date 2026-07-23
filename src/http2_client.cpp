@@ -747,7 +747,10 @@ dd::task<bool> http2_client::try_connect(deadline_t deadline) {
 }
 
 void http2_client::cancel_all() noexcept {
-  auto all_canceled = [&] { return !m_notYetReadyConnection && !m_connection && m_requestsInProgress == 0; };
+  auto all_canceled = [&] {
+    return !m_notYetReadyConnection && !m_connection && m_requestsInProgress == 0 &&
+           m_connectionWaiters.empty();
+  };
   while (!all_canceled()) {
     drop_connection(reqerr_e::CANCELLED);
     notifyConnectionWaiters(nullptr);
