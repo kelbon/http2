@@ -36,7 +36,8 @@ struct jump_on_ioctx {
 };
 
 // schedules coroutine to be executed on `ctx`
-inline auto yield_on_ioctx(boost::asio::io_context& ctx) {
+// работает для любого boost::asio executor / io_context
+inline auto yield_on_ioctx(auto& ctx) {
   return dd::suspend_and_t([&](std::coroutine_handle<> h) { boost::asio::post(ctx, h); });
 }
 
