@@ -1,4 +1,5 @@
 #include "http2/asio/factory.hpp"
+#include "http2/asio/asio_executor.hpp"
 #include "http2/asio/awaiters.hpp"
 #include "http2/logger.hpp"
 #include "kelcoro/job.hpp"
@@ -6,20 +7,72 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/ssl/host_name_verification.hpp>
 
+namespace {
+
+struct work_awaiter {
+  http2::noexport::single_writer_guarantee* i = nullptr;
+  ZAL_PIN;
+
+  bool await_ready() const noexcept {
+    return !i->writersqueue.empty();
+  }
+  void await_suspend(std::coroutine_handle<dd::job_promise> writer) noexcept {
+    assert(i->writer == nullptr);
+    i->writer = writer;
+  }
+  static void await_resume() noexcept {
+  }
+};
+
+}  // namespace
+
 namespace http2 {
 
-[[nodiscard]] static bool try_read_impl(auto& con, std::span<byte_t> buf) noexcept {
-  size_t avail = con.readen_end - con.readen_start;
-  bool b = avail >= buf.size();
-  if (b) {
-    memcpy(buf.data(), con.readen_start, buf.size());
-    con.readen_start += buf.size();
+// Гарантирует:
+// * writer либо в wait_work либо в net.write, никогда не завершается сам
+// * если в очереди ничего нет, значит ничего не пишется и сейчас нет активного write
+static dd::job start_inner_writer_for(auto* self) {
+  // terminates on bad alloc
+  assert(self);
+
+  on_scope_exit {
+    assert(self->writedata.writersqueue.empty());
+  };
+  noexport::single_writer_guarantee& wd = self->writedata;
+  for (;;) {
+    co_await work_awaiter(&wd);
+
+    while (!wd.writersqueue.empty()) {
+      writer_node& n = wd.writersqueue.front();
+
+      co_await net.write(self->sock, n.data, n.ec);
+      // убираем из очереди только здесь, чтобы гарантировать для shutdown
+      // что пустая очередь == обработанная очередь
+      self->writedata.writersqueue.pop_front();
+      // 'ec' обрабатывает callback
+      n.callback.resume();
+      if (!self->writedata.allow_write) {
+        wd.writersqueue.clear_and_dispose([](writer_node* node) {
+          node->ec = boost::asio::error::operation_aborted;
+          node->callback.resume();
+        });
+        // встаём на ожидание .destroy
+        co_await work_awaiter(&wd);
+        http2::unreachable();
+      }
+    }
+    // TODO experiment flush
   }
-  return b;
 }
 
-bool asio_tls_connection::try_read(std::span<byte_t> buf) noexcept {
-  return try_read_impl(*this, buf);
+[[nodiscard]] static bool do_try_read(auto& self, std::span<byte_t> buf) noexcept {
+  size_t avail = self.readen_end - self.readen_start;
+  bool b = avail >= buf.size();
+  if (b) {
+    memcpy(buf.data(), self.readen_start, buf.size());
+    self.readen_start += buf.size();
+  }
+  return b;
 }
 
 static dd::job do_read_some(auto& c, std::span<byte_t> userbuf, io_error_code& ec,
@@ -37,17 +90,26 @@ static dd::job do_read_some(auto& c, std::span<byte_t> userbuf, io_error_code& e
   co_await dd::this_coro::destroy_and_transfer_control_to(callback);
 }
 
-void asio_tls_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
+// TODO readdata?
+static void do_start_read(auto& self, std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
   // assumes only one reader at one time
-  size_t avail = readen_end - readen_start;
+  size_t avail = self.readen_end - self.readen_start;
   assert(avail < buf.size());  // start_read must be invoked only if try_read failed
-  memcpy(buf.data(), readen_start, avail);
-  readen_start = readen_end = readen;
-  (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
+  memcpy(buf.data(), self.readen_start, avail);
+  self.readen_start = self.readen_end = self.readen;
+  (void)do_read_some(self, suffix(buf, buf.size() - avail), ec, h);
 }
 
-size_t asio_tls_connection::try_write(std::span<const byte_t> buf, io_error_code& ec) noexcept {
-  size_t written = sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
+static size_t do_try_write(auto& self, std::span<const byte_t> buf, io_error_code& ec) {
+  if (!self.writedata.allow_write) [[unlikely]] {
+    ec = boost::asio::error::operation_aborted;
+    return 0;
+  }
+  // нельзя писать когда есть кто-то в writersqueue, чтобы не нарушить порядок отправки
+  if (!self.writedata.writersqueue.empty())
+    return 0;
+  // TODO эксперимент мб маленькие данные пихать сюда, может таким образом батчинг будет ускорять
+  size_t written = self.sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
   if (ec) {
     if (ec == asio::error::would_block)
       ec.clear();  // not a error
@@ -55,13 +117,11 @@ size_t asio_tls_connection::try_write(std::span<const byte_t> buf, io_error_code
   return written;
 }
 
-void asio_tls_connection::start_write(writer_node* n) {
-  // TODO в очередь их
-  asio::async_write(sock, asio::buffer(n->data.data(), n->data.size()), [n](const io_error_code& e, size_t) {
-    if (e) [[unlikely]]
-      *n->ec = e;
-    n->callback.resume();
-  });
+static void do_start_write(noexport::single_writer_guarantee& g, writer_node* n) {
+  assert(n);
+  assert(g.allow_write);
+  g.writersqueue.push_back(*n);
+  g.notify_writer();
 }
 
 static void close_tcp_sock(auto& tcp_sock) {
@@ -78,46 +138,71 @@ static void close_tcp_sock(auto& tcp_sock) {
   (void)ec;
 }
 
+dd::task<void> do_shutdown(noexport::single_writer_guarantee& wd, auto& sock) {
+  if (!wd.allow_write) {
+    assert(wd.writer == nullptr);
+    co_return;
+  }
+  // запрещает новые try_write/start_write
+  wd.allow_write = false;
+  // либо writer сейчас работает, либо уже done
+  // (т.к. любой write бы его разбудил и он бы никогда не заснул пока не обработает всё)
+  while (!wd.writer_done())
+    co_await yield_on_ioctx(sock.get_executor());
+  std::exchange(wd.writer, nullptr).destroy();
+  close_tcp_sock(sock);
+}
+
+asio_tls_connection::asio_tls_connection(asio::ip::tcp::socket s, ssl_context_ptr ctx)
+    // Note: order
+    : sock(std::move(s), ctx->ctx), sslctx(std::move(ctx)) {
+  sock.lowest_layer().non_blocking(true);
+  (void)start_inner_writer_for(this);
+}
+
+bool asio_tls_connection::try_read(std::span<byte_t> buf) noexcept {
+  return do_try_read(*this, buf);
+}
+
+void asio_tls_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
+  do_start_read(*this, h, buf, ec);
+}
+
+size_t asio_tls_connection::try_write(std::span<const byte_t> buf, io_error_code& ec) noexcept {
+  return do_try_write(*this, buf, ec);
+}
+
+void asio_tls_connection::start_write(writer_node* n) {
+  do_start_write(writedata, n);
+}
+
 dd::task<void> asio_tls_connection::shutdown() noexcept {
-  auto& tcp_sock = sock.lowest_layer();
-  close_tcp_sock(tcp_sock);
-  co_return;
+  return do_shutdown(writedata, sock.lowest_layer());
+}
+
+asio_connection::asio_connection(asio::ip::tcp::socket s) : sock(std::move(s)) {
+  sock.non_blocking(true);
+  (void)start_inner_writer_for(this);
 }
 
 bool asio_connection::try_read(std::span<byte_t> buf) noexcept {
-  return try_read_impl(*this, buf);
+  return do_try_read(*this, buf);
 }
 
 void asio_connection::start_read(std::coroutine_handle<> h, std::span<byte_t> buf, io_error_code& ec) {
-  // assumes only one reader at one time
-  size_t avail = readen_end - readen_start;
-  assert(avail < buf.size());  // start_read must be invoked only if try_read failed
-  memcpy(buf.data(), readen_start, avail);
-  readen_start = readen_end = readen;
-  (void)do_read_some(*this, suffix(buf, buf.size() - avail), ec, h);
+  do_start_read(*this, h, buf, ec);
 }
 
 size_t asio_connection::try_write(std::span<const byte_t> buf, io_error_code& ec) noexcept {
-  size_t written = sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
-  if (ec) {
-    if (ec == asio::error::would_block)
-      ec.clear();  // not a error
-  }
-  return written;
+  return do_try_write(*this, buf, ec);
 }
 
 void asio_connection::start_write(writer_node* n) {
-  // TODO в очередь их
-  asio::async_write(sock, asio::buffer(n->data.data(), n->data.size()), [n](const io_error_code& e, size_t) {
-    if (e) [[unlikely]]
-      *n->ec = e;
-    n->callback.resume();
-  });
+  do_start_write(writedata, n);
 }
 
 dd::task<void> asio_connection::shutdown() noexcept {
-  close_tcp_sock(sock);
-  co_return;
+  return do_shutdown(writedata, sock);
 }
 
 any_transport_factory default_transport_factory(boost::asio::io_context& ctx) {
