@@ -210,16 +210,6 @@ struct read_some_operation {
   }
 };
 
-template <typename Stream>
-struct shutdown_operation {
-  Stream& stream;
-
-  template <typename T>
-  void operator()(T&& cb) {
-    stream.async_shutdown(std::forward<T>(cb));
-  }
-};
-
 template <typename Protocol>
 struct accept_operation {
   asio::basic_socket_acceptor<Protocol>& acceptor;
@@ -335,11 +325,6 @@ struct net_t {
     io_error_code ec;
     co_await sleep(timer, duration, ec);
     (void)ec;  // ignore error
-  }
-
-  template <typename Stream>
-  KELCORO_CO_AWAIT_REQUIRED static auto shutdown(Stream& stream, io_error_code& ec) {
-    return asio_awaiter<void, shutdown_operation<Stream>>(ec, stream);
   }
 };
 

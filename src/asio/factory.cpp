@@ -55,12 +55,12 @@ size_t asio_tls_connection::try_write(std::span<const byte_t> buf, io_error_code
   return written;
 }
 
-void asio_tls_connection::start_write(std::coroutine_handle<> h, std::span<byte_t const> buf,
-                                      io_error_code& ec) {
-  asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
+void asio_tls_connection::start_write(writer_node* n) {
+  // TODO в очередь их
+  asio::async_write(sock, asio::buffer(n->data.data(), n->data.size()), [n](const io_error_code& e, size_t) {
     if (e) [[unlikely]]
-      ec = e;
-    h.resume();
+      *n->ec = e;
+    n->callback.resume();
   });
 }
 
@@ -78,9 +78,10 @@ static void close_tcp_sock(auto& tcp_sock) {
   (void)ec;
 }
 
-void asio_tls_connection::shutdown() noexcept {
+dd::task<void> asio_tls_connection::shutdown() noexcept {
   auto& tcp_sock = sock.lowest_layer();
   close_tcp_sock(tcp_sock);
+  co_return;
 }
 
 bool asio_connection::try_read(std::span<byte_t> buf) noexcept {
@@ -105,16 +106,18 @@ size_t asio_connection::try_write(std::span<const byte_t> buf, io_error_code& ec
   return written;
 }
 
-void asio_connection::start_write(std::coroutine_handle<> h, std::span<const byte_t> buf, io_error_code& ec) {
-  asio::async_write(sock, asio::buffer(buf.data(), buf.size()), [&, h](const io_error_code& e, size_t) {
+void asio_connection::start_write(writer_node* n) {
+  // TODO в очередь их
+  asio::async_write(sock, asio::buffer(n->data.data(), n->data.size()), [n](const io_error_code& e, size_t) {
     if (e) [[unlikely]]
-      ec = e;
-    h.resume();
+      *n->ec = e;
+    n->callback.resume();
   });
 }
 
-void asio_connection::shutdown() noexcept {
+dd::task<void> asio_connection::shutdown() noexcept {
   close_tcp_sock(sock);
+  co_return;
 }
 
 any_transport_factory default_transport_factory(boost::asio::io_context& ctx) {

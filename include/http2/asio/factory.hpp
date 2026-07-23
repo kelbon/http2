@@ -3,6 +3,10 @@
 #include "http2/asio/ssl_context.hpp"
 #include "http2/transport_factory.hpp"
 
+#include <boost/intrusive/slist.hpp>
+
+#include <kelcoro/job.hpp>
+
 namespace http2 {
 
 using starter_t = move_only_fn<dd::task<void>(boost::asio::ip::tcp::socket&, deadline_t) const>;
@@ -13,6 +17,10 @@ struct asio_connection : connection_i {
   unsigned char* readen_start = readen;
   unsigned char* readen_end = readen;
   asio::ip::tcp::socket sock;
+  // seastar output forbids more that one operation at once,
+  // this queue guarantees only one writer at one time
+  bi::slist<writer_node, bi::cache_last<true>> writersqueue;
+  std::coroutine_handle<> writer;
 
   explicit asio_connection(asio::ip::tcp::socket s) : sock(std::move(s)) {
     sock.non_blocking(true);
@@ -21,10 +29,39 @@ struct asio_connection : connection_i {
   bool try_read(std::span<byte_t> buf) noexcept override;
   void start_read(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
   size_t try_write(std::span<const byte_t>, io_error_code&) noexcept override;
-  void start_write(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
-  void shutdown() noexcept override;
+  void start_write(writer_node*) override;
+  dd::task<void> shutdown() noexcept override;
   bool is_https() override {
     return false;
+  }
+
+  void notify_writer() {
+    if (writer)
+      std::exchange(writer, nullptr).resume();
+  }
+
+  struct work_awaiter {
+    asio_connection* i = nullptr;
+    ZAL_PIN;
+
+    bool await_ready() const noexcept  // NOLINT
+    {
+      return !i->writersqueue.empty();
+    }
+    void await_suspend(std::coroutine_handle<dd::job_promise> writer) noexcept  // NOLINT
+    {
+      assert(i->writer == nullptr);
+      i->writer = writer;
+    }
+    static void await_resume() noexcept  // NOLINT
+    {
+    }
+  };
+
+  // for writer
+  // waits until writersqueue not empty or shutdown
+  work_awaiter wait_work() noexcept {
+    return work_awaiter(this);
   }
 };
 
@@ -58,8 +95,8 @@ struct asio_tls_connection : connection_i {
   bool try_read(std::span<byte_t>) noexcept override;
   void start_read(std::coroutine_handle<> callback, std::span<byte_t> buf, io_error_code& ec) override;
   size_t try_write(std::span<const byte_t>, io_error_code&) noexcept override;
-  void start_write(std::coroutine_handle<> callback, std::span<byte_t const> buf, io_error_code& ec) override;
-  void shutdown() noexcept override;
+  void start_write(writer_node*) override;
+  dd::task<void> shutdown() noexcept override;
   bool is_https() override {
     return true;
   }

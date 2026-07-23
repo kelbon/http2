@@ -324,7 +324,7 @@ struct h2connection {
 
   // used when client send request and waits for response
   // OR
-  // when server assebles request (in this case 'responses' used as hash table)
+  // when server assembles request (in this case 'responses' used as hash table)
   // or server writes response and inserts into responses to catch WINDOW_UPDATe / RST_STREAM
   void insertResponseNode(h2stream& node) {
     responses.insert(node);

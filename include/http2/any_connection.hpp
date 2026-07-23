@@ -3,13 +3,29 @@
 
 #include "http2/errors.hpp"
 #include "http2/utils/memory.hpp"
+#include "http2/utils/boost_intrusive.hpp"
 
 #include <span>
 
 #include <anyany/anyany.hpp>
+
 #include <kelcoro/task.hpp>
+#include <kelcoro/gate.hpp>
+
+#include <boost/intrusive/slist_hook.hpp>
 
 namespace http2 {
+
+struct writer_node : bi::slist_base_hook<> {
+  std::coroutine_handle<> callback;
+  std::span<byte_t const> data;
+  io_error_code* ec = nullptr;
+  dd::gate::holder holder;  // may be setted by startWrite
+  ZAL_PIN;
+
+  writer_node(std::span<byte_t const> data1, io_error_code& ec1) noexcept : data(data1), ec(&ec1) {
+  }
+};
 
 struct connection_i {
   // returns false if not enough bytes available
@@ -19,9 +35,10 @@ struct connection_i {
   // tries to write buffer,
   // returns number of written bytes (0 on error)
   virtual size_t try_write(std::span<const byte_t>, io_error_code&) noexcept = 0;
-  virtual void start_write(std::coroutine_handle<> callback, std::span<byte_t const> buf,
-                           io_error_code& ec) = 0;
-  virtual void shutdown() = 0;
+  // pre: node != nullptr
+  virtual void start_write(writer_node*) = 0;
+  virtual dd::task<void> shutdown() = 0;
+  // TODO abort (отменяет текущие операции, затем следует shutdown)
   virtual bool is_https() = 0;
 
   virtual ~connection_i() = default;
@@ -47,22 +64,24 @@ struct read_awaiter {
   }
 };
 
-struct write_awaiter {
+struct write_awaiter : writer_node {
   any_connection_t& con;
-  io_error_code& ec;
-  std::span<byte_t const> buf;
+
+  write_awaiter(any_connection_t& con2, io_error_code& ec, std::span<byte_t const> buf)
+      : writer_node(buf, ec), con(con2) {
+  }
 
   bool await_ready() noexcept {
-    size_t written = con->try_write(buf, ec);
-    if (written == buf.size() || ec) {
+    size_t written = con->try_write(data, *ec);
+    if (written == data.size() || ec)
       return true;
-    }
-    remove_prefix(buf, written);
+    remove_prefix(data, written);
     return false;
   }
 
   void await_suspend(std::coroutine_handle<> h) {
-    con->start_write(h, buf, ec);
+    callback = h;
+    con->start_write(this);
   }
   static void await_resume() noexcept {
   }
