@@ -62,5 +62,20 @@ CLIENT_TEST("trailers") {
   REQUIRE(hd.trailers && hd.trailers->size() == 1 && hd.trailers->front() == trailers.front());
 }
 
+SERVER_TEST("server connection drop") {
+  auto client = co_await fake_client_connection(ioctx, addr, /*tls=*/false);
+  co_await emulate_client_connection(client);
+  std::vector<header> hdrs{
+      {":method", "GET"},
+      {":path", "/README.md"},
+      {":scheme", "http"},
+      {":authority", addr.address().to_string()},
+      {std::string(TERMINATE_THIS_SESSION_HDR), ""},
+  };
+  co_await client.sendReq(1, hdrs);
+  co_await client.receiveGoAway(1, errc_e::NO_ERROR, ping_e::RESPONSE);
+  co_await client.waitConnectionDropped(deadline_t(1s));
+}
+
 REGISTER_TEST_LISTENER(moko3::gtest_listener);
 MOKO3_MAIN;

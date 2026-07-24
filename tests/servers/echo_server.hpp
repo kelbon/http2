@@ -5,9 +5,11 @@
 
 namespace http2 {
 
-// если отправлен серверу, то он будет отвечать только через некоторое время, указанное в value как
+// если echo_server видит этот хедер, то он будет отвечать только через некоторое время, указанное в value как
 // миллисекунды
 constexpr inline std::string_view ANSWER_AFTER_MS_SPECIAL_HDR = "x-x-answer-after-ms";
+// если echo_server видит этот хедер он обрывает сессию с клиентом. Значение неважно
+constexpr inline std::string_view TERMINATE_THIS_SESSION_HDR = "x-x-terminate-this-session";
 
 // TODO также проверять в тестах expected SERVER settings
 // и на стороне сервера проверять что expected CLIENT settings
@@ -20,7 +22,7 @@ struct echo_server : http2_server {
     // TODO accepting stream by parts (may be co_await next_chunk?)
     assert(req.method != http_method_e::CONNECT);
     // TODO connect
-    co_await handle_special_headers(req);
+    co_await handle_special_headers(req, ctx.streamid());
     http_response rsp;
     rsp.status = 200;
     if (!req.body.content_type.empty()) {
@@ -32,7 +34,7 @@ struct echo_server : http2_server {
   }
 
  private:
-  dd::task<void> handle_special_headers(http_request const& req) {
+  dd::task<void> handle_special_headers(http_request const& req, stream_id_t streamid) {
     for (auto& [n, v] : req.headers) {
       if (n == ANSWER_AFTER_MS_SPECIAL_HDR) {
         size_t count;
@@ -40,6 +42,8 @@ struct echo_server : http2_server {
         if (res.ec != std::errc{} || res.ptr != v.data() + v.size())
           std::terminate();  // используется в тестах, это означает неверно написанный тест
         co_await net.sleep(ioctx(), std::chrono::milliseconds(count));
+      } else if (n == TERMINATE_THIS_SESSION_HDR) {
+        throw critical_stream_error(errc_e::NO_ERROR, streamid, "terminated due request");
       }
     }
   }

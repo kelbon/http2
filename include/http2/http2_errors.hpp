@@ -107,6 +107,12 @@ struct stream_error : protocol_error {
   }
 };
 
+// when throwed from handle_request leads to GOAWAY and shutdown whole session with this client
+struct critical_stream_error : stream_error {
+  using stream_error::stream_error;
+  using stream_error::operator=;
+};
+
 struct goaway_exception : std::exception {
   stream_id_t lastStreamId;
   errc_e errorCode;
