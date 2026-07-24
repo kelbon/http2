@@ -8,9 +8,9 @@
 #include <filesystem>
 #include <span>
 
-namespace asio = boost::asio;
-
 namespace http2 {
+
+namespace asio = boost::asio;
 
 struct ssl_context;
 // must be used only in one thread, multithread using of ssl_context is not safe bcs of open ssl

@@ -143,14 +143,13 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
         self->m_connection = newConnection;
         self->notifyConnectionWaiters(newConnection);
       };
-      any_connection_t tcpCon =
-          co_await self->m_factory->create_connection_client(self->get_host(), deadline);
-      h2connection_ptr con = new h2connection(std::move(tcpCon), self->ioctx());
+      any_connection_t tcpCon = co_await self->m_ioctx.create_connection_client(self->get_host(), deadline);
+      h2connection_ptr con = new h2connection(std::move(tcpCon), *&self->ioctx());
 
       con->logctx.lvl = self->m_options.logctx.lvl;
       con->logctx.dolog = self->m_options.logctx.dolog;
 
-      any_timer timer = asio_timer(self->ioctx());
+      any_timer timer = self->ioctx().create_timer();
       timer.arm(deadline.tp);
       timer.set_callback([con](bool canceled) {
         if (!canceled)
@@ -418,9 +417,9 @@ http2_client::~http2_client() {
   assert(m_requestsInProgress == 0);
 }
 
-http2_client::http2_client(endpoint host, http2_client_options opts, factory_maker_t tf)
-    : m_host(std::move(host)), m_options(opts), m_factory(tf(m_ioctx)) {
-  assert(m_factory);
+http2_client::http2_client(endpoint host, http2_client_options opts, any_io_context io)
+    : m_host(std::move(host)), m_options(opts), m_ioctx(std::move(io)) {
+  assert(m_ioctx);
   m_options.logctx.name.set_prefix(CLIENT_PREFIX);
   m_options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, m_options.maxReceiveFrameSize);
   m_options.max_continuation_len_bytes = std::min(m_options.max_continuation_len_bytes, MAX_CONTINUATION_LEN);
@@ -708,14 +707,14 @@ dd::task<void> http2_client::graceful_stop() {
   co_await closer;
   assert(m_isConnecting == 0);
   // даём время последнему вызвавшему m_connectionGate::leave удалиться
-  co_await yield_on_ioctx(ioctx());
+  co_await yield_on_ioctx(*&ioctx());
   assert(!m_notYetReadyConnection);
   // notify all not started requests about stop
   notifyConnectionWaiters(nullptr);
   // drop our connection correctly if exists
   drop_connection(reqerr_e::CANCELLED);
 
-  co_await yield_on_ioctx(ioctx());
+  co_await yield_on_ioctx(*&ioctx());
   m_connectionGate.reopen();
 
   assert(!m_connection);
@@ -756,13 +755,13 @@ void http2_client::cancel_all() noexcept {
     notifyConnectionWaiters(nullptr);
     if (m_notYetReadyConnection)
       m_notYetReadyConnection->shutdown(reqerr_e::CANCELLED);
-    if (!ioctx().get_executor().running_in_this_thread())
+    if (!ioctx().running_in_this_thread())
       ioctx().poll();  // do smth pending
   }
 }
 
 dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {
-  any_timer timer = asio_timer(ioctx());
+  any_timer timer = ioctx().create_timer();
   co_await net.sleep(timer, d, ec);
 }
 

@@ -35,7 +35,7 @@ int main() {
 
   http2::h2spec_server server(
       http2::log_context{.lvl = http2::log_level_e::INFO, .dolog = &http2::noop_log_function});
-  server.listen({.addr = {asio::ip::address_v4::loopback(), 3000}});
+  server.listen({.addr = {boost::asio::ip::address_v4::loopback(), 3000}});
   g_test_started.count_down();
   while (!g_test_done.load(std::memory_order::acquire))
     server.ioctx().poll();

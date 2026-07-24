@@ -76,12 +76,11 @@ struct http2_client {
   friend noexport::waiter_of_connection;
 
   // on top bcs of destroy order
-  asio::io_context m_ioctx = asio::io_context(1);
+  // invariant: .has_value(), unchanged after creation
+  any_io_context m_ioctx;
   endpoint m_host;
   http2_client_options m_options;
   h2connection_ptr m_connection;
-  // invariant: .!= nullptr, unchanged after creation
-  any_transport_factory m_factory;
 
   // while connection is not ready all new streams wait for it
   bi::list<noexport::waiter_of_connection, bi::cache_last<true>> m_connectionWaiters;
@@ -122,17 +121,11 @@ struct http2_client {
  public:
   // 'host' used for connecting when required
   // by default creates localhost client
-  // creates non-tls client
-  explicit http2_client(endpoint host = endpoint(asio::ip::address_v4::loopback()),
-                        http2_client_options opts = {})
-      : http2_client(std::move(host), std::move(opts), &default_transport_factory) {
-  }
-
+  // creates non-tls client by default
   // example of creating tls client:
-  //   http2_client myclient(host, http2_client_options{}, [](boost::asio::io_context& ctx) {
-  //                return default_tls_transport_factory(ctx);
-  //   });
-  explicit http2_client(endpoint host, http2_client_options, factory_maker_t);
+  //   http2_client myclient(host, http2_client_options{}, make_asio_tls_io_context());
+  explicit http2_client(endpoint host = endpoint(asio::ip::address_v4::loopback()),
+                        http2_client_options opts = {}, any_io_context = make_asio_io_context());
 
   http2_client(http2_client&&) = delete;
   void operator=(http2_client&&) = delete;
@@ -264,7 +257,7 @@ struct http2_client {
     return m_isConnecting > 0;
   }
 
-  asio::io_context& ioctx() {
+  any_io_context& ioctx() {
     return m_ioctx;
   }
 

@@ -226,7 +226,7 @@ static dd::task<void> write_continuations(h2connection_ptr con, stream_id_t stre
   HTTP2_WAIT_WRITE(*con);
   con->continuationGateway.close();
   on_scope_exit {
-    asio_executor exe{con->ioctx};
+    dd::any_executor_ref exe{con->ioctx};
     con->continuationGateway.open(exe);
   };
   size_t framesz;

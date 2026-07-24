@@ -4,6 +4,7 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_errors.hpp"
 #include "http2/http_base.hpp"
+#include "http2/utils/any_io_context.hpp"
 #include "http2/utils/memory_queue.hpp"
 #include "kelcoro/task.hpp"
 
@@ -44,7 +45,7 @@ struct request_context {
   // precondition: status is informational (in range [100, 199])
   dd::task<void> send_interim_response(int status, http_headers_t hdrs = {});
 
-  boost::asio::io_context* owner_ioctx();
+  any_io_context_ptr owner_ioctx() const;
 };
 
 }  // namespace http2

@@ -32,11 +32,12 @@ struct http2_server {
  public:
   // creates non-tls server
   // uses asio_factory
-  explicit http2_server(http2_server_options options = {}) : http2_server(nullptr, std::move(options)) {
+  explicit http2_server(http2_server_options options = {})
+      : http2_server(std::move(options), make_asio_io_context()) {
   }
 
-  // pre: m.has_value() == true
-  http2_server(factory_maker_t m, http2_server_options);
+  // pre: c.has_value() == true
+  explicit http2_server(http2_server_options, any_io_context c);
 
   // if ssl context ptr is nullptr, then its http server (not https)
   // uses asio_factory/asio_tls_factory
@@ -92,7 +93,7 @@ struct http2_server {
   dd::task<void> terminate();
 
   // used to run server tasks
-  asio::io_context& ioctx();
+  any_io_context& ioctx();
 
   void request_stop();
 
@@ -109,6 +110,7 @@ struct http2_server {
   friend struct http2_tester;
 };
 
+#if TODO
 // multithreaded version
 struct mt_server {
  private:
@@ -173,5 +175,6 @@ struct mt_server {
   // server may be stopped only once!
   void request_stop();
 };
+#endif
 
 }  // namespace http2

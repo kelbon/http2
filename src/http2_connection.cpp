@@ -226,14 +226,17 @@ const log_context& h2stream::logctx() const noexcept {
 
 // h2connection methods
 
-h2connection::h2connection(any_connection_t&& c, boost::asio::io_context& ctx)
+h2connection::h2connection(any_connection_t&& c, any_io_context_ref ctx)
     : tcpCon(std::move(c)),
       buckets(initial_buckets_count),
       responses({buckets.data(), buckets.size()}),
-      pingtimer(asio_timer(ctx)),
-      pingdeadlinetimer(asio_timer(ctx)),
-      timeoutWardenTimer(asio_timer(ctx)),
+      pingtimer(ctx.create_timer()),
+      pingdeadlinetimer(ctx.create_timer()),
+      timeoutWardenTimer(ctx.create_timer()),
       ioctx(ctx) {
+  assert(pingtimer.has_value());
+  assert(pingdeadlinetimer.has_value());
+  assert(timeoutWardenTimer.has_value());
 }
 
 h2connection::~h2connection() {

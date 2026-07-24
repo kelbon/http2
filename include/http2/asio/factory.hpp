@@ -2,6 +2,7 @@
 
 #include "http2/asio/ssl_context.hpp"
 #include "http2/transport_factory.hpp"
+#include "http2/utils/timer.hpp"
 
 #include <boost/intrusive/slist.hpp>
 
@@ -60,16 +61,92 @@ struct asio_connection : connection_i {
   }
 };
 
-struct asio_factory : transport_factory_i {
+struct asio_factory_base {
+  asio::io_context ioctx;
+
+  bool poll_one() {
+    return ioctx.poll_one() > 0;
+  }
+
+  size_t poll() {
+    return ioctx.poll();
+  }
+  size_t run() {
+    return ioctx.run();
+  }
+  void stop() {
+    return ioctx.stop();
+  }
+  bool stopped() {
+    return ioctx.stopped();
+  }
+  void restart() {
+    return ioctx.restart();
+  }
+  any_timer create_timer() {
+    return asio_timer(ioctx);
+  }
+  void attach(dd::task_node* n) {
+    boost::asio::post(ioctx, n->task);
+  }
+  bool running_in_this_thread() {
+    return ioctx.get_executor().running_in_this_thread();
+  }
+};
+
+struct asio_factory_ref_base {
   asio::io_context& ioctx;
+
+  bool poll_one() {
+    return ioctx.poll_one() > 0;
+  }
+
+  size_t poll() {
+    return ioctx.poll();
+  }
+  size_t run() {
+    return ioctx.run();
+  }
+  void stop() {
+    return ioctx.stop();
+  }
+  bool stopped() {
+    return ioctx.stopped();
+  }
+  void restart() {
+    return ioctx.restart();
+  }
+  any_timer create_timer() {
+    return asio_timer(ioctx);
+  }
+  void attach(dd::task_node* n) {
+    boost::asio::post(ioctx, n->task);
+  }
+  bool running_in_this_thread() {
+    return ioctx.get_executor().running_in_this_thread();
+  }
+};
+
+struct asio_factory : asio_factory_base {
   tcp_connection_options options;
   // invoked after tcp handshake, may set socket options etc
   starter_t starter;
 
-  explicit asio_factory(boost::asio::io_context&, tcp_connection_options = {}, starter_t = {});
+  explicit asio_factory(tcp_connection_options = {}, starter_t = {});
 
-  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t) override;
-  any_acceptor create_acceptor(internet_address, bool reuse_address) override;
+  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
+  any_acceptor create_acceptor(internet_address, bool reuse_address);
+};
+
+struct asio_ref_factory : asio_factory_ref_base {
+  tcp_connection_options options;
+  // invoked after tcp handshake, may set socket options etc
+  starter_t starter;
+
+  explicit asio_ref_factory(asio::io_context&, tcp_connection_options = {}, starter_t = {});
+
+  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
+  any_acceptor create_acceptor(internet_address, bool reuse_address);
 };
 
 struct asio_tls_connection : connection_i {
@@ -91,20 +168,34 @@ struct asio_tls_connection : connection_i {
   }
 };
 
-struct asio_tls_factory : transport_factory_i {
-  asio::io_context& ioctx;
+struct asio_tls_factory : asio_factory_base {
   tcp_connection_options options;
   ssl_context_ptr sslctx;  // never null
   // invoked after tcp handshake (before TLS), may set socket options etc
   starter_t starter;
 
   // by default creates context for http2 client
-  explicit asio_tls_factory(asio::io_context&, tcp_connection_options = {}, starter_t = {});
+  explicit asio_tls_factory(tcp_connection_options = {}, starter_t = {});
   // pre: ctx != nullptr
-  asio_tls_factory(asio::io_context&, ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
+  asio_tls_factory(ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
 
-  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t) override;
-  any_acceptor create_acceptor(internet_address, bool reuse_address) override;
+  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
+  any_acceptor create_acceptor(internet_address, bool reuse_address);
+};
+
+struct asio_tls_ref_factory : asio_factory_ref_base {
+  tcp_connection_options options;
+  ssl_context_ptr sslctx;  // never null
+  // invoked after tcp handshake (before TLS), may set socket options etc
+  starter_t starter;
+
+  // by default creates context for http2 client
+  explicit asio_tls_ref_factory(asio::io_context&, tcp_connection_options = {}, starter_t = {});
+  // pre: ctx != nullptr
+  asio_tls_ref_factory(asio::io_context&, ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
+
+  dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
+  any_acceptor create_acceptor(internet_address, bool reuse_address);
 };
 
 }  // namespace http2

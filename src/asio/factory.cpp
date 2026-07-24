@@ -147,7 +147,7 @@ dd::task<void> do_shutdown(noexport::single_writer_guarantee& wd, auto& sock) {
   // либо writer сейчас работает, либо уже done
   // (т.к. любой write бы его разбудил и он бы никогда не заснул пока не обработает всё)
   while (!wd.writer_done())
-    co_await yield_on_ioctx(sock.get_executor());
+    co_await yield_on_asio_ioctx(sock.get_executor());
   std::exchange(wd.writer, nullptr).destroy();
   close_tcp_sock(sock);
 }
@@ -204,27 +204,43 @@ dd::task<void> asio_connection::shutdown() noexcept {
   return do_shutdown(writedata, sock);
 }
 
-any_transport_factory default_transport_factory(boost::asio::io_context& ctx) {
-  return any_transport_factory(new asio_factory(ctx, {}));
+any_io_context make_asio_io_context(asio::io_context& ctx, tcp_connection_options opts) {
+  return any_io_context(aa::inplaced{[&] { return asio_ref_factory(ctx, std::move(opts)); }});
 }
 
-any_transport_factory default_tls_transport_factory(boost::asio::io_context& ctx,
-                                                    std::vector<std::filesystem::path> certs) {
+any_io_context make_asio_io_context(tcp_connection_options opts) {
+  return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(opts)); }});
+}
+
+any_io_context make_asio_tls_io_context(asio::io_context& ctx, ssl_context_ptr ssl,
+                                        tcp_connection_options opts) {
+  if (ssl)
+    return any_io_context(
+        aa::inplaced{[&] { return asio_tls_ref_factory(ctx, std::move(ssl), std::move(opts)); }});
+  else {
+    return make_asio_io_context(ctx, std::move(opts));
+  }
+}
+// TODO rename (одна функция просто по дефолту = nullptr)
+any_io_context make_asio_tls_io_context(ssl_context_ptr ssl, tcp_connection_options opts) {
+  if (ssl)
+    return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(opts)); }});
+  else
+    return make_asio_io_context(std::move(opts));
+}
+
+any_io_context make_asio_tls_io_context(std::vector<std::filesystem::path> certs) {
   tcp_connection_options options;
   options.additional_ssl_certificates = std::move(certs);
-  return any_transport_factory(new asio_tls_factory(ctx, std::move(options)));
+  return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(options)); }});
 }
 
-asio_factory::asio_factory(boost::asio::io_context& ctx, tcp_connection_options opts, starter_t s)
-    : ioctx(ctx), options(std::move(opts)), starter(std::move(s)) {
-}
-
-dd::task<any_connection_t> asio_factory::create_connection_client(endpoint endpoint, deadline_t deadline) {
+static dd::task<any_connection_t> do_create_connection_client(auto& self, endpoint ep, deadline_t deadline) {
   using tcp = asio::ip::tcp;
 
-  tcp::resolver resolver(ioctx);
+  tcp::resolver resolver(self.ioctx);
 
-  asio_timer timer(ioctx);
+  asio_timer timer(self.ioctx);
   bool timeoutflag = false;
 
   timer.arm(deadline);
@@ -236,13 +252,13 @@ dd::task<any_connection_t> asio_factory::create_connection_client(endpoint endpo
   });
 
   io_error_code ec;
-  auto results = co_await net.resolve(resolver, endpoint, ec);
+  auto results = co_await net.resolve(resolver, ep, ec);
   if (timeoutflag)
     throw timeout_exception();
 
   if (results.empty() || ec)
-    throw network_exception("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.message());
-  tcp::socket tcp_sock(ioctx);
+    throw network_exception("[TCP] cannot resolve host: {}, err: {}", ep.to_string(), ec.message());
+  tcp::socket tcp_sock(self.ioctx);
 
   timer.cancel();
   timer.arm(deadline);
@@ -256,11 +272,19 @@ dd::task<any_connection_t> asio_factory::create_connection_client(endpoint endpo
   co_await net.connect(tcp_sock, results, ec);
 
   if (ec)
-    throw network_exception("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
-  if (starter)
-    co_await starter(tcp_sock, deadline);
-  options.apply(tcp_sock);
+    throw network_exception("[TCP] cannot connect to {}, err: {}", ep.to_string(), ec.message());
+  if (self.starter)
+    co_await self.starter(tcp_sock, deadline);
+  self.options.apply(tcp_sock);
   co_return any_connection_t(new asio_connection(std::move(tcp_sock)));
+}
+
+asio_factory::asio_factory(tcp_connection_options opts, starter_t s)
+    : options(std::move(opts)), starter(std::move(s)) {
+}
+
+dd::task<any_connection_t> asio_factory::create_connection_client(endpoint ep, deadline_t deadline) {
+  return do_create_connection_client(*this, ep, deadline);
 }
 
 struct asio_acceptor {
@@ -292,27 +316,28 @@ any_acceptor asio_factory::create_acceptor(internet_address addr, bool reuse_add
   return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
 }
 
+asio_ref_factory::asio_ref_factory(asio::io_context& ctx, tcp_connection_options opts, starter_t s)
+    : asio_factory_ref_base(ctx), options(std::move(opts)), starter(std::move(s)) {
+}
+
+dd::task<any_connection_t> asio_ref_factory::create_connection_client(endpoint ep, deadline_t deadline) {
+  return do_create_connection_client(*this, ep, deadline);
+}
+
+any_acceptor asio_ref_factory::create_acceptor(internet_address addr, bool reuse_address) {
+  return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
+}
+
 // TLS
 
-asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts, starter_t s)
-    : asio_tls_factory(ioctx, make_ssl_context_for_http2(opts.additional_ssl_certificates), opts,
-                       std::move(s)) {
-}
-
-asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, ssl_context_ptr ctx, tcp_connection_options opts,
-                                   starter_t s)
-    : ioctx(ioctx), options(std::move(opts)), sslctx(std::move(ctx)), starter(std::move(s)) {
-  assert(sslctx != nullptr);
-}
-
-dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint endpoint,
-                                                                      deadline_t deadline) {
+static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, endpoint endpoint,
+                                                                  deadline_t deadline) {
   namespace ssl = asio::ssl;
   using tcp = asio::ip::tcp;
 
-  tcp::resolver resolver(ioctx);
+  tcp::resolver resolver(self.ioctx);
 
-  asio_timer timer(ioctx);
+  asio_timer timer(self.ioctx);
   bool timeoutflag = false;
 
   timer.arm(deadline);
@@ -329,7 +354,7 @@ dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint e
     throw timeout_exception();
   if (results.empty() || ec)
     throw network_exception("[TCP] cannot resolve host: {}, err: {}", endpoint.to_string(), ec.what());
-  asio::ip::tcp::socket tcp_sock(ioctx);
+  asio::ip::tcp::socket tcp_sock(self.ioctx);
 
   timer.cancel();
   timer.arm(deadline);
@@ -346,18 +371,19 @@ dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint e
     throw timeout_exception();
   if (ec)
     throw network_exception("[TCP] cannot connect to {}, err: {}", endpoint.to_string(), ec.message());
-  if (starter)
-    co_await starter(tcp_sock, deadline);
-  options.apply(tcp_sock);
-  assert(sslctx);
-  std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), sslctx));
-  if (options.host_for_name_verification) {
+  if (self.starter)
+    co_await self.starter(tcp_sock, deadline);
+  self.options.apply(tcp_sock);
+  assert(self.sslctx);
+  std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), self.sslctx));
+  if (self.options.host_for_name_verification) {
     res->sock.set_verify_mode(ssl::verify_peer);
-    res->sock.set_verify_callback(asio::ssl::host_name_verification(*options.host_for_name_verification));
+    res->sock.set_verify_callback(
+        asio::ssl::host_name_verification(*self.options.host_for_name_verification));
   } else {
     res->sock.set_verify_mode(ssl::verify_none);
   }
-  if (!options.is_primal_connection)
+  if (!self.options.is_primal_connection)
     SSL_set_mode(res->sock.native_handle(), SSL_MODE_RELEASE_BUFFERS);
   co_await net.handshake(res->sock, ssl::stream_base::handshake_type::client, ec);
   if (timeoutflag)
@@ -365,6 +391,20 @@ dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint e
   if (ec)
     throw network_exception("[TCP/SSL] cannot ssl handshake: {}", ec.message());
   co_return any_connection_t(std::move(res));
+}
+
+asio_tls_factory::asio_tls_factory(tcp_connection_options opts, starter_t s)
+    : asio_tls_factory(make_ssl_context_for_http2(opts.additional_ssl_certificates), opts, std::move(s)) {
+}
+
+asio_tls_factory::asio_tls_factory(ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
+    : asio_factory_base(), options(std::move(opts)), sslctx(std::move(ctx)), starter(std::move(s)) {
+  assert(sslctx != nullptr);
+}
+
+dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint endpoint,
+                                                                      deadline_t deadline) {
+  return do_create_connection_client_tls(*this, endpoint, deadline);
 }
 
 struct asio_tls_acceptor {
@@ -400,6 +440,26 @@ struct asio_tls_acceptor {
 
 any_acceptor asio_tls_factory::create_acceptor(internet_address addr, bool reuse_address) {
   return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}, sslctx};
+}
+
+asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, tcp_connection_options opts, starter_t s)
+    : asio_tls_ref_factory(ctx, make_ssl_context_for_http2(opts.additional_ssl_certificates), opts,
+                           std::move(s)) {
+}
+
+asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, ssl_context_ptr ssl,
+                                           tcp_connection_options opts, starter_t s)
+    : asio_factory_ref_base(ctx), options(std::move(opts)), sslctx(std::move(ssl)), starter(std::move(s)) {
+  assert(sslctx != nullptr);
+}
+
+any_acceptor asio_tls_ref_factory::create_acceptor(internet_address addr, bool reuse_address) {
+  return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}, sslctx};
+}
+
+dd::task<any_connection_t> asio_tls_ref_factory::create_connection_client(endpoint endpoint,
+                                                                          deadline_t deadline) {
+  return do_create_connection_client_tls(*this, endpoint, deadline);
 }
 
 }  // namespace http2
