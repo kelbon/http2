@@ -112,6 +112,13 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
         return makeout(request_context(*n));
       };
     }
+  } catch (critical_stream_error& e) {
+    HTTP2_LOG(session.logctx(), ERROR, "handle request failed: {}", e.what());
+    HTTP2_ASSUME_THREAD_UNCHANGED_END;
+    assert(e.streamid == node->streamid);
+    session.requestShutdown();
+    session.connection->shutdown(reqerr_e::reqerr_e::SERVER_CANCELLED_REQUEST);
+    co_return 0;
   } catch (stream_error& e) {
     // Note: catching stream error, so user can implement other protocol over HTTP/2 with additional
     // requirements
