@@ -275,7 +275,7 @@ inline dd::task<test_h2connection> fake_server_session(asio::io_context& ctx, se
                                                        http2_client& client,
                                                        ssl_context_ptr servertls = nullptr,
                                                        deadline_t deadline = deadline_after(10s)) {
-  timer_t timer(ctx);
+  any_timer timer = asio_timer(ctx);
   timer.set_callback([](bool canceled) {
     if (canceled)
       return;

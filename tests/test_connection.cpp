@@ -476,7 +476,7 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
 #endif
     co_return frame;
   };
-  timer_t timer(con->ioctx);
+  any_timer timer = asio_timer(con->ioctx);
   timer.arm(d);
   timer.set_callback([&](bool canceled) {
     if (canceled)
@@ -498,7 +498,7 @@ dd::task<void> test_h2connection::sendClientMagic() {
 
 dd::task<void> test_h2connection::waitConnectionDropped(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
-  timer_t timer(con->ioctx);
+  any_timer timer = asio_timer(con->ioctx);
   timer.arm(deadline);
   bool timedout = false;
   timer.set_callback([&](bool canceled) {

@@ -95,7 +95,7 @@ struct ping_callback {
       lastid = con->laststartedstreamid;
       return;
     }
-    if (!con->pingdeadlinetimer.armed()) {
+    if (!con->pingdeadlinetimer.is_armed()) {
       con->pingdeadlinetimer.arm(pingtimeout);
     }
     // assume will be ended before client dies (io_ctx)
@@ -150,7 +150,7 @@ dd::job http2_client::startConnecting(http2_client* self, deadline_t deadline) {
       con->logctx.lvl = self->m_options.logctx.lvl;
       con->logctx.dolog = self->m_options.logctx.dolog;
 
-      timer_t timer(self->ioctx());
+      any_timer timer = asio_timer(self->ioctx());
       timer.arm(deadline.tp);
       timer.set_callback([con](bool canceled) {
         if (!canceled)
@@ -762,7 +762,7 @@ void http2_client::cancel_all() noexcept {
 }
 
 dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {
-  timer_t timer(ioctx());
+  any_timer timer = asio_timer(ioctx());
   co_await net.sleep(timer, d, ec);
 }
 

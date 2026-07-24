@@ -309,7 +309,7 @@ struct net_t {
     return asio_awaiter<size_t, read_some_operation<Stream>>(ec, stream, buffer);
   }
 
-  KELCORO_CO_AWAIT_REQUIRED static auto sleep(timer_t& t, duration_t d, io_error_code& ec) {
+  KELCORO_CO_AWAIT_REQUIRED static auto sleep(any_timer& t, duration_t d, io_error_code& ec) {
     return dd::this_coro::suspend_and([t = &t, d, ec = &ec](std::coroutine_handle<> h) {
       t->set_callback([h, ec](bool canceled) {
         if (canceled)
@@ -321,7 +321,7 @@ struct net_t {
   }
 
   static dd::task<void> sleep(asio::io_context& io, std::chrono::nanoseconds duration) {
-    timer_t timer(io);
+    any_timer timer = asio_timer(io);
     io_error_code ec;
     co_await sleep(timer, duration, ec);
     (void)ec;  // ignore error

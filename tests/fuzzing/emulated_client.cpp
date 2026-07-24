@@ -37,7 +37,7 @@ dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
 // sends requests, but body will be splitted into random chunks
 dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq req) try {
   auto sleepcb = [&c](duration_t d, io_error_code& ec) -> dd::task<void> {
-    timer_t timer(c.ioctx());
+    any_timer timer = asio_timer(c.ioctx());
     co_await net.sleep(timer, d, ec);
   };
   auto bodystr =

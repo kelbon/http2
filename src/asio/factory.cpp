@@ -224,7 +224,7 @@ dd::task<any_connection_t> asio_factory::create_connection_client(endpoint endpo
 
   tcp::resolver resolver(ioctx);
 
-  timer_t timer(ioctx);
+  asio_timer timer(ioctx);
   bool timeoutflag = false;
 
   timer.arm(deadline);
@@ -292,6 +292,8 @@ any_acceptor asio_factory::create_acceptor(internet_address addr, bool reuse_add
   return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
 }
 
+// TLS
+
 asio_tls_factory::asio_tls_factory(asio::io_context& ioctx, tcp_connection_options opts, starter_t s)
     : asio_tls_factory(ioctx, make_ssl_context_for_http2(opts.additional_ssl_certificates), opts,
                        std::move(s)) {
@@ -310,7 +312,7 @@ dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint e
 
   tcp::resolver resolver(ioctx);
 
-  timer_t timer(ioctx);
+  asio_timer timer(ioctx);
   bool timeoutflag = false;
 
   timer.arm(deadline);

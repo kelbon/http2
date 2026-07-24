@@ -176,7 +176,7 @@ struct http2_server::impl {
     };
 
     auto sleepcb = [session_ptr](duration_t d, io_error_code& ec) -> dd::task<void> {
-      timer_t timer(session_ptr->server->ioctx());
+      any_timer timer = asio_timer(session_ptr->server->ioctx());
       co_await net.sleep(timer, d, ec);
     };
     auto requestTerminateInactive = [session_ptr, nm = this->logctx().name](bool canceled) {
@@ -191,7 +191,7 @@ struct http2_server::impl {
     };
 
     try {
-      timer_t timer(ioctx());
+      any_timer timer = asio_timer(ioctx());
       timer.set_callback([session_ptr](bool canceled) {
         if (canceled)
           return;
@@ -230,7 +230,7 @@ struct http2_server::impl {
         return;
       }
       // nothing happens since last call
-      if (!session.connection->pingdeadlinetimer.armed() && !session.hasUnfinishedRequests()) {
+      if (!session.connection->pingdeadlinetimer.is_armed() && !session.hasUnfinishedRequests()) {
         HTTP2_LOG_TRACE(session.logctx(), "detect nothing happens, arm idle deadline timer");
         session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
       }
