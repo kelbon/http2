@@ -56,7 +56,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   }
 }
 
-boost::asio::io_context* request_context::owner_ioctx() {
+any_io_context_ptr request_context::owner_ioctx() const {
   assert(node);
   if (!node->connection)
     return nullptr;

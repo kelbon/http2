@@ -15,10 +15,9 @@ CLIENT_TEST("connects") {
 
   // TCP часть соединения, частичный успех
   server_endpoint addr(localhost());
-  asio::ip::tcp::acceptor a(ioctx, addr.addr, addr.reuse_address);
+  any_acceptor a = ioctx.create_acceptor(localhost(), /*reuse_address=*/true);
   a.listen();
-  asio::ip::tcp::socket socket(ioctx);
-  client.try_connect(a.local_endpoint(), deadline_t::never()).start_and_detach();
+  client.try_connect(a.get_local_endpoint(), deadline_t::never()).start_and_detach();
 
   REQUIRE(!client.connected() && client.connecting());
   // остановка посередине соединения

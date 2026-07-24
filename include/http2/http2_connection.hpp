@@ -5,6 +5,7 @@
 #include "http2/http2_connection_fwd.hpp"
 #include "http2/http2_protocol.hpp"
 #include "http2/http_base.hpp"
+#include "http2/utils/any_io_context.hpp"
 #include "http2/utils/boost_intrusive.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/unique_name.hpp"
@@ -284,13 +285,13 @@ struct h2connection {
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;
   log_context logctx;
-  boost::asio::io_context& ioctx;
+  any_io_context_ref ioctx;
   // for supporting http2_server_options::limit_requests_memory_usage_bytes
   size_t used_bytes = 0;
   size_t used_bytes_limit = size_t(-1);
   uint32_t max_continuation_len = uint32_t(-1);
 
-  explicit h2connection(any_connection_t&& c, boost::asio::io_context&);
+  explicit h2connection(any_connection_t&& c, any_io_context_ref);
 
   h2connection(h2connection&&) = delete;
   void operator=(h2connection&&) = delete;

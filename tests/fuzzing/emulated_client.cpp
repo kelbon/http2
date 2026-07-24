@@ -37,7 +37,7 @@ dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
 // sends requests, but body will be splitted into random chunks
 dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq req) try {
   auto sleepcb = [&c](duration_t d, io_error_code& ec) -> dd::task<void> {
-    any_timer timer = asio_timer(c.ioctx());
+    any_timer timer = c.ioctx().create_timer();
     co_await net.sleep(timer, d, ec);
   };
   auto bodystr =
@@ -145,10 +145,10 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
       ++sent;
       dd::with(std::move(task), incr(done)).start_and_detach();
     }
-    co_await yield_on_ioctx(client.ioctx());
+    co_await yield_on_ioctx(*&client.ioctx());
   }
   while (done != request_count) {
-    co_await yield_on_ioctx(client.ioctx());
+    co_await yield_on_ioctx(*&client.ioctx());
   }
   co_await client.graceful_stop();
 }
@@ -178,7 +178,7 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
       }
       dd::with(std::move(task), incr(done)).start_and_detach();
     }
-    co_await yield_on_ioctx(client.ioctx());
+    co_await yield_on_ioctx(*&client.ioctx());
   }
   co_await client.graceful_stop();
   co_return;

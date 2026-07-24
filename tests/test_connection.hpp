@@ -246,21 +246,14 @@ struct test_h2connection {
   }
 };
 
-// connects to `addr`, returns connection before http2 or tls handshake
+// connects to `addr`, returns tls connection after tls handshake if `io` is tls
 inline dd::task<test_h2connection> fake_client_connection(
-    asio::io_context& ctx, endpoint addr, bool tls,
+    any_io_context_ref io, endpoint addr, bool tls,
     deadline_t deadline = deadline_after(DEFAULT_CONN_TIMEOUT),
     std::source_location = std::source_location::current()) {
-  // connection do not attached to factory, so factory may be deleted after create_connection
-  if (!tls) {
-    asio_factory f(ctx);
-    auto c = co_await f.create_connection_client(addr, deadline);
-    co_return test_h2connection(new h2connection(std::move(c), ctx), /*client=*/true);
-  } else {
-    asio_tls_factory f(ctx);
-    auto c = co_await f.create_connection_client(addr, deadline);
-    co_return test_h2connection(new h2connection(std::move(c), ctx), /*client=*/true);
-  }
+  // TODO хм по моему при тлс что то не так (TLS не используется вообще)
+  auto c = co_await io.create_connection_client(addr, deadline);
+  co_return test_h2connection(new h2connection(std::move(c), *&io), /*client=*/true);
 }
 
 inline internet_address localhost() noexcept {
@@ -271,11 +264,11 @@ inline internet_address localhost() noexcept {
 // returns fake server
 // connects `client` into fake server and returns BEFORE http2 connection establishment
 // and AFTER tls handshake
-inline dd::task<test_h2connection> fake_server_session(asio::io_context& ctx, server_endpoint addr,
+inline dd::task<test_h2connection> fake_server_session(any_io_context_ref ctx, server_endpoint addr,
                                                        http2_client& client,
                                                        ssl_context_ptr servertls = nullptr,
                                                        deadline_t deadline = deadline_after(10s)) {
-  any_timer timer = asio_timer(ctx);
+  any_timer timer = ctx.create_timer();
   timer.set_callback([](bool canceled) {
     if (canceled)
       return;
@@ -283,25 +276,15 @@ inline dd::task<test_h2connection> fake_server_session(asio::io_context& ctx, se
     std::abort();
   });
   timer.arm(deadline.tp);
-  asio::ip::tcp::acceptor a(ctx, addr.addr, addr.reuse_address);
+  any_io_context io = make_asio_tls_io_context(servertls);
+  any_acceptor a = io.create_acceptor(addr.addr, addr.reuse_address);
   a.listen();
-  asio::ip::tcp::socket socket(ctx);
-  client.try_connect(a.local_endpoint(), deadline).start_and_detach();
   io_error_code ec;
-  co_await net.accept(a, socket, ec);
+  client.try_connect(a.get_local_endpoint(), deadline).start_and_detach();
+  any_connection_t tcpcon = co_await a.accept(ec);
   REQUIRE(!ec);
-  if (servertls) {
-    any_connection_t tcpcon(new asio_tls_connection(std::move(socket), servertls));
-    co_await net.handshake(static_cast<asio_tls_connection*>(tcpcon.get())->sock,
-                           asio::ssl::stream_base::server, ec);
-    REQUIRE(!ec);
-    h2connection_ptr con = new h2connection(std::move(tcpcon), ctx);
-    co_return test_h2connection(std::move(con), /*client=*/false);
-  } else {
-    any_connection_t tcpcon(new asio_connection(std::move(socket)));
-    h2connection_ptr con = new h2connection(std::move(tcpcon), ctx);
-    co_return test_h2connection(std::move(con), /*client=*/false);
-  }
+  h2connection_ptr con = new h2connection(std::move(tcpcon), *&io);
+  co_return test_h2connection(std::move(con), /*client*/ false);
 }
 
 inline dd::task<void> emulate_server_connection(test_h2connection& conn) {
@@ -338,7 +321,7 @@ inline void on_timeout_test_failure(std::source_location loc) {
 
 // ioctx used only for yield
 template <std::invocable PRED, typename ON_TIMEOUT = decltype(&on_timeout_test_failure)>
-dd::task<void> wait_until(PRED pred, asio::io_context& ctx, deadline_t deadline = deadline_after(5s),
+dd::task<void> wait_until(PRED pred, any_io_context_ref ctx, deadline_t deadline = deadline_after(5s),
                           std::source_location loc = std::source_location::current(),
                           ON_TIMEOUT onTimeout = &on_timeout_test_failure) {
   for (;;) {
@@ -370,25 +353,27 @@ inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& en
 
 template <auto* Foo>
 void server_test_impl(std::string_view name, moko3::section_info* section, ssl_context_ptr ssl) {
-  echo_server server(ssl);
+  echo_server server(http2_server_options{}, make_asio_tls_io_context(ssl));
   internet_address addr(asio::ip::address_v4::loopback(), /*port_num=*/0);
   addr = server.listen({.addr = addr, .reuse_address = true});
   bool test_ended = false;
   std::exception_ptr ex;
-  (void)run_test(name, Foo(server, addr, server.ioctx(), section, /*is_tls_server=*/!!ssl), test_ended, ex);
+  (void)run_test(name, Foo(server, addr, *&server.ioctx(), section, /*is_tls_server=*/!!ssl), test_ended, ex);
   deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
   fuzzing::fuzzer fuz(moko3::get_testbox().randg());
   fuz.run_until(deadline, test_ended, server.ioctx());
   if (ex)
     std::rethrow_exception(std::move(ex));
 }
+
 // TODO tls?
 template <auto* Foo>
 void client_test_impl(std::string_view name, moko3::section_info* toplvl_section) {
-  http2::http2_client client;
+  http2::http2_client client(endpoint(asio::ip::address_v4::loopback()), http2_client_options{},
+                             make_asio_io_context());
   bool test_ended = false;
   std::exception_ptr ex;
-  (void)run_test(name, Foo(client, client.ioctx(), toplvl_section), test_ended, ex);
+  (void)run_test(name, Foo(client, *&client.ioctx(), toplvl_section), test_ended, ex);
   deadline_t deadline = deadline_after(moko3::get_testbox().test_timeout(name));
   fuzzing::fuzzer fuz(moko3::get_testbox().randg());
   fuz.run_until(deadline, test_ended, client.ioctx());
@@ -404,7 +389,7 @@ void client_test_impl(std::string_view name, moko3::section_info* toplvl_section
 // without tls (code can use is_tls_server variable)
 #define SERVER_TEST(NAME, ...)                                                                            \
   ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,         \
-                                    ::boost::asio::io_context& ioctx, ::moko3::section_info* _section,    \
+                                    ::http2::any_io_context_ref ioctx, ::moko3::section_info* _section,   \
                                     bool is_tls_server);                                                  \
   TEST(NAME) {                                                                                            \
     SECTION("NO TLS", 0) {                                                                                \
@@ -414,18 +399,18 @@ void client_test_impl(std::string_view name, moko3::section_info* toplvl_section
         SECTION("TLS", 1) { ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, __VA_ARGS__); }) \
   }                                                                                                       \
   ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,         \
-                                    ::boost::asio::io_context& ioctx, ::moko3::section_info* _section,    \
+                                    ::http2::any_io_context_ref ioctx, ::moko3::section_info* _section,   \
                                     bool is_tls_server)
 
 // after this macro expected function scope, which will use `client`, `ioctx`
 // and return dd::task<void>
-#define CLIENT_TEST(NAME)                                                                            \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::boost::asio::io_context& ioctx, \
-                                    ::moko3::section_info* _section);                                \
-  TEST(NAME) {                                                                                       \
-    ::http2::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                    \
-  }                                                                                                  \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::boost::asio::io_context& ioctx, \
+#define CLIENT_TEST(NAME)                                                                             \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::http2::any_io_context_ref ioctx, \
+                                    ::moko3::section_info* _section);                                 \
+  TEST(NAME) {                                                                                        \
+    ::http2::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                     \
+  }                                                                                                   \
+  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::http2::any_io_context_ref ioctx, \
                                     ::moko3::section_info* _section)
 
 }  // namespace http2

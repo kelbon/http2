@@ -55,8 +55,7 @@ namespace http2 {
 
 struct http2_server::impl {
   // on top bcs of destroy order
-  asio::io_context io;
-  any_transport_factory factory;
+  any_io_context io;
   bi::list<server_session> sessions;
   std::list<any_acceptor> listeners;
   // gate for opened sessions / acceptors
@@ -67,23 +66,25 @@ struct http2_server::impl {
 #ifndef NDEBUG
   std::thread::id tid = std::this_thread::get_id();
 #endif
-  asio::io_context& ioctx() {
+  any_io_context& ioctx() {
     return io;
   }
-
+  any_io_context_ref ioctx_ref() {
+    return *&io;
+  }
   const log_context& logctx() const noexcept {
     return options.logctx;
   }
 
-  explicit impl(factory_maker_t maker, http2_server_options opts, http2_server& owner)
-      : io(), factory(maker(io)), options(std::move(opts)), creator(&owner) {
+  explicit impl(any_io_context io, http2_server_options opts, http2_server& owner)
+      : io(std::move(io)), options(std::move(opts)), creator(&owner) {
     options.logctx.name = unique_name{};  // generate new (for different names for each server in mt_server)
     options.logctx.name.set_prefix(SERVER_PREFIX);
   }
 
   internet_address listen(server_endpoint a) {
     assert(std::this_thread::get_id() == tid);
-    any_acceptor& acceptor = listeners.emplace_back(factory->create_acceptor(a.addr, a.reuse_address));
+    any_acceptor& acceptor = listeners.emplace_back(io.create_acceptor(a.addr, a.reuse_address));
     // store resolved endpoint (e.g. if port 0 was used) and store it before acceptConnections
     // (acceptConnections may delete acceptor!)
     internet_address binded = acceptor.get_local_endpoint();
@@ -148,7 +149,7 @@ struct http2_server::impl {
   dd::task<void> sessionLifecycle(dd::gate::holder, any_connection_t socket) try {
     assert(std::this_thread::get_id() == tid);
 
-    h2connection_ptr http2con = new h2connection(std::move(socket), ioctx());
+    h2connection_ptr http2con = new h2connection(std::move(socket), ioctx_ref());
     if (!http2con || !creator) {
       co_return;
     }
@@ -176,7 +177,7 @@ struct http2_server::impl {
     };
 
     auto sleepcb = [session_ptr](duration_t d, io_error_code& ec) -> dd::task<void> {
-      any_timer timer = asio_timer(session_ptr->server->ioctx());
+      any_timer timer = session_ptr->server->ioctx().create_timer();
       co_await net.sleep(timer, d, ec);
     };
     auto requestTerminateInactive = [session_ptr, nm = this->logctx().name](bool canceled) {
@@ -191,7 +192,7 @@ struct http2_server::impl {
     };
 
     try {
-      any_timer timer = asio_timer(ioctx());
+      any_timer timer = ioctx().create_timer();
       timer.set_callback([session_ptr](bool canceled) {
         if (canceled)
           return;
@@ -240,19 +241,19 @@ struct http2_server::impl {
     reader_ec = co_await start_server_reader_for(session);
     if (reader_ec != reqerr_e::DONE) {
       // give time for sending goaway
-      co_await net.sleep(ioctx(), std::chrono::milliseconds(1));
+      co_await net.sleep(ioctx_ref(), std::chrono::milliseconds(1));
     }
     HTTP2_LOG_TRACE(session.logctx(), "reader stops, waiting stop");
   drop_session:
     session.requestTerminate();
     while (session.hasUnfinishedRequests())
-      co_await yield_on_ioctx(session.server->ioctx());
+      co_await yield_on_ioctx(*&session.server->ioctx());
 
     // we are here if reader ended with exception or after soft shutdown (streams closed, new requests
     // forbidden)
     co_await session.connectionPartsGate.close();
     co_await session.responsegate.close();
-    co_await yield_on_ioctx(ioctx());  // give `leave` callers time to finish their work
+    co_await yield_on_ioctx(ioctx_ref());  // give `leave` callers time to finish their work
     HTTP2_LOG_TRACE(session.logctx(), "session stop ended");
   } catch (std::exception& e) {
     HTTP2_LOG(logctx(), ERROR, "session ended with exception: {}", e.what());
@@ -268,7 +269,7 @@ struct http2_server::impl {
   }
 
   dd::task<void> shutdown() {
-    co_await jump_on_ioctx(ioctx());
+    co_await jump_on_ioctx(ioctx_ref());
     assert(std::this_thread::get_id() == tid);
     HTTP2_LOG_TRACE(logctx(), "shutdown started");
     on_scope_exit {
@@ -279,7 +280,7 @@ struct http2_server::impl {
       session.requestShutdown();
     stopListeners();
     co_await closeg;
-    co_await yield_on_ioctx(ioctx());
+    co_await yield_on_ioctx(ioctx_ref());
     if (sessionsgate.is_closed())  // may be another shutdown/terminate
       sessionsgate.reopen();
     assert(sessions.empty());
@@ -287,7 +288,7 @@ struct http2_server::impl {
   }
 
   dd::task<void> terminate() {
-    co_await jump_on_ioctx(ioctx());
+    co_await jump_on_ioctx(ioctx_ref());
     assert(std::this_thread::get_id() == tid);
     HTTP2_LOG_TRACE(logctx(), "terminate started");
     on_scope_exit {
@@ -299,21 +300,26 @@ struct http2_server::impl {
     }
     stopListeners();
     co_await closeg;
-    co_await yield_on_ioctx(ioctx());
+    co_await yield_on_ioctx(ioctx_ref());
     sessionsgate.reopen();
     assert(sessions.empty());
     assert(listeners.empty());
   }
 };
 
-http2_server::http2_server(factory_maker_t maker, http2_server_options options)
-    : m_impl(std::make_unique<http2_server::impl>(std::move(maker), std::move(options), *this)) {
+http2_server::http2_server(http2_server_options options, any_io_context io)
+    : m_impl(std::make_unique<http2_server::impl>(std::move(io), std::move(options), *this)) {
 }
 
+static any_io_context make_server_io_ctx(ssl_context_ptr ssl, tcp_connection_options tcpopts) {
+  if (ssl) {
+    return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(tcpopts)); }});
+  } else {
+    return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(tcpopts)); }});
+  }
+}
 http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tcp_connection_options tcpopts)
-    : http2_server(ctx ? factory_maker<asio_tls_factory>(std::move(ctx), std::move(tcpopts))
-                       : factory_maker<asio_factory>(std::move(tcpopts)),
-                   std::move(options)) {
+    : http2_server(std::move(options), make_server_io_ctx(std::move(ctx), std::move(tcpopts))) {
 }
 
 http2_server::~http2_server() {
@@ -336,8 +342,9 @@ void http2_server::stop() {
     ioctx().restart();
   try {
     // assume 'h' is suspended here every time when we check h.done()
-    while (!h.done() && ioctx().run_one() != 0)
-      ;
+    while (!h.done())
+      ioctx().poll();
+    ioctx().poll();
   } catch (std::exception& e) {
     HTTP2_LOG(m_impl->logctx(), ERROR, "error while ~http2_server: {}", e.what());
   }
@@ -363,7 +370,7 @@ dd::task<void> http2_server::terminate() {
   return m_impl->terminate();
 }
 
-asio::io_context& http2_server::ioctx() {
+any_io_context& http2_server::ioctx() {
   return m_impl->ioctx();
 }
 
@@ -387,6 +394,7 @@ http2_server_options& http2_server::get_options() noexcept {
 const http2_server_options& http2_server::get_options() const noexcept {
   return m_impl->options;
 }
+#if TODO
 
 // multi threaded server
 
@@ -519,5 +527,7 @@ void mt_server::request_stop() {
 
   do_request_stop(this).start_and_detach();
 }
+
+#endif
 
 }  // namespace http2

@@ -41,7 +41,7 @@ struct echo_server : http2_server {
         auto res = std::from_chars(v.data(), v.data() + v.size(), count);
         if (res.ec != std::errc{} || res.ptr != v.data() + v.size())
           std::terminate();  // используется в тестах, это означает неверно написанный тест
-        co_await net.sleep(ioctx(), std::chrono::milliseconds(count));
+        co_await net.sleep(*&ioctx(), std::chrono::milliseconds(count));
       } else if (n == TERMINATE_THIS_SESSION_HDR) {
         throw critical_stream_error(errc_e::NO_ERROR, streamid, "terminated due request");
       }

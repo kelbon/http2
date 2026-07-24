@@ -5,30 +5,27 @@
 #include <boost/asio/post.hpp>
 
 #include <kelcoro/executor_interface.hpp>
+#include "http2/utils/any_io_context.hpp"
 #include "kelcoro/common.hpp"
-
+// TODO rename file (not asio...)
 namespace http2 {
-
-struct asio_executor {
-  boost::asio::io_context& ctx;
-
-  void attach(dd::task_node* n) {
-    boost::asio::post(ctx, n->task);
-  }
-};
 
 // schedules coroutine to be executed on `ctx`
 // if not yet on it
 // Note: must not be used as `yield`, since it will never suspend when running in this thread!
-struct jump_on_ioctx {
-  boost::asio::io_context& ctx;
+struct jump_on_ioctx : dd::task_node {
+  any_io_context_ref ctx;
 
-  bool await_ready() const noexcept {
-    return ctx.get_executor().running_in_this_thread();
+  jump_on_ioctx(any_io_context_ref ref) noexcept : ctx(ref) {
+  }
+
+  static bool await_ready() noexcept {
+    return false;
   }
 
   void await_suspend(std::coroutine_handle<> h) {
-    boost::asio::post(ctx, h);
+    this->task = h;
+    ctx.attach(this);
   }
 
   static void await_resume() noexcept {
@@ -37,7 +34,15 @@ struct jump_on_ioctx {
 
 // schedules coroutine to be executed on `ctx`
 // работает для любого boost::asio executor / io_context
-inline auto yield_on_ioctx(auto& ctx) {
+inline jump_on_ioctx yield_on_ioctx(any_io_context_ref ctx) {
+  return jump_on_ioctx(ctx);
+}
+
+inline jump_on_ioctx yield_on_ioctx(any_io_context& ctx) {
+  return jump_on_ioctx(*&ctx);
+}
+
+inline auto yield_on_asio_ioctx(auto& ctx) {
   return dd::suspend_and_t([&](std::coroutine_handle<> h) { boost::asio::post(ctx, h); });
 }
 

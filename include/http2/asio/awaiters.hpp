@@ -320,6 +320,12 @@ struct net_t {
     });
   }
 
+  static dd::task<void> sleep(any_io_context_ref io, std::chrono::nanoseconds duration) {
+    any_timer timer = io.create_timer();
+    io_error_code ec;
+    co_await sleep(timer, duration, ec);
+    (void)ec;  // ignore error
+  }
   static dd::task<void> sleep(asio::io_context& io, std::chrono::nanoseconds duration) {
     any_timer timer = asio_timer(io);
     io_error_code ec;

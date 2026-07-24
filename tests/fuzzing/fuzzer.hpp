@@ -157,7 +157,7 @@ struct fuzzer {
   }
 
   // runs `ioctxs` with random ordeing
-  void run_until(deadline_t d, auto condition, auto&... ioctxs) {
+  void run_until(deadline_t d, auto condition, auto&&... ioctxs) {
     // should be asio::io_context (not included here)
     std::vector ctxs{std::addressof(ioctxs)...};
     while (!condition() && !d.isReached()) {
@@ -168,15 +168,15 @@ struct fuzzer {
     (ioctxs.poll(), ...);  // do pending jobs if some
   }
 
-  void run_until(auto condition, auto&... ioctxs) {
+  void run_until(auto condition, auto&&... ioctxs) {
     return run_until(deadline_t::never(), std::move(condition), ioctxs...);
   }
 
-  void run_until(bool& done, auto&... ioctxs) {
+  void run_until(bool& done, auto&&... ioctxs) {
     return run_until(deadline_t::never(), [&] { return done; }, ioctxs...);
   }
 
-  void run_until(deadline_t d, bool& done, auto&... ioctxs) {
+  void run_until(deadline_t d, bool& done, auto&&... ioctxs) {
     return run_until(d, [&] { return done; }, ioctxs...);
   }
 

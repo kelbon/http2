@@ -90,7 +90,7 @@ dd::task<void> run_requests(http2_client& client, size_t count, asio::ip::tcp::e
       ++i;
       run_one_request(client).start_and_detach();
     }
-    co_await yield_on_ioctx(client.ioctx());
+    co_await yield_on_ioctx(*&client.ioctx());
   }
 }
 
@@ -113,7 +113,7 @@ struct wait_rst_server : http2_server {
 
   dd::task<http_response> handle_request(http_request req, request_context ctx) override {
     while (!ctx.canceled())
-      co_await yield_on_ioctx(this->ioctx());
+      co_await yield_on_ioctx(*&this->ioctx());
     throw std::runtime_error("error");
   }
 };
