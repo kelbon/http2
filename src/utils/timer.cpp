@@ -6,25 +6,25 @@
 
 namespace http2 {
 
-struct timer_t::impl {
+struct asio_timer::impl {
   boost::asio::steady_timer timer;
   std::optional<duration> period;
-  move_only_fn_soos<void(bool /*canceled*/)> fn;
+  timer_callback_t fn;
   bool armed = false;
 
   explicit impl(boost::asio::io_context& ctx) : timer(ctx) {
   }
 };
 
-timer_t::timer_t(boost::asio::io_context& ctx) : m_impl(std::make_shared<timer_t::impl>(ctx)) {
+asio_timer::asio_timer(boost::asio::io_context& ctx) : m_impl(std::make_shared<asio_timer::impl>(ctx)) {
 }
 
-void timer_t::arm(duration d) {
+void asio_timer::arm(duration d) {
   arm(std::chrono::steady_clock::now() + d);
 }
 
 struct callback_t {
-  std::weak_ptr<timer_t::impl> w;
+  std::weak_ptr<asio_timer::impl> w;
 
   void operator()(const io_error_code& ec) {
     auto x = w.lock();
@@ -47,24 +47,24 @@ struct callback_t {
   }
 };
 
-void timer_t::arm(time_point tp) {
+void asio_timer::arm(time_point tp) {
   cancel();
   m_impl->timer.expires_at(tp);
   m_impl->armed = true;
   m_impl->timer.async_wait(callback_t(m_impl));
 }
 
-void timer_t::arm_periodic(duration d) {
+void asio_timer::arm_periodic(duration d) {
   arm(d);
   m_impl->period = d;
 }
 
-bool timer_t::armed() const noexcept {
+bool asio_timer::is_armed() const noexcept {
   return m_impl->armed;
 }
 
-bool timer_t::cancel() noexcept {
-  if (!armed())
+bool asio_timer::cancel() noexcept {
+  if (!is_armed())
     return false;
   m_impl->period = std::nullopt;
   m_impl->armed = false;
@@ -72,7 +72,7 @@ bool timer_t::cancel() noexcept {
   return true;
 }
 
-void timer_t::set_callback(move_only_fn_soos<void(bool /*canceled*/)> fn) {
+void asio_timer::set_callback(timer_callback_t fn) {
   m_impl->fn = std::move(fn);
 }
 

@@ -1,0 +1,33 @@
+#pragma once
+
+#include <anyany/anyany_macro.hpp>
+
+#include "http2/utils/deadline.hpp"
+#include "http2/utils/fn_ref.hpp"
+
+namespace http2 {
+
+// arms timer to execute callback after 'd'
+// never executes callback immediately
+// if timer was armed, its canceled first
+anyany_method2_n(arm_m, arm, (&self, deadline_t d) requires(self.arm(d))->void);
+// arms timer after 'd' and repeats this each 'd'
+// new arm will be after executing task
+// if timer was armed, its canceled first
+anyany_method2_n(arm_periodic_m, arm_periodic, (&self, duration_t d) requires(self.arm_periodic(d))->void);
+// returns 'true' if timer was armed before 'cancel'
+// do not touches setted callback
+anyany_method2_n(cancel_m, cancel, (&self) requires(self.cancel())->bool);
+
+anyany_method2_n(is_armed_m, is_armed, (const& self) requires(self.is_armed())->bool);
+
+using timer_callback_t = move_only_fn_soos<void(bool /*canceled*/)>;
+// if callback.empty do not invokes it
+// never executes callback immediately
+anyany_method2_n(set_timer_callback_m, set_callback,
+                 (&self, timer_callback_t cb) requires(self.set_callback(std::move(cb)))->void);
+
+// for using in single thread!
+using any_timer = aa::any_with<arm_m, arm_periodic_m, is_armed_m, set_timer_callback_m, cancel_m>;
+
+}  // namespace http2

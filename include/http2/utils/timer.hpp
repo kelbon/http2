@@ -6,13 +6,14 @@
 #include <anyany/anyany.hpp>
 
 #include "http2/asio/aio_context.hpp"
+#include "http2/utils/any_timer.hpp"
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
 
 namespace http2 {
 
 // for using in single thread!
-struct timer_t {
+struct asio_timer {
   using clock_type = std::chrono::steady_clock;
   using time_point = clock_type::time_point;
   using duration = clock_type::duration;
@@ -23,7 +24,7 @@ struct timer_t {
   std::shared_ptr<impl> m_impl;
 
  public:
-  timer_t(boost::asio::io_context&);
+  explicit asio_timer(boost::asio::io_context&);
 
   // arms timer to execute callback after 'd'
   // if timer was armed, its canceled first
@@ -37,26 +38,18 @@ struct timer_t {
     return arm(d.tp);
   }
 
-  // repeat interface of old timer, same as 'arm'
-  void rearm(duration d) {
-    arm(d);
-  }
-  void rearm(time_point t) {
-    arm(t);
-  }
-
   // arms timer after 'd' and repeats this each 'd'
   // new arm will be after executing task
   // if timer was armed, its canceled first
   void arm_periodic(duration d);
 
-  [[nodiscard]] bool armed() const noexcept;
+  [[nodiscard]] bool is_armed() const noexcept;
 
   // returns 'true' if timer was armed before 'cancel'
   // do not touches setted callback
   bool cancel() noexcept;
 
-  void set_callback(move_only_fn_soos<void(bool /*canceled*/)>);
+  void set_callback(timer_callback_t);
 };
 
 }  // namespace http2

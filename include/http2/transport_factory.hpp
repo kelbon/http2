@@ -7,6 +7,7 @@
 #include "http2/logger.hpp"
 #include "http2/utils/unique_name.hpp"
 #include "http2/utils/boost_intrusive.hpp"
+#include "http2/utils/any_timer.hpp"
 
 #include <boost/intrusive/slist_hook.hpp>
 

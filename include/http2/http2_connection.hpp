@@ -274,9 +274,12 @@ struct h2connection {
   // if goaway with NO_ERROR was already sended. This ensures, that we will
   // initiate goaway (in graceful_stop) OR server initiates goaway and we answered once
   bool gracefulshutdownGoawaySended = false;
-  timer_t pingtimer;
-  timer_t pingdeadlinetimer;
-  timer_t timeoutWardenTimer;
+  // invariant: has_value()
+  any_timer pingtimer;
+  // invariant: has_value()
+  any_timer pingdeadlinetimer;
+  // invariant: has_value()
+  any_timer timeoutWardenTimer;
   bi::slist<h2stream, requests_member_hook_t, bi::constant_time_size<true>> freeNodes;
   // all done stream ids stored here (before adding or search / 2 to map 1 3 5 to 0 1 2)
   merged_segments closed_streams;

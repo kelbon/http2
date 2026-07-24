@@ -230,9 +230,9 @@ h2connection::h2connection(any_connection_t&& c, boost::asio::io_context& ctx)
     : tcpCon(std::move(c)),
       buckets(initial_buckets_count),
       responses({buckets.data(), buckets.size()}),
-      pingtimer(ctx),
-      pingdeadlinetimer(ctx),
-      timeoutWardenTimer(ctx),
+      pingtimer(asio_timer(ctx)),
+      pingdeadlinetimer(asio_timer(ctx)),
+      timeoutWardenTimer(asio_timer(ctx)),
       ioctx(ctx) {
 }
 
@@ -536,7 +536,7 @@ h2connection::response_awaiter h2connection::responseReceived(h2stream& node) no
     bool reschedule = timers.empty() || node.deadline < timers.top()->deadline;
     timers.insert(timers.end(), node);
     if (reschedule) {
-      timeoutWardenTimer.rearm(timers.top()->deadline.tp);
+      timeoutWardenTimer.arm(timers.top()->deadline.tp);
     }
   }
   return response_awaiter{this, &node};
