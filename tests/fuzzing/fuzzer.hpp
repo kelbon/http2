@@ -160,10 +160,10 @@ struct fuzzer {
   void run_until(deadline_t d, auto condition, auto&&... ioctxs) {
     // should be asio::io_context (not included here)
     std::vector ctxs{std::addressof(ioctxs)...};
-    while (!condition() && !d.isReached()) {
+    while (!condition() && !d.is_reached()) {
       select(ctxs)->poll_one();
     }
-    if (d.isReached())
+    if (d.is_reached())
       throw timeout_exception();
     (ioctxs.poll(), ...);  // do pending jobs if some
   }

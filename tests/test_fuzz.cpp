@@ -26,7 +26,7 @@ int main() try {
 
   fuzzer fuz;
   http2::http2_server_options opts;
-  opts.maxConcurrentStreams = 10;
+  opts.max_concurrent_streams = 10;
   http2::echo_server server(opts);
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);

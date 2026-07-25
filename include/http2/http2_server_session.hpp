@@ -16,13 +16,13 @@ namespace http2 {
 struct http2_server;
 struct http2_frame_t;
 
-// Not RAII type, must be closed (requestTerminate/shutdown + wait gate) before
+// Not RAII type, must be closed (request_terminate/shutdown + wait gate) before
 // destroy
 struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   uint32_t refcount = 0;
   dd::gate responsegate;
   // for connection reader/writer
-  dd::gate connectionPartsGate;
+  dd::gate connection_parts_gate;
   // invariant: != nullptr
   h2connection_ptr connection;
   http2_server_options options;
@@ -30,7 +30,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // reader increments this value for detecting client idle
   size_t framecount = 0;
   // changed only once from 'false' to 'true' when shutdown requested
-  bool newRequestsForbiden = false;
+  bool new_requests_forbiden = false;
   bool terminated = false;
   bool done = false;
   // used to check if goaway required when shutting down. Do not send goaway if session not established yet
@@ -44,37 +44,37 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
 
   ~server_session();
 
-  [[nodiscard]] bool hasUnfinishedRequests() const noexcept {
+  [[nodiscard]] bool has_unfinished_requests() const noexcept {
     return !connection->requests.empty() || !connection->responses.empty();
   }
-  [[nodiscard]] size_t requestsLeftApprox() const noexcept {
+  [[nodiscard]] size_t requests_left_approx() const noexcept {
     return connection->requests.size() + connection->responses.size();
   }
-  [[nodiscard]] size_t requestsLeftExactly() const noexcept;
+  [[nodiscard]] size_t requests_left_exactly() const noexcept;
 
   // precondition: 'node' request completely assembled by server reader
-  void onRequestReady(h2stream& node) noexcept;
+  void on_request_ready(h2stream& node) noexcept;
 
   // forbids new requests, but existing request handling continues
   // session will be closed when open requests are handled or network error
   // occurs
-  void requestShutdown() noexcept;
+  void request_shutdown() noexcept;
 
   // forbids new requests, cancels current requests
   // session will be closed in near future
-  void requestTerminate() noexcept;
+  void request_terminate() noexcept;
 
   // used when request fully handled and response is sent
-  void onResponseDone() noexcept;
+  void on_response_done() noexcept;
 
   // called when client sent RST_STREAM
   // returns false if no such stream
-  bool rstStreamServer(rst_stream, bool skip_validation = false);
+  bool rst_stream_server(rst_stream, bool skip_validation = false);
 
-  void rstStreamAfterError(stream_error const&);
+  void rst_stream_after_error(stream_error const&);
 
   // invoked when session completely done
-  void onSessionDone() noexcept;
+  void on_session_done() noexcept;
 
   void receive_headers(http2_frame_t frame);
 
@@ -94,14 +94,14 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // reference to newly created node, which is alive until response sent /
   // request canceled there are 3 ways for created node:
   // * request assembled and then sent or canceled, in this case
-  // onResponseDone() called by 'send_response'
-  // * request not assembled and canceled, onResponseDone() called by
-  // rstStreamServer()
-  // * server terminates session, then onResponseDone called by
-  // server_session::requestTerminate
+  // `on_response_done` called by 'send_response'
+  // * request not assembled and canceled, `on_response_done` called by
+  // rst_stream_server()
+  // * server terminates session, then `on_response_done` called by
+  // server_session::request_terminate
   //
   // Note: may accept trailers headers too
-  void startRequestAssemble(const http2_frame_t& /*HEADERS frame*/);
+  void start_request_assemble(const http2_frame_t& /*HEADERS frame*/);
 
   // after creation 3 hooks (requests, responses, timers) and 'task' left unused
   stream_ptr new_empty_stream_node(stream_id_t);
@@ -109,10 +109,10 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // used when settings changed while connection active
   // may throw protocol error
   // precondition: newsettings is SETTINGS frame
-  void clientSettingsChanged(http2_frame_t newsettings);
+  void client_settings_changed(http2_frame_t newsettings);
 
   // used when server receives GOAWAY frame with NO_ERROR
-  void clientRequestsGracefulShutdown(goaway_frame);
+  void client_requests_graceful_shutdown(goaway_frame);
 
   struct response_written_awaiter {
     h2connection* con = nullptr;
@@ -122,21 +122,20 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
       // data part and header marker for writer, that this request must be
       // awaiken after sending
       assert(con && n);
-      assert(!n->requestsHook.is_linked());
-      if (con->isDropped()) {
+      assert(!n->requests_hook.is_linked());
+      if (con->is_dropped()) {
         n->status = reqerr_e::CANCELLED;
         return true;
       }
       // if not linked, request was canceled already, status is not DONE
-      return !n->responsesHook.is_linked();
+      return !n->responses_hook.is_linked();
     }
     std::coroutine_handle<> await_suspend(dd::task<int>::handle_type h) noexcept {
       con->requests.push_back(*n);
       n->task = h;
       if (con->writer.handle)  // if writer waits job now
-      {
         return std::exchange(con->writer.handle, nullptr);
-      }
+
       return std::noop_coroutine();
     }
     [[nodiscard]] bool await_resume() noexcept {
@@ -147,14 +146,14 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // pushes node into send queue and notifies writer about it.
   // resumes when writer writes 'node' content
   // returns 'true' if response sent, false if error occurs
-  KELCORO_CO_AWAIT_REQUIRED response_written_awaiter responseWritten(h2stream& n) noexcept {
+  KELCORO_CO_AWAIT_REQUIRED response_written_awaiter response_written(h2stream& n) noexcept {
     return response_written_awaiter{connection.get(), &n};
   }
 
   // завершает запрос независимо от того собран он уже или нет
   // Вызывается для нештатного завершения,
-  // для успешного завершения писатель вызывает connection.finishRequest
-  void finishServerRequest(h2stream&) noexcept;
+  // для успешного завершения писатель вызывает connection.finish_request
+  void finish_server_request(h2stream&) noexcept;
 
   const log_context& logctx() const noexcept {
     return connection->logctx;

@@ -18,12 +18,12 @@ struct deadline_t {
   template <typename REP, typename PERIOD>
   constexpr deadline_t(std::chrono::duration<REP, PERIOD> d) noexcept;
 
-  [[nodiscard]] constexpr bool isReached(
+  [[nodiscard]] constexpr bool is_reached(
       time_point_t point = std::chrono::steady_clock::now()) const noexcept {
     return tp <= point;
   }
 
-  duration_t remainingTime() const noexcept {
+  duration_t remaining_time() const noexcept {
     return tp - std::chrono::steady_clock::now();
   }
 

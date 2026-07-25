@@ -19,8 +19,8 @@ struct h2spec_server : http2_server {
 
   explicit h2spec_server(log_context ctx = log_context{})
       : http2_server(http2_server_options{
-            .maxReceiveFrameSize = MIN_MAX_FRAME_LEN,  // enables FRAME_SIZE tests
-            .maxConcurrentStreams = 10,                // enables h2spec test for it
+            .max_receive_frame_size = MIN_MAX_FRAME_LEN,  // enables FRAME_SIZE tests
+            .max_concurrent_streams = 10,                 // enables h2spec test for it
             .logctx = std::move(ctx),
         }) {
   }

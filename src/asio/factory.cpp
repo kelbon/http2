@@ -144,7 +144,6 @@ static size_t do_try_write(auto& self, std::span<const byte_t> buf, io_error_cod
   // нельзя писать когда есть кто-то в writersqueue, чтобы не нарушить порядок отправки
   if (!self.writedata.writersqueue.empty())
     return 0;
-  // TODO эксперимент мб маленькие данные пихать сюда, может таким образом батчинг будет ускорять
   size_t written = self.sock.write_some(asio::buffer(buf.data(), buf.size()), ec);
   if (ec) {
     if (ec == asio::error::would_block)
@@ -269,7 +268,6 @@ any_io_context make_asio_tls_io_context(asio::io_context& ctx, server_ssl_contex
   }
 }
 
-// TODO rename (одна функция просто по дефолту = nullptr)
 any_io_context make_asio_tls_io_context(client_ssl_context_ptr ssl, tcp_connection_options opts) {
   if (ssl)
     return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(opts)); }});

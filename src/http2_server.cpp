@@ -32,14 +32,14 @@
 Предназначение сервера это управление соединениями. Вся логика по обработке соединений с клиентами внутри
 server_session
 
-listen добавляет serverAddress в прослушиваемые и создаёт корутину acceptConnections слушающую этот адрес
-    Note: эти корутины останавливаются после stopListeners, но адреса продолжают висеть вплоть до удаления
+listen добавляет server_address в прослушиваемые и создаёт корутину accept_connections слушающую этот адрес
+    Note: эти корутины останавливаются после `stop_listeners`, но адреса продолжают висеть вплоть до удаления
 сервера. "Так сложилось"
 
-acceptConnections вечно создаёт сокеты прослушивая адрес пока не получит специальную ошибку означающую отмену
-слушания При получении сокета создаёт корутину sessionLifecycle
+accept_connections вечно создаёт сокеты прослушивая адрес пока не получит специальную ошибку означающую отмену
+слушания При получении сокета создаёт корутину session_lifecycle
 
-sessionLifecycle устанавливает соединение уровнем выше TCP (tls/http2), задаёт нужные настройки и далее
+session_lifecycle устанавливает соединение уровнем выше TCP (tls/http2), задаёт нужные настройки и далее
 служит жизненным пространством для server_session, которая в свою очередь обёртка над h2connection
 server_session завершается когда читатель отдаёт управление, например при получении GOAWAY фрейма
 
@@ -85,21 +85,21 @@ struct http2_server::impl {
   internet_address listen(server_endpoint a) {
     assert(std::this_thread::get_id() == tid);
     any_acceptor& acceptor = listeners.emplace_back(io.create_acceptor(a.addr, a.reuse_address));
-    // store resolved endpoint (e.g. if port 0 was used) and store it before acceptConnections
-    // (acceptConnections may delete acceptor!)
+    // store resolved endpoint (e.g. if port 0 was used) and store it before accept_connections
+    // (accept_connections may delete acceptor!)
     internet_address binded = acceptor.get_local_endpoint();
     acceptor.listen();
     auto lit = std::prev(listeners.end());
     on_scope_failure(eraselistener) {
       listeners.erase(lit);
     };
-    acceptConnections(sessionsgate.hold(), lit).start_and_detach();
+    accept_connections(sessionsgate.hold(), lit).start_and_detach();
     eraselistener.no_longer_needed();
     HTTP2_LOG(logctx(), INFO, "Server listening on {}:{}", binded.address().to_string(), a.addr.port());
     return binded;
   }
 
-  dd::task<void> acceptConnections(dd::gate::holder, decltype(listeners)::iterator lit) try {
+  dd::task<void> accept_connections(dd::gate::holder, decltype(listeners)::iterator lit) try {
     assert(std::this_thread::get_id() == tid);
     assert(lit != listeners.end());
     on_scope_exit {
@@ -135,18 +135,18 @@ struct http2_server::impl {
       HTTP2_LOG_TRACE(logctx(), "accepted connection");
       if (!sessionsgate.is_closed()) {
         if (!acceptcb)
-          sessionLifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
+          session_lifecycle(sessionsgate.hold(), std::move(socket)).start_and_detach();
         else
           acceptcb(std::move(socket));
       }
     }
-    HTTP2_LOG_TRACE(logctx(), "acceptConnections: gate is closed");
+    HTTP2_LOG_TRACE(logctx(), "accept_connections: gate is closed");
   } catch (std::exception& e) {
-    HTTP2_LOG(logctx(), ERROR, "acceptConnections failed with err {}", e.what());
+    HTTP2_LOG(logctx(), ERROR, "accept_connections failed with err {}", e.what());
   }
 
   // Note: this code ignores possible bad_alloc and other logs exceptions
-  dd::task<void> sessionLifecycle(dd::gate::holder, any_connection_t socket) try {
+  dd::task<void> session_lifecycle(dd::gate::holder, any_connection_t socket) try {
     assert(std::this_thread::get_id() == tid);
 
     h2connection_ptr http2con = new h2connection(std::move(socket), ioctx_ref());
@@ -180,15 +180,15 @@ struct http2_server::impl {
       any_timer timer = session_ptr->server->ioctx().create_timer();
       co_await net.sleep(timer, d, ec);
     };
-    auto requestTerminateInactive = [session_ptr, nm = this->logctx().name](bool canceled) {
+    auto request_terminate_inactive = [session_ptr, nm = this->logctx().name](bool canceled) {
       if (canceled)
         return;
       HTTP2_LOG_TRACE(session_ptr->logctx(), "{} drops connection due client inactivity", nm);
-      session_ptr->requestTerminate();
+      session_ptr->request_terminate();
     };
-    auto requestTerminate = [session_ptr] {
+    auto request_terminate = [session_ptr] {
       HTTP2_LOG_TRACE(session_ptr->logctx(), "writer drops connection");
-      session_ptr->requestTerminate();
+      session_ptr->request_terminate();
     };
 
     try {
@@ -199,7 +199,7 @@ struct http2_server::impl {
         HTTP2_LOG(session_ptr->logctx(), ERROR, "connection timeout");
         session_ptr->connection->shutdown(reqerr_e::TIMEOUT);
       });
-      timer.arm(options.connectionTimeout);
+      timer.arm(options.connection_timeout);
       (void)co_await establish_http2_session_server(session.connection, options);
       session.established = true;
       timer.cancel();
@@ -218,10 +218,10 @@ struct http2_server::impl {
       goto drop_session;
     }
 
-    (void)start_writer_for_server(session.connection, sleepcb, requestTerminate, options.forceDisableHpack,
-                                  session.connectionPartsGate.hold());
+    (void)start_writer_for_server(session.connection, sleepcb, request_terminate, options.force_disable_hpack,
+                                  session.connection_parts_gate.hold());
 
-    session.connection->pingdeadlinetimer.set_callback(requestTerminateInactive);
+    session.connection->pingdeadlinetimer.set_callback(request_terminate_inactive);
     // clang-format off
     session.connection->pingtimer.set_callback([framecount = size_t(0), &session, server = this](bool canceled) mutable {
       if (canceled)
@@ -231,9 +231,9 @@ struct http2_server::impl {
         return;
       }
       // nothing happens since last call
-      if (!session.connection->pingdeadlinetimer.is_armed() && !session.hasUnfinishedRequests()) {
+      if (!session.connection->pingdeadlinetimer.is_armed() && !session.has_unfinished_requests()) {
         HTTP2_LOG_TRACE(session.logctx(), "detect nothing happens, arm idle deadline timer");
-        session.connection->pingdeadlinetimer.arm(server->options.idleTimeout);
+        session.connection->pingdeadlinetimer.arm(server->options.idle_timeout);
       }
     });
     // clang-format on
@@ -245,13 +245,13 @@ struct http2_server::impl {
     }
     HTTP2_LOG_TRACE(session.logctx(), "reader stops, waiting stop");
   drop_session:
-    session.requestTerminate();
-    while (session.hasUnfinishedRequests())
+    session.request_terminate();
+    while (session.has_unfinished_requests())
       co_await yield_on_ioctx(*&session.server->ioctx());
 
     // we are here if reader ended with exception or after soft shutdown (streams closed, new requests
     // forbidden)
-    co_await session.connectionPartsGate.close();
+    co_await session.connection_parts_gate.close();
     co_await session.responsegate.close();
     co_await yield_on_ioctx(ioctx_ref());  // give `leave` callers time to finish their work
     HTTP2_LOG_TRACE(session.logctx(), "session stop ended");
@@ -259,7 +259,7 @@ struct http2_server::impl {
     HTTP2_LOG(logctx(), ERROR, "session ended with exception: {}", e.what());
   }
 
-  void stopListeners() {
+  void stop_listeners() {
     assert(std::this_thread::get_id() == tid);
     HTTP2_LOG_TRACE(logctx(), "shutdown: listeners size {}", listeners.size());
     for (auto& l : listeners) {
@@ -277,8 +277,8 @@ struct http2_server::impl {
     };
     auto closeg = sessionsgate.close();
     for (auto& session : sessions)
-      session.requestShutdown();
-    stopListeners();
+      session.request_shutdown();
+    stop_listeners();
     co_await closeg;
     co_await yield_on_ioctx(ioctx_ref());
     if (sessionsgate.is_closed())  // may be another shutdown/terminate
@@ -296,9 +296,9 @@ struct http2_server::impl {
     };
     auto closeg = sessionsgate.close();
     for (auto& session : sessions) {
-      session.requestTerminate();
+      session.request_terminate();
     }
-    stopListeners();
+    stop_listeners();
     co_await closeg;
     co_await yield_on_ioctx(ioctx_ref());
     sessionsgate.reopen();
@@ -414,7 +414,7 @@ void mt_server::initialize() {
       assert(!!e);
       if (server->m_impl->sessionsgate.is_closed()) [[unlikely]]
         co_return;
-      server->m_impl->sessionLifecycle(server->m_impl->sessionsgate.hold(), std::move(sock))
+      server->m_impl->session_lifecycle(server->m_impl->sessionsgate.hold(), std::move(sock))
           .start_and_detach();
     }(server, std::move(sock));
   };

@@ -106,7 +106,7 @@ struct http_body_bytes : private std::vector<byte_t, detail::allocator_p9<byte_t
 
   // не инициализирует память
   void resize(size_type sz, uninitialized_byte_t) {
-    resizeNoinit(static_cast<base_t*>(this), sz);
+    resize_noinit(static_cast<base_t*>(this), sz);
   }
   using base_t::begin;
   using base_t::end;
@@ -115,7 +115,7 @@ struct http_body_bytes : private std::vector<byte_t, detail::allocator_p9<byte_t
 
  private:
   // noinline to guarantee compiler cannot optimize strict aliasing
-  [[gnu::noinline]] void resizeNoinit(void* p, size_t sz) {
+  [[gnu::noinline]] void resize_noinit(void* p, size_t sz) {
     // здесь компилятор не знает ничего о 'p' и не может ничего сломать
     // делаем resize, будто под 'p' vector<noinit>.
     // За счёт того как устроен noinit компилятор уберёт инициализацию памяти

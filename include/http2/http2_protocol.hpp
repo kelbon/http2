@@ -91,19 +91,19 @@ struct frame_header {
   uint32_t length = 0;
   frame_e type = frame_e(0);
   flags_t flags = flags::EMPTY_FLAGS;
-  stream_id_t streamId = 0;
+  stream_id_t streamid = 0;
 
   template <std::output_iterator<hpack::byte_t> O>
   O form(O out) const {
-    auto pushByte = [&](uint8_t byte) {
+    auto push_byte = [&](uint8_t byte) {
       *out = byte;
       ++out;
     };
     uint32_t len = htonl_value(length);
     out = noexport::copy_n(as_bytes(len).data() + 1, 3, out);
-    pushByte(uint8_t(type));
-    pushByte(flags);
-    stream_id_t id = htonl_value(streamId);
+    push_byte(uint8_t(type));
+    push_byte(flags);
+    stream_id_t id = htonl_value(streamid);
     out = noexport::copy_n((uint8_t*)&id, sizeof(id), out);
     return out;
   }
@@ -116,11 +116,11 @@ struct frame_header {
     h.length = uint32_t(rawheader[0] << 16) | uint32_t(rawheader[1] << 8) | uint32_t(rawheader[2]);
     h.type = frame_e(rawheader[3]);
     h.flags = rawheader[4];
-    memcpy(&h.streamId, rawheader.data() + 5, 4);
-    htonli(h.streamId);
+    memcpy(&h.streamid, rawheader.data() + 5, 4);
+    htonli(h.streamid);
     // https://datatracker.ietf.org/doc/html/rfc9113#section-4.1-4.8.1
     // reserved bit must be ignored
-    h.streamId &= stream_id_t(0x7FFFFFFF);  // (1u << 31) - 1
+    h.streamid &= stream_id_t(0x7FFFFFFF);  // (1u << 31) - 1
     return h;
   }
 
@@ -136,7 +136,7 @@ struct formatter<::http2::frame_header> : formatter<std::string_view> {
   auto format(const ::http2::frame_header& h, auto& ctx) const -> decltype(ctx.out()) {
     auto it = ctx.out();
     return format_to(it, "{} flags: 0b{:b}, len: {}, streamid: {}", ::http2::e2str(h.type), h.flags, h.length,
-                     h.streamId);
+                     h.streamid);
   }
 };
 
@@ -165,7 +165,7 @@ struct data_frame {
         .length = 0,
         .type = frame_e::DATA,
         .flags = flags::END_STREAM,
-        .streamId = id,
+        .streamid = id,
     };
   }
 };
@@ -212,7 +212,7 @@ priority_update_frame
 // terminates stream
 struct rst_stream {
   frame_header header;
-  errc_e errorCode = errc_e::NO_ERROR;
+  errc_e error_code = errc_e::NO_ERROR;
 
   static constexpr inline size_t LEN = FRAME_HEADER_LEN + 4;
 
@@ -221,7 +221,7 @@ struct rst_stream {
         .length = 4,
         .type = frame_e::RST_STREAM,
         .flags = flags::EMPTY_FLAGS,
-        .streamId = streamid,
+        .streamid = streamid,
     };
   }
 
@@ -252,16 +252,16 @@ enum settings_identifier_e : uint16_t {
 struct settings_t {
   static constexpr inline uint32_t MAX_MAX_CONCURRENT_STREAMS = ((uint32_t(1) << 31) - 1);
 
-  uint32_t headerTableSize = 4096;
-  bool enablePush = false;
-  uint32_t maxConcurrentStreams = MAX_MAX_CONCURRENT_STREAMS;
+  uint32_t header_table_size = 4096;
+  bool enable_push = false;
+  uint32_t max_concurrent_streams = MAX_MAX_CONCURRENT_STREAMS;
   // only for stream-level size!
-  uint32_t initialStreamWindowSize = 65'535;
-  uint32_t maxFrameSize = MIN_MAX_FRAME_LEN;
-  uint32_t maxHeaderListSize = uint32_t(-1);
+  uint32_t initial_stream_window_size = 65'535;
+  uint32_t max_frame_size = MIN_MAX_FRAME_LEN;
+  uint32_t max_header_list_size = uint32_t(-1);
   bool enable_connect_protocol = false;
   // https://datatracker.ietf.org/doc/html/rfc9218
-  bool deprecatedPriorityDisabled = false;
+  bool deprecated_priority_disabled = false;
 };
 
 #pragma pack(push, 1)
@@ -309,11 +309,11 @@ struct client_settings_visitor {
 
 inline void validate_settings_ack_frame(const frame_header& h) {
   assert(h.type == frame_e::SETTINGS && (h.flags & flags::ACK));
-  if (h.streamId != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-7
+  if (h.streamid != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-7
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("invalid SETTINGS ACK frame, len != 0 or stream id != 0, len: {}, streamid: {}", h.length,
-                    h.streamId));
+                    h.streamid));
   }
   if (h.length != 0) {  // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-6.2
     throw protocol_error(errc_e::FRAME_SIZE_ERROR,
@@ -322,7 +322,7 @@ inline void validate_settings_ack_frame(const frame_header& h) {
 }
 
 inline void validate_settings_not_ack_frame(const frame_header& h) {
-  if (h.type != frame_e::SETTINGS || (h.flags & flags::ACK) || h.streamId != 0 ||
+  if (h.type != frame_e::SETTINGS || (h.flags & flags::ACK) || h.streamid != 0 ||
       (h.length % sizeof(setting_t)) != 0) {
     throw protocol_error(errc_e::PROTOCOL_ERROR, std::format("invalid frame {}", h));
   }
@@ -348,14 +348,14 @@ struct settings_frame {
     // calculate len
 
     uint32_t len = 0;
-    len += settings.headerTableSize != default_.headerTableSize;
-    len += settings.enablePush != default_.enablePush;
-    len += settings.maxConcurrentStreams != default_.maxConcurrentStreams;
-    len += settings.initialStreamWindowSize != default_.initialStreamWindowSize;
-    len += settings.maxFrameSize != default_.maxFrameSize;
-    len += settings.maxHeaderListSize != default_.maxHeaderListSize;
+    len += settings.header_table_size != default_.header_table_size;
+    len += settings.enable_push != default_.enable_push;
+    len += settings.max_concurrent_streams != default_.max_concurrent_streams;
+    len += settings.initial_stream_window_size != default_.initial_stream_window_size;
+    len += settings.max_frame_size != default_.max_frame_size;
+    len += settings.max_header_list_size != default_.max_header_list_size;
     len += settings.enable_connect_protocol != default_.enable_connect_protocol;
-    len += settings.deprecatedPriorityDisabled != default_.deprecatedPriorityDisabled;
+    len += settings.deprecated_priority_disabled != default_.deprecated_priority_disabled;
     len *= sizeof(setting_t);
 
     // send frame header
@@ -364,7 +364,7 @@ struct settings_frame {
         .length = len,
         .type = frame_e::SETTINGS,
         .flags = 0,
-        .streamId = 0,  // connection related
+        .streamid = 0,  // connection related
     };
     out = header.form(out);
 
@@ -375,21 +375,21 @@ struct settings_frame {
   if (settings.NAME != default_.NAME) \
   insert_setting({ENUM_NAME, settings.NAME})
 
-    PUSH_SETTING(headerTableSize, SETTINGS_HEADER_TABLE_SIZE);
-    PUSH_SETTING(enablePush, SETTINGS_ENABLE_PUSH);
-    PUSH_SETTING(maxConcurrentStreams, SETTINGS_MAX_CONCURRENT_STREAMS);
-    PUSH_SETTING(initialStreamWindowSize, SETTINGS_INITIAL_WINDOW_SIZE);
-    PUSH_SETTING(maxFrameSize, SETTINGS_MAX_FRAME_SIZE);
-    PUSH_SETTING(maxHeaderListSize, SETTINGS_MAX_HEADER_LIST_SIZE);
+    PUSH_SETTING(header_table_size, SETTINGS_HEADER_TABLE_SIZE);
+    PUSH_SETTING(enable_push, SETTINGS_ENABLE_PUSH);
+    PUSH_SETTING(max_concurrent_streams, SETTINGS_MAX_CONCURRENT_STREAMS);
+    PUSH_SETTING(initial_stream_window_size, SETTINGS_INITIAL_WINDOW_SIZE);
+    PUSH_SETTING(max_frame_size, SETTINGS_MAX_FRAME_SIZE);
+    PUSH_SETTING(max_header_list_size, SETTINGS_MAX_HEADER_LIST_SIZE);
     PUSH_SETTING(enable_connect_protocol, SETTINGS_ENABLE_CONNECT_PROTOCOL);
-    PUSH_SETTING(deprecatedPriorityDisabled, SETTINGS_NO_RFC7540_PRIORITIES);
+    PUSH_SETTING(deprecated_priority_disabled, SETTINGS_NO_RFC7540_PRIORITIES);
 #undef PUSH_SETTING
 
     return out;
   }
 
   // ordering matters, must be handled in order they received
-  static void parse(frame_header header, std::span<byte_t const> bytes, auto&& settingVisitor) {
+  static void parse(frame_header header, std::span<byte_t const> bytes, auto&& setting_visitor) {
     assert(header.type == frame_e::SETTINGS);
     if (header.flags & flags::ACK) {
       validate_settings_ack_frame(header);
@@ -400,7 +400,7 @@ struct settings_frame {
     setting_t s;
     for (auto b = bytes.begin(); b != bytes.end(); b += 6) {
       s = setting_t::parse(std::span<byte_t const, 6>{b, b + 6});
-      settingVisitor(s);
+      setting_visitor(s);
     }
   }
 };
@@ -411,7 +411,7 @@ consteval frame_header accepted_settings_frame() noexcept {
       .length = 0,
       .type = frame_e::SETTINGS,
       .flags = flags::ACK,
-      .streamId = 0,  // connection related
+      .streamid = 0,  // connection related
   };
 }
 
@@ -420,19 +420,19 @@ struct ping_frame {
   frame_header header;
   byte_t data[8] = {};
 
-  [[nodiscard]] constexpr uint64_t getData() noexcept {
+  [[nodiscard]] constexpr uint64_t get_data() noexcept {
     return std::bit_cast<uint64_t>(data);
   }
 
   static constexpr inline size_t LEN = FRAME_HEADER_LEN + 8;
 
   template <std::output_iterator<byte_t> O>
-  static O form(uint64_t data, bool requestAnswer, O out) {
+  static O form(uint64_t data, bool request_answer, O out) {
     frame_header h{
         .length = 8,
         .type = frame_e::PING,
-        .flags = requestAnswer ? flags_t(0) : flags::ACK,
-        .streamId = 0,
+        .flags = request_answer ? flags_t(0) : flags::ACK,
+        .streamid = 0,
     };
     out = h.form(out);
     return noexport::copy_n((byte_t*)&data, 8, out);
@@ -444,9 +444,9 @@ struct ping_frame {
 // initiates shutdown on connection.
 struct goaway_frame {
   frame_header header;
-  stream_id_t lastStreamId;
-  errc_e errorCode;
-  std::string debugInfo;
+  stream_id_t last_streamid;
+  errc_e error_code;
+  std::string debug_info;
   /*
     <header>
     Reserved (1),
@@ -457,33 +457,28 @@ struct goaway_frame {
 
   static goaway_frame parse(frame_header header, std::span<byte_t const> bytes);
 
-  [[noreturn]] static void parseAndThrowGoaway(frame_header header, std::span<byte_t const> bytes) {
-    goaway_frame f = parse(header, bytes);
-    throw goaway_exception(f.lastStreamId, f.errorCode, std::move(f.debugInfo));
-  }
-
   template <std::output_iterator<byte_t> O>
-  static O form(stream_id_t lastStreamId, errc_e errorCode, std::string debugInfo, O out) {
+  static O form(stream_id_t last_streamid, errc_e error_code, std::string debug_info, O out) {
     out =
         frame_header{
-            .length = 8 + uint32_t(debugInfo.size()),
+            .length = 8 + uint32_t(debug_info.size()),
             .type = frame_e::GOAWAY,
             .flags = 0,
-            .streamId = 0,
+            .streamid = 0,
         }
             .form(out);
-    htonli(lastStreamId);
-    htonli(errorCode);
-    out = noexport::copy_n(as_bytes(lastStreamId).data(), 4, out);
-    out = noexport::copy_n(as_bytes(errorCode).data(), 4, out);
-    return noexport::copy_n((byte_t*)debugInfo.data(), debugInfo.size(), out);
+    htonli(last_streamid);
+    htonli(error_code);
+    out = noexport::copy_n(as_bytes(last_streamid).data(), 4, out);
+    out = noexport::copy_n(as_bytes(error_code).data(), 4, out);
+    return noexport::copy_n((byte_t*)debug_info.data(), debug_info.size(), out);
   }
 };
 
 // window size applicable only to DATA frames
 struct window_update_frame {
   frame_header header;
-  uint32_t windowSizeIncrement = 0;
+  uint32_t window_size_increment = 0;
   /*
     <header>
     Reserved (1),
@@ -500,7 +495,7 @@ struct window_update_frame {
             .length = 4,
             .type = frame_e::WINDOW_UPDATE,
             .flags = flags::EMPTY_FLAGS,
-            .streamId = id,
+            .streamid = id,
         }
             .form(out);
     htonli(increment);
@@ -521,34 +516,34 @@ static O form_connection_initiation(settings_t settings, O out) {
 // used while handling window_update frames
 // throws on control flow errors (stream error)
 // handles both positive (default) and negative (only SETTINGS change) increments
-inline void increment_window_size(cfint_t& size, int32_t windowSizeIncrement, stream_id_t streamid) {
-  if (windowSizeIncrement == 0) {
+inline void increment_window_size(cfint_t& size, int32_t window_size_increment, stream_id_t streamid) {
+  if (window_size_increment == 0) {
     throw protocol_error(errc_e::FLOW_CONTROL_ERROR, "invalid window size increment: zero");
   }
   // avoid overflow (and negative overflow)
   // rfc does not specify minimal negative value for window size,
   // this implementation uses -MAX_WINDOW_SIZE as negative minimum
-  if (std::abs(int64_t(size) + int64_t(windowSizeIncrement)) > int64_t(MAX_WINDOW_SIZE)) {
+  if (std::abs(int64_t(size) + int64_t(window_size_increment)) > int64_t(MAX_WINDOW_SIZE)) {
     if (streamid != 0) {
       throw stream_error(
           errc_e::FLOW_CONTROL_ERROR, streamid,
           std::format("invalid window size increment: overflow, current size: {}, increment: {}",
-                      uint64_t(size), uint64_t(windowSizeIncrement)));
+                      uint64_t(size), uint64_t(window_size_increment)));
     } else {
       throw protocol_error(
           errc_e::FLOW_CONTROL_ERROR,
           std::format("invalid window size increment: overflow, current size: {}, increment: {}",
-                      uint64_t(size), uint64_t(windowSizeIncrement)));
+                      uint64_t(size), uint64_t(window_size_increment)));
     }
   }
-  size += windowSizeIncrement;
+  size += window_size_increment;
 }
 
 // used when i increase window size, so i can trust myself
-inline void increment_window_size_trusted(cfint_t& size, int32_t windowSizeIncrement) noexcept {
-  assert(windowSizeIncrement > 0);
-  assert(int64_t(size) + int64_t(windowSizeIncrement) <= int64_t(MAX_WINDOW_SIZE));
-  size += windowSizeIncrement;
+inline void increment_window_size_trusted(cfint_t& size, int32_t window_size_increment) noexcept {
+  assert(window_size_increment > 0);
+  assert(int64_t(size) + int64_t(window_size_increment) <= int64_t(MAX_WINDOW_SIZE));
+  size += window_size_increment;
 }
 
 // used when receiving or sending DATA frames

@@ -40,18 +40,18 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
   constexpr auto H2FHL = FRAME_HEADER_LEN;
 
   assert(con);
-  assert(options.maxReceiveFrameSize <= FRAME_LEN_MAX);
-  con->serverSettings = &con->remoteSettings;
+  assert(options.max_receive_frame_size <= FRAME_LEN_MAX);
+  con->server_settings = &con->remote_settings;
   con->logctx.name.set_prefix(CLIENT_CONNECTION_PREFIX);
-  con->localSettings = settings_t{
-      .headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize,
-      .enablePush = false,
-      .initialStreamWindowSize = MAX_WINDOW_SIZE,
+  con->local_settings = settings_t{
+      .header_table_size = options.force_disable_hpack ? 0 : options.hpack_dyntab_size,
+      .enable_push = false,
+      .initial_stream_window_size = MAX_WINDOW_SIZE,
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
-      .maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN),
-      .deprecatedPriorityDisabled = true,
+      .max_frame_size = std::max(options.max_receive_frame_size, MIN_MAX_FRAME_LEN),
+      .deprecated_priority_disabled = true,
   };
-  con->decoder = hpack::decoder(con->localSettings.headerTableSize);
+  con->decoder = hpack::decoder(con->local_settings.header_table_size);
   con->laststartedstreamid = 0;
 
   io_error_code ec;
@@ -61,10 +61,10 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
     // "The client sends the client connection preface as the first application
     // data octets of a connection"
 
-    bytes_t connectionRequest;
-    form_connection_initiation(con->localSettings, std::back_inserter(connectionRequest));
+    bytes_t connection_request;
+    form_connection_initiation(con->local_settings, std::back_inserter(connection_request));
     HTTP2_LOG_TRACE(con->logctx, "sending client preface");
-    co_await con->write(connectionRequest, ec);
+    co_await con->write(connection_request, ec);
     if (ec) {
       HTTP2_LOG(con->logctx, ERROR, "cannot write HTTP/2 client connection preface, err: {}", ec.what());
       throw network_exception("cannot write HTTP/2 client connection preface, err: {}", ec.what());
@@ -104,12 +104,13 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
     HTTP2_LOG(con->logctx, ERROR, "cannot read accepted settings frame from server");
     throw network_exception(ec);
   }
-  settings_frame::parse(header, bytes, server_settings_visitor(con->remoteSettings, /*first frame*/ true));
+  settings_frame::parse(header, bytes, server_settings_visitor(con->remote_settings, /*first frame*/ true));
 
   // initialize remote settings-based things
 
-  con->encoder = hpack::encoder(con->remoteSettings.headerTableSize);
-  con->remoteSettings.maxFrameSize = std::min(con->remoteSettings.maxFrameSize, options.maxSendFrameSize);
+  con->encoder = hpack::encoder(con->remote_settings.header_table_size);
+  con->remote_settings.max_frame_size =
+      std::min(con->remote_settings.max_frame_size, options.max_send_frame_size);
 
   // answer settings ACK "as soon as possible"
 
@@ -121,10 +122,10 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
   }
 
   // SETTINGS frame with ACK flag will be handled later in
-  // 'h2connection::serverSettingsChanged' as regular frame
+  // 'h2connection::server_settings_changed' as regular frame
 
   HTTP2_LOG_TRACE(con->logctx, "connection successfully established, decoder size: {}",
-                  con->remoteSettings.headerTableSize);
+                  con->remote_settings.header_table_size);
 
   co_return con;
 }
@@ -134,8 +135,8 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
   assert(con);
   io_error_code ec;
   constexpr size_t MAGIC_SZ = std::size(CONNECTION_PREFACE);
-  con->serverSettings = &con->localSettings;
-  assert(options.maxReceiveFrameSize <= FRAME_LEN_MAX);
+  con->server_settings = &con->local_settings;
+  assert(options.max_receive_frame_size <= FRAME_LEN_MAX);
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-3.4-4
   // client MUST start its connection with a connection preface
   // client-preface == client magic bytes + settings, which MAY be empty
@@ -144,7 +145,7 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
 
   reusable_buffer buf;
   {  // read client magic
-    std::span magic = buf.getExactly(MAGIC_SZ);
+    std::span magic = buf.get_exactly(MAGIC_SZ);
     co_await con->read(magic, ec);
     if (ec) {
       HTTP2_LOG(con->logctx, ERROR, "client session establishment failed: reading preface, err: {}",
@@ -155,7 +156,7 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
   }
   frame_header settingsheader;
   {  // read settings frame
-    std::span settingsframe = buf.getExactly(FRAME_HEADER_LEN);
+    std::span settingsframe = buf.get_exactly(FRAME_HEADER_LEN);
     co_await con->read(settingsframe, ec);
     if (ec) {
       HTTP2_LOG(con->logctx, ERROR,
@@ -167,7 +168,7 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
   validate_settings_not_ack_frame(settingsheader);
 
   {  // read settings data
-    std::span settingsdata = buf.getExactly(settingsheader.length);
+    std::span settingsdata = buf.get_exactly(settingsheader.length);
     co_await con->read(settingsdata, ec);
     if (ec) {
       HTTP2_LOG(con->logctx, ERROR,
@@ -175,22 +176,22 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
       throw network_exception(ec);
     }
     settings_frame::parse(settingsheader, settingsdata,
-                          client_settings_visitor(con->remoteSettings, /*first frame*/ true));
+                          client_settings_visitor(con->remote_settings, /*first frame*/ true));
   }
 
   // write ACK and my settiings
 
-  con->localSettings.headerTableSize = options.forceDisableHpack ? 0 : options.hpackDyntabSize;
-  con->localSettings.maxConcurrentStreams =
-      std::clamp(options.maxConcurrentStreams, {1}, settings_t::MAX_MAX_CONCURRENT_STREAMS);
-  con->localSettings.initialStreamWindowSize = MAX_WINDOW_SIZE;
+  con->local_settings.header_table_size = options.force_disable_hpack ? 0 : options.hpack_dyntab_size;
+  con->local_settings.max_concurrent_streams =
+      std::clamp(options.max_concurrent_streams, {1}, settings_t::MAX_MAX_CONCURRENT_STREAMS);
+  con->local_settings.initial_stream_window_size = MAX_WINDOW_SIZE;
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.10.2
-  con->localSettings.maxFrameSize = std::max(options.maxReceiveFrameSize, MIN_MAX_FRAME_LEN);
-  con->localSettings.enable_connect_protocol = options.supports_websocket;
-  con->localSettings.deprecatedPriorityDisabled = true;
+  con->local_settings.max_frame_size = std::max(options.max_receive_frame_size, MIN_MAX_FRAME_LEN);
+  con->local_settings.enable_connect_protocol = options.supports_websocket;
+  con->local_settings.deprecated_priority_disabled = true;
   {
     std::vector<byte_t> bytes;
-    settings_frame::form(con->localSettings, std::back_inserter(bytes));
+    settings_frame::form(con->local_settings, std::back_inserter(bytes));
     // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5-5
     // "The SETTINGS frames received from a peer as part of the connection
     // preface MUST be acknowledged after sending the connection preface" server
@@ -205,8 +206,8 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
   }
   // до момента ACK настроек от клиента нельзя создавать декодер с локально известными настройками, потому что
   // клиент может начать слать запросы с размером таблицы по умолчанию, что приведёт к ошибке
-  // con->decoder = hpack::decoder(con->localSettings.headerTableSize);
-  con->encoder = hpack::encoder(con->remoteSettings.headerTableSize);
+  // con->decoder = hpack::decoder(con->local_settings.header_table_size);
+  con->encoder = hpack::encoder(con->remote_settings.header_table_size);
   // client settings ACK will be handled by server reader
 
   HTTP2_LOG_TRACE(con->logctx, "client session successfully established");

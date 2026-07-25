@@ -24,10 +24,9 @@ std::string sourceloc_str(std::source_location loc) {
 void remove_padding_etc(h2frame& f) {
   assert(f.hdr.type == frame_e::HEADERS || f.hdr.type == frame_e::DATA);
   http2_frame_t frame(f.hdr, f.data);
-  REQUIRE_NOTHROW(frame.validate_streamid(), frame.removePadding());
-  if (f.hdr.type == frame_e::HEADERS) {
-    frame.ignoreDeprecatedPriority();
-  }
+  REQUIRE_NOTHROW(frame.validate_streamid(), frame.remove_padding());
+  if (f.hdr.type == frame_e::HEADERS)
+    frame.ignore_deprecated_priority();
   if (f.data.size() != frame.data.size()) {
     f.hdr = frame.header;
     f.data.assign(frame.data.begin(), frame.data.end());
@@ -46,64 +45,65 @@ test_h2connection::test_h2connection(h2connection_ptr ccon, bool client) noexcep
     con->logctx.name.set_prefix(SERVER_SESSION_PREFIX);
 }
 
-dd::task<void> test_h2connection::receiveGoAway(uint32_t lastStreamId, errc_e errorCode, ping_e ping,
-                                                deadline_t deadline, std::source_location loc) {
+dd::task<void> test_h2connection::receive_goaway(uint32_t last_streamid, errc_e error_code, ping_e ping,
+                                                 deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
 
-  h2frame f = co_await nextFrame(deadline, ping, window_e::SKIP, loc);
+  h2frame f = co_await next_frame(deadline, ping, window_e::SKIP, loc);
   REQUIRE(f.hdr.type == frame_e::GOAWAY);
   goaway_frame gf;
   REQUIRE_NOTHROW(gf = goaway_frame::parse(f.hdr, f.data));
-  REQUIRE(gf.errorCode == errorCode);
-  REQUIRE(gf.lastStreamId == lastStreamId);
+  REQUIRE(gf.error_code == error_code);
+  REQUIRE(gf.last_streamid == last_streamid);
 }
 
-dd::task<void> test_h2connection::sendGoAway(uint32_t lastStreamId, errc_e errc, std::string_view debugInfo) {
+dd::task<void> test_h2connection::send_goaway(uint32_t last_streamid, errc_e errc,
+                                              std::string_view debug_info) {
   FAKE_HTTP2_LOG(INFO, "");
 
   std::vector<byte_t> bytes;
-  goaway_frame::form(lastStreamId, errc, std::string(debugInfo), std::back_inserter(bytes));
+  goaway_frame::form(last_streamid, errc, std::string(debug_info), std::back_inserter(bytes));
 
-  return sendRawFrame(std::move(bytes));
+  return send_raw_frame(std::move(bytes));
 }
 
-dd::task<void> test_h2connection::sendRstStream(uint32_t streamId, errc_e errc) {
+dd::task<void> test_h2connection::send_rst_stream(uint32_t streamid, errc_e errc) {
   FAKE_HTTP2_LOG(INFO, "");
 
   std::vector<byte_t> bytes;
-  rst_stream::form(streamId, errc, std::back_inserter(bytes));
+  rst_stream::form(streamid, errc, std::back_inserter(bytes));
 
-  return sendRawFrame(std::move(bytes));
+  return send_raw_frame(std::move(bytes));
 }
 
-dd::task<void> test_h2connection::receiveRstStream(uint32_t streamId, errc_e error, deadline_t deadline,
-                                                   std::source_location sl) {
+dd::task<void> test_h2connection::receive_rst_stream(uint32_t streamid, errc_e error, deadline_t deadline,
+                                                     std::source_location sl) {
   FAKE_HTTP2_LOG(INFO, "");
 
-  h2frame f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, sl);
+  h2frame f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::SKIP, sl);
 
   REQUIRE(f.hdr.type == frame_e::RST_STREAM);
-  REQUIRE(f.hdr.streamId == streamId);
+  REQUIRE(f.hdr.streamid == streamid);
   rst_stream rf;
   REQUIRE_NOTHROW(rf = rst_stream::parse(f.hdr, f.data));
-  REQUIRE(rf.errorCode == error);
+  REQUIRE(rf.error_code == error);
 }
 
-dd::task<void> test_h2connection::receiveSettingsAck(deadline_t deadline, std::source_location loc) {
-  h2frame f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::RETURN, loc);
+dd::task<void> test_h2connection::receive_settings_ack(deadline_t deadline, std::source_location loc) {
+  h2frame f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::RETURN, loc);
 
   REQUIRE(f.hdr.type == frame_e::SETTINGS);
   REQUIRE(f.hdr.flags & flags::ACK);
 }
 
-dd::task<void> test_h2connection::sendSettingsAck() {
-  return sendFrame({accepted_settings_frame()});
+dd::task<void> test_h2connection::send_settings_ack() {
+  return send_frame({accepted_settings_frame()});
 }
 
-dd::task<h2frame> test_h2connection::receiveSettings(deadline_t deadline, std::source_location loc) {
+dd::task<h2frame> test_h2connection::receive_settings(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
 
-  h2frame f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::RETURN, loc);
+  h2frame f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::RETURN, loc);
 
   // for test purpose apply settings before receiving ACK to make code easier
   settings_frame::parse(f.hdr, f.data, [&](setting_t s) {
@@ -118,10 +118,10 @@ dd::task<h2frame> test_h2connection::receiveSettings(deadline_t deadline, std::s
   co_return f;
 }
 
-dd::task<void> test_h2connection::receiveAndCheckSettings(std::map<setting_id_e, uint32_t> expected,
-                                                          std::set<setting_id_e> unexpected,
-                                                          deadline_t deadline, std::source_location loc) {
-  h2frame f = co_await receiveSettings(deadline, loc);
+dd::task<void> test_h2connection::receive_and_check_settings(std::map<setting_id_e, uint32_t> expected,
+                                                             std::set<setting_id_e> unexpected,
+                                                             deadline_t deadline, std::source_location loc) {
+  h2frame f = co_await receive_settings(deadline, loc);
 
   settings_frame::parse(f.hdr, f.data, [&](setting_t s) {
     if (expected.contains(s.identifier)) {
@@ -134,29 +134,29 @@ dd::task<void> test_h2connection::receiveAndCheckSettings(std::map<setting_id_e,
   REQUIRE(expected.empty());
 }
 
-dd::task<void> test_h2connection::sendSettings() {
+dd::task<void> test_h2connection::send_settings() {
   FAKE_HTTP2_LOG(INFO, "");
 
   settings_t settings;
-  settings.maxConcurrentStreams = 0x7fffffff;
-  settings.maxFrameSize = m_maxFrameSize;
-  settings.deprecatedPriorityDisabled = true;
+  settings.max_concurrent_streams = 0x7fffffff;
+  settings.max_frame_size = m_maxFrameSize;
+  settings.deprecated_priority_disabled = true;
   if (m_headerTabSize.has_value()) {
-    settings.headerTableSize = *m_headerTabSize;
+    settings.header_table_size = *m_headerTabSize;
   }
 
   std::vector<byte_t> bytes;
   settings_frame::form(settings, std::back_inserter(bytes));
 
-  return sendRawFrame(std::move(bytes));
+  return send_raw_frame(std::move(bytes));
 }
 
-dd::task<uint64_t> test_h2connection::receivePing(deadline_t deadline, std::source_location loc) {
+dd::task<uint64_t> test_h2connection::receive_ping(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
 
   h2frame f;
   for (;;) {
-    f = co_await receiveFrame(deadline, loc);
+    f = co_await receive_frame(deadline, loc);
     switch (f.hdr.type) {
       case frame_e::WINDOW_UPDATE:
         continue;
@@ -171,44 +171,43 @@ end:
   REQUIRE_NOTHROW(pf = ping_frame::parse(f.hdr, f.data));
   REQUIRE(!(f.hdr.flags & flags::ACK));
 
-  co_return pf.getData();
+  co_return pf.get_data();
 }
 
-dd::task<void> test_h2connection::sendPing(uint64_t opaqueData) {
+dd::task<void> test_h2connection::send_ping(uint64_t opaque_data) {
   FAKE_HTTP2_LOG(INFO, "");
   std::vector<byte_t> bytes;
-  ping_frame::form(opaqueData, /*requestAnswer=*/true, std::back_inserter(bytes));
-  return sendRawFrame(std::move(bytes));
+  ping_frame::form(opaque_data, /*request_answer=*/true, std::back_inserter(bytes));
+  return send_raw_frame(std::move(bytes));
 }
 
-dd::task<void> test_h2connection::sendPong(uint64_t opaqueData) {
+dd::task<void> test_h2connection::send_pong(uint64_t opaque_data) {
   FAKE_HTTP2_LOG(INFO, "");
   std::vector<byte_t> bytes;
-  ping_frame::form(opaqueData, /*requestAnswer=*/false, std::back_inserter(bytes));
-  return sendRawFrame(std::move(bytes));
+  ping_frame::form(opaque_data, /*request_answer=*/false, std::back_inserter(bytes));
+  return send_raw_frame(std::move(bytes));
 }
 
-dd::task<h2frame> test_h2connection::receiveData(uint32_t streamId, deadline_t deadline) {
+dd::task<h2frame> test_h2connection::receive_data(uint32_t streamid, deadline_t deadline) {
   FAKE_HTTP2_LOG(INFO, "");
 
-  h2frame f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP);
+  h2frame f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::SKIP);
 
   REQUIRE(f.hdr.type == frame_e::DATA);
-  if (streamId) {
-    REQUIRE(f.hdr.streamId == streamId);
-  }
+  if (streamid)
+    REQUIRE(f.hdr.streamid == streamid);
   remove_padding_etc(f);
 
   co_return f;
 }
 
-dd::task<hdrs_and_data> test_h2connection::receiveReq(deadline_t deadline, std::source_location loc) {
+dd::task<hdrs_and_data> test_h2connection::receive_req(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
   hdrs_and_data hd;
-  h2frame f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
+  h2frame f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
   REQUIRE(f.hdr.type == frame_e::HEADERS);
   REQUIRE(f.hdr.flags & flags::END_HEADERS);
-  hd.streamId = f.hdr.streamId;
+  hd.streamid = f.hdr.streamid;
   remove_padding_etc(f);
 
   auto decode_headers = [&](std::span<const byte_t> input, std::vector<header>& out) {
@@ -219,29 +218,29 @@ dd::task<hdrs_and_data> test_h2connection::receiveReq(deadline_t deadline, std::
   };
 
   decode_headers(std::span(f.data.begin(), f.data.end()), hd.headers);
-  hd.endStream = f.hdr.flags & flags::END_STREAM;
+  hd.end_stream = f.hdr.flags & flags::END_STREAM;
 
-  if (!hd.endStream) {
-    f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
+  if (!hd.end_stream) {
+    f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
     if (f.hdr.type == frame_e::HEADERS) {
       // трейлеры после хедеров
       decode_headers(std::span(f.data.begin(), f.data.end()), hd.trailers.emplace());
-      hd.endStream = f.hdr.flags & flags::END_STREAM;
-      REQUIRE(hd.endStream == true);
-      REQUIRE(f.hdr.streamId == hd.streamId);
+      hd.end_stream = f.hdr.flags & flags::END_STREAM;
+      REQUIRE(hd.end_stream == true);
+      REQUIRE(f.hdr.streamid == hd.streamid);
     } else {
       REQUIRE(f.hdr.type == frame_e::DATA);
-      REQUIRE(hd.streamId == f.hdr.streamId);
+      REQUIRE(hd.streamid == f.hdr.streamid);
       hd.body = std::move(f.data);
-      hd.endStream = f.hdr.flags & flags::END_STREAM;
-      if (!hd.endStream) {
+      hd.end_stream = f.hdr.flags & flags::END_STREAM;
+      if (!hd.end_stream) {
         // трейлеры после данных
-        f = co_await nextFrame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
+        f = co_await next_frame(deadline, ping_e::RESPONSE, window_e::SKIP, loc);
         REQUIRE(f.hdr.type == frame_e::HEADERS);
-        REQUIRE(f.hdr.streamId == hd.streamId);
+        REQUIRE(f.hdr.streamid == hd.streamid);
         decode_headers(std::span(f.data.begin(), f.data.end()), hd.trailers.emplace());
-        hd.endStream = f.hdr.flags & flags::END_STREAM;
-        REQUIRE(hd.endStream == true);
+        hd.end_stream = f.hdr.flags & flags::END_STREAM;
+        REQUIRE(hd.end_stream == true);
       }
     }
   }
@@ -249,8 +248,8 @@ dd::task<hdrs_and_data> test_h2connection::receiveReq(deadline_t deadline, std::
   co_return hd;
 }
 
-dd::task<void> test_h2connection::sendRsp(stream_id_t streamid, std::vector<header> headers,
-                                          http_body_bytes body, bool endstream) {
+dd::task<void> test_h2connection::send_rsp(stream_id_t streamid, std::vector<header> headers,
+                                           http_body_bytes body, bool endstream) {
   FAKE_HTTP2_LOG(INFO, "");
   h2frame hdrs;
 
@@ -261,11 +260,11 @@ dd::task<void> test_h2connection::sendRsp(stream_id_t streamid, std::vector<head
   hdrs.hdr.length = uint32_t(hdrs.data.size());
   hdrs.hdr.flags = flags::END_HEADERS;
   hdrs.hdr.type = frame_e::HEADERS;
-  hdrs.hdr.streamId = streamid;
+  hdrs.hdr.streamid = streamid;
   if (body.empty() && endstream) {
     hdrs.hdr.flags |= flags::END_STREAM;
   }
-  co_await sendFrame(std::move(hdrs));
+  co_await send_frame(std::move(hdrs));
   if (body.empty()) {
     co_return;
   }
@@ -276,26 +275,26 @@ dd::task<void> test_h2connection::sendRsp(stream_id_t streamid, std::vector<head
   if (endstream) {
     data.hdr.flags = flags::END_STREAM;
   }
-  data.hdr.streamId = streamid;
+  data.hdr.streamid = streamid;
   data.data = std::move(body);
-  co_await sendFrame(std::move(data));
+  co_await send_frame(std::move(data));
 }
 
-dd::task<void> test_h2connection::sendHeaders(stream_id_t streamid, std::vector<header> headers,
-                                              bool endstream) {
+dd::task<void> test_h2connection::send_headers(stream_id_t streamid, std::vector<header> headers,
+                                               bool endstream) {
   FAKE_HTTP2_LOG(INFO, "");
-  // reuse sendReq, which will only send one HEADERS frame
-  return sendRsp(streamid, std::move(headers), {}, endstream);
+  // reuse `send_req`, which will only send one HEADERS frame
+  return send_rsp(streamid, std::move(headers), {}, endstream);
 }
 
-dd::task<void> test_h2connection::sendReq(stream_id_t streamid, std::vector<header> headers,
-                                          http_body_bytes body, bool endstream) {
+dd::task<void> test_h2connection::send_req(stream_id_t streamid, std::vector<header> headers,
+                                           http_body_bytes body, bool endstream) {
   REQUIRE(is_client());
-  return sendRsp(streamid, std::move(headers), std::move(body), endstream);
+  return send_rsp(streamid, std::move(headers), std::move(body), endstream);
 }
 
-dd::task<void> test_h2connection::sendRawHdr(uint32_t streamId, std::span<const byte_t> headers,
-                                             bool end_stream, bool split) {
+dd::task<void> test_h2connection::send_raw_hdr(uint32_t streamid, std::span<const byte_t> headers,
+                                               bool end_stream, bool split) {
   FAKE_HTTP2_LOG(INFO, "");
   if (split) {
     fuzzing::fuzzer fuz;
@@ -303,7 +302,7 @@ dd::task<void> test_h2connection::sendRawHdr(uint32_t streamId, std::span<const 
     for (std::span chunk : fuz.chunks(headers)) {
       h2frame f;
       f.hdr.length = uint32_t(chunk.size());
-      f.hdr.streamId = streamId;
+      f.hdr.streamid = streamid;
       f.hdr.type = first ? frame_e::HEADERS : frame_e::CONTINUATION;
       if (first && end_stream)
         f.hdr.flags |= flags::END_STREAM;
@@ -315,35 +314,35 @@ dd::task<void> test_h2connection::sendRawHdr(uint32_t streamId, std::span<const 
       first = false;
       f.data.assign(chunk.begin(), chunk.end());
 
-      co_await sendFrame(std::move(f));
+      co_await send_frame(std::move(f));
     }
   } else {  // !split
     h2frame f;
     f.hdr.length = uint32_t(headers.size());
     f.hdr.type = frame_e::HEADERS;
     f.hdr.flags = flags::END_HEADERS;
-    f.hdr.streamId = streamId;
+    f.hdr.streamid = streamid;
     if (end_stream)
       f.hdr.flags |= flags::END_STREAM;
     f.data.assign(headers.begin(), headers.end());
 
-    co_await sendFrame(std::move(f));
+    co_await send_frame(std::move(f));
   }
 }
 
-dd::task<void> test_h2connection::sendRawContinuation(stream_id_t streamId, std::span<byte_t> headers,
-                                                      bool end_headers) {
+dd::task<void> test_h2connection::send_raw_continuation(stream_id_t streamid, std::span<byte_t> headers,
+                                                        bool end_headers) {
   FAKE_HTTP2_LOG(INFO, "");
   h2frame f;
   f.hdr = {
       .length = uint32_t(headers.size()),
       .type = frame_e::CONTINUATION,
       .flags = end_headers ? flags::END_HEADERS : flags::EMPTY_FLAGS,
-      .streamId = streamId,
+      .streamid = streamid,
   };
   f.data.assign(headers.begin(), headers.end());
 
-  co_await sendFrame(std::move(f));
+  co_await send_frame(std::move(f));
 }
 
 std::vector<byte_t> test_h2connection::encode_headers(std::vector<header> hdrs) {
@@ -356,43 +355,43 @@ std::vector<byte_t> test_h2connection::encode_headers(std::vector<header> hdrs) 
   return bytes;
 }
 
-dd::task<void> test_h2connection::sendData(uint32_t streamId, std::string_view body, bool endStream) {
+dd::task<void> test_h2connection::send_data(uint32_t streamid, std::string_view body, bool end_stream) {
   FAKE_HTTP2_LOG(INFO, "");
 
-  uint32_t bodySize = static_cast<uint32_t>(body.size());
-  REQUIRE(bodySize);  // check data
+  uint32_t body_size = static_cast<uint32_t>(body.size());
+  REQUIRE(body_size);  // check data
   h2frame f;
   f.hdr.type = frame_e::DATA;
   f.hdr.length = uint32_t(body.size());
-  f.hdr.streamId = streamId;
-  f.hdr.flags = endStream ? flags::END_STREAM : flags::EMPTY_FLAGS;
+  f.hdr.streamid = streamid;
+  f.hdr.flags = end_stream ? flags::END_STREAM : flags::EMPTY_FLAGS;
   f.data.assign(body.begin(), body.end());
-  return sendFrame(std::move(f));
+  return send_frame(std::move(f));
 }
 
-dd::task<void> test_h2connection::sendWindowSizeIncrement(uint32_t streamId, uint32_t increment) {
+dd::task<void> test_h2connection::send_window_size_increment(uint32_t streamid, uint32_t increment) {
   FAKE_HTTP2_LOG(INFO, "");
 
   std::vector<byte_t> bytes;
-  window_update_frame::form(streamId, increment, std::back_inserter(bytes));
+  window_update_frame::form(streamid, increment, std::back_inserter(bytes));
 
-  return sendRawFrame(std::move(bytes));
+  return send_raw_frame(std::move(bytes));
 }
 
-dd::task<h2frame> test_h2connection::nextFrame(deadline_t d, ping_e pingbehavior, window_e windowbehavior,
-                                               std::source_location loc) {
+dd::task<h2frame> test_h2connection::next_frame(deadline_t d, ping_e pingbehavior, window_e windowbehavior,
+                                                std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
   do {
     h2frame frame;
 
-    frame = co_await receiveFrame(d, loc);
+    frame = co_await receive_frame(d, loc);
 
     if (frame.hdr.type == frame_e::PING) {
       switch (pingbehavior) {
         case ping_e::RESPONSE:
           if (!(frame.hdr.flags & flags::ACK)) {
             frame.hdr.flags &= flags::ACK;
-            co_await sendFrame(std::move(frame));
+            co_await send_frame(std::move(frame));
           }
           continue;
         case ping_e::ERROR:
@@ -416,7 +415,7 @@ dd::task<h2frame> test_h2connection::nextFrame(deadline_t d, ping_e pingbehavior
   } while (true);
 }
 
-dd::task<void> test_h2connection::receiveClientMagic(std::source_location) {
+dd::task<void> test_h2connection::receive_client_magic(std::source_location) {
   FAKE_HTTP2_LOG(INFO, "");
   byte_t buf[sizeof(CONNECTION_PREFACE)];
   io_error_code ec;
@@ -425,7 +424,7 @@ dd::task<void> test_h2connection::receiveClientMagic(std::source_location) {
   REQUIRE(memcmp(buf, CONNECTION_PREFACE, sizeof(CONNECTION_PREFACE)) == 0);
 }
 
-dd::task<void> test_h2connection::sendFrame(h2frame frame) {
+dd::task<void> test_h2connection::send_frame(h2frame frame) {
   FAKE_HTTP2_LOG(INFO, "sending frame {}", frame.hdr);
   assert(frame.data.size() == frame.hdr.length);
   if (frame.data.capacity() == 0)
@@ -441,13 +440,13 @@ dd::task<void> test_h2connection::sendFrame(h2frame frame) {
   REQUIRE(!ec);
 }
 
-dd::task<void> test_h2connection::sendRawFrame(std::vector<byte_t> bytes) {
+dd::task<void> test_h2connection::send_raw_frame(std::vector<byte_t> bytes) {
   FAKE_HTTP2_LOG(INFO, "sending raw frame: {} bytes", bytes.size());
   io_error_code ec;
   co_await con->write(bytes, ec);
 }
 
-dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_location loc) {
+dd::task<h2frame> test_h2connection::receive_frame(deadline_t d, std::source_location loc) {
   bool done = false;  // avoid dangling
 
   auto f = [&](test_h2connection& self) -> dd::task<h2frame> {
@@ -471,7 +470,8 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
 #ifdef HTTP2_ENABLE_TRACE
     if (frame.hdr.type == frame_e::GOAWAY) {
       auto gf = goaway_frame::parse(frame.hdr, frame.data);
-      FAKE_HTTP2_LOG(TRACE, "receive GOAWAY frame, ec: {}, debugInfo: {}", e2str(gf.errorCode), gf.debugInfo);
+      FAKE_HTTP2_LOG(TRACE, "receive GOAWAY frame, ec: {}, debug_info: {}", e2str(gf.error_code),
+                     gf.debug_info);
     }
 #endif
     co_return frame;
@@ -481,7 +481,7 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
   timer.set_callback([&](bool canceled) {
     if (canceled)
       return;
-    FAKE_HTTP2_LOG(ERROR, "receiveFrame: deadline reached {}", sourceloc_str(loc));
+    FAKE_HTTP2_LOG(ERROR, "receive_frame: deadline reached {}", sourceloc_str(loc));
     con->shutdown(reqerr_e::TIMEOUT);
   });
   h2frame res = co_await f(*this);
@@ -489,14 +489,14 @@ dd::task<h2frame> test_h2connection::receiveFrame(deadline_t d, std::source_loca
   co_return res;
 }
 
-dd::task<void> test_h2connection::sendClientMagic() {
+dd::task<void> test_h2connection::send_client_magic() {
   FAKE_HTTP2_LOG(INFO, "");
   io_error_code ec;
   co_await con->write(CONNECTION_PREFACE, ec);
   REQUIRE(!ec);
 }
 
-dd::task<void> test_h2connection::waitConnectionDropped(deadline_t deadline, std::source_location loc) {
+dd::task<void> test_h2connection::wait_connection_dropped(deadline_t deadline, std::source_location loc) {
   FAKE_HTTP2_LOG(INFO, "");
   any_timer timer = con->ioctx.create_timer();
   timer.arm(deadline);
