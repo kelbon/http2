@@ -74,9 +74,8 @@ struct hreq_template {
     r.request.headers = gen_headers(fuz, invalid);
     r.request.body = gen_body(fuz);
     r.trailers = gen_trailers(fuz, invalid);
-    if (fuz.rbool(deadline_prob)) {
+    if (fuz.rbool(deadline_prob))
       r.deadline = deadline_after(std::chrono::milliseconds(fuz.rint(500, 5000)));
-    }
     r.is_valid = !invalid;
     return r;
   }

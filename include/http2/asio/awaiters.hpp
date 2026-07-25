@@ -109,9 +109,8 @@ struct resolve_operation {
       char bytes[32] = {};
       auto [ptr, ec] = std::to_chars(bytes, bytes + 32, ep.port);
       assert(ec == std::errc{});
-      if (ep.port != 0) {
+      if (ep.port != 0)
         portstr = std::string_view(bytes, ptr);
-      }
       resolver.async_resolve(std::string_view(*dn), portstr, std::forward<T>(cb));
     } else {
       auto* ip = ep.ipaddr();

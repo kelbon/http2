@@ -79,9 +79,8 @@ struct hdrs_and_data {
 
   std::string_view find_hdr(std::string_view name) {
     auto it = std::find_if(headers.begin(), headers.end(), [name](auto& v) { return v.name == name; });
-    if (it != headers.end()) {
+    if (it != headers.end())
       return it->value;
-    }
 
     return {};
   }

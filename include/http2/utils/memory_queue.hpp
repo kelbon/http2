@@ -80,9 +80,8 @@ struct memory_queue {
 
   friend void intrusive_ptr_release(memory_queue* p) noexcept {
     --p->refcount;
-    if (p->refcount == 0) {
+    if (p->refcount == 0)
       delete p;
-    }
   }
 };
 

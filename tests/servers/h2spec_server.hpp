@@ -8,9 +8,8 @@ namespace http2 {
 
 inline dd::channel<std::span<const byte_t>> streambody() {
   std::string_view answer = "hello world";
-  for (char const& c : answer) {
+  for (char const& c : answer)
     co_yield {(const byte_t*)&c, 1};
-  }
 }
 
 struct h2spec_server : http2_server {
@@ -37,9 +36,8 @@ struct h2spec_server : http2_server {
         throw http2::stream_error(errc_e::PROTOCOL_ERROR, ctx.streamid(),
                                   "\"content-length\" does not equal to DATA len");
     }
-    if (answer_stream) {
+    if (answer_stream)
       co_return ctx.stream_response(200, {}, streambody());
-    }
     http_response rsp;
     rsp.status = 200;
     std::string_view answer = "hello world";

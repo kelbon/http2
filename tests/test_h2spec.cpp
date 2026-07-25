@@ -19,12 +19,10 @@ static void run_h2spec() try {
   bp::system(command, bp::std_out > out, bp::std_err > bp::null);
   std::string output = out.get();
 
-  if (output.find("146 tests, 145 passed, 0 skipped, 1 failed") == output.npos) {
+  if (output.find("146 tests, 145 passed, 0 skipped, 1 failed") == output.npos)
     std::exit(EXIT_FAILURE);
-  }
-  if (output.find("4.2. Maximum Table Size") == output.npos) {
+  if (output.find("4.2. Maximum Table Size") == output.npos)
     std::exit(EXIT_FAILURE);
-  }
   g_test_done.store(true, std::memory_order::release);
 } catch (bp::process_error const& e) {
   std::exit(EXIT_FAILURE);

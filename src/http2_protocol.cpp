@@ -372,49 +372,41 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
   while (in != e) {
     d.decode_header(in, e, header);
     if (!header)  // skip dynamic size updates
-    {
       continue;
-    }
     std::string_view hval = header.value.str();
     if (header.name == ":path") {
-      if (path_parsed) {
+      if (path_parsed)
         throw duplicated_pseudoheader(":path");
-      }
       path_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       req.path = hval;
-      if (req.path.empty()) {
+      if (req.path.empty())
         throw protocol_error(errc_e::PROTOCOL_ERROR, ":path header is empty");
-      }
     } else if (header.name == ":method") {
-      if (method_parsed) {
+      if (method_parsed)
         throw duplicated_pseudoheader(":method");
-      }
       method_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       (void)efromstr(hval, req.method);
     } else if (header.name == ":scheme") {
-      if (scheme_parsed) {
+      if (scheme_parsed)
         throw duplicated_pseudoheader(":scheme");
-      }
       scheme_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       (void)efromstr(hval, req.scheme);
     } else if (header.name == ":authority") {
-      if (authority_parsed) {
+      if (authority_parsed)
         throw duplicated_pseudoheader(":authority");
-      }
       authority_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       req.authority = hval;
     } else if (header.name == "content-type") {
-      if (contenttype_parsed) {
+      if (contenttype_parsed)
         throw duplicated_pseudoheader("content-type");
-      }
       contenttype_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
@@ -425,9 +417,8 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
   }
   while (in != e) {
     d.decode_header(in, e, header);
-    if (!header) {
+    if (!header)
       continue;
-    }
   push_header:
     validate_header_name(header, s.streamid);
     if (!s.use_bytes(header.name.str().size() + header.value.str().size())) [[unlikely]]

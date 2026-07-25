@@ -27,9 +27,8 @@ inline void intrusive_ptr_add_ref(writer_callbacks* p) noexcept {
 
 inline void intrusive_ptr_release(writer_callbacks* p) noexcept {
   --p->refcount;
-  if (p->refcount == 0) {
+  if (p->refcount == 0)
     delete p;
-  }
 }
 
 using writer_callbacks_ptr = boost::intrusive_ptr<writer_callbacks>;

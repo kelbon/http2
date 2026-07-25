@@ -12,14 +12,11 @@ namespace bi = boost::intrusive;
 namespace http2 {
 
 template <typename INTRUSIVE_CONTAINER>
-static void
-erase_byref(INTRUSIVE_CONTAINER &c,
-            typename INTRUSIVE_CONTAINER::value_type &node) noexcept {
-  if constexpr (requires { INTRUSIVE_CONTAINER::s_iterator_to(node); }) {
+static void erase_byref(INTRUSIVE_CONTAINER& c, typename INTRUSIVE_CONTAINER::value_type& node) noexcept {
+  if constexpr (requires { INTRUSIVE_CONTAINER::s_iterator_to(node); })
     c.erase(INTRUSIVE_CONTAINER::s_iterator_to(node));
-  } else {
+  else
     c.erase(c.iterator_to(node));
-  }
 }
 // need to know if node is linked or not, so always use safe_link (container's
 // erase will reset node)
@@ -27,4 +24,4 @@ constexpr inline bi::link_mode_type DEFAULT_LINK_MODE = bi::safe_link;
 
 using link_option_t = bi::link_mode<DEFAULT_LINK_MODE>;
 
-} // namespace http2
+}  // namespace http2

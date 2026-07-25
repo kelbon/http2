@@ -103,9 +103,8 @@ struct fuzzer {
     assert(possiblechars.find_first_not_of('X') != std::string_view::npos);
     std::string r(mask);
     for (char& c : r) {
-      while (c == 'X') {
+      while (c == 'X')
         c = select(possiblechars);
-      }
     }
     return r;
   }
@@ -160,9 +159,8 @@ struct fuzzer {
   void run_until(deadline_t d, auto condition, auto&&... ioctxs) {
     // should be asio::io_context (not included here)
     std::vector ctxs{std::addressof(ioctxs)...};
-    while (!condition() && !d.is_reached()) {
+    while (!condition() && !d.is_reached())
       select(ctxs)->poll_one();
-    }
     if (d.is_reached())
       throw timeout_exception();
     (ioctxs.poll(), ...);  // do pending jobs if some

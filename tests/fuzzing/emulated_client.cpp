@@ -63,11 +63,9 @@ static move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_co
       if (fuz.rbool()) {
         std::string s = fuz.rstring(fuz.rint(1, 200));
         co_yield {(byte_t*)s.data(), s.size()};
-      } else {
-        if (received.size() != sent.size()) {
-          std::vector s = co_await q->next_chunk();
-          received.append(s.begin(), s.end());
-        }
+      } else if (received.size() != sent.size()) {
+        std::vector s = co_await q->next_chunk();
+        received.append(s.begin(), s.end());
       }
     }
     while (received.size() != sent.size()) {
@@ -147,9 +145,8 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
     }
     co_await yield_on_ioctx(*&client.ioctx());
   }
-  while (done != request_count) {
+  while (done != request_count)
     co_await yield_on_ioctx(*&client.ioctx());
-  }
   co_await client.graceful_stop();
 }
 
