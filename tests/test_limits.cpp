@@ -7,7 +7,7 @@
 
 using namespace http2;
 
-static ssl_context_ptr test_ssl_ctx() {
+static server_ssl_context_ptr test_ssl_ctx() {
   return make_ssl_context_for_server(HTTP2_TLS_DIR "/test_server.crt", HTTP2_TLS_DIR "/test_server.key");
 }
 
@@ -15,7 +15,7 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
   constexpr size_t LIMIT = 1000;
   // set options before client connection
   server.get_options().limit_requests_memory_usage_bytes = LIMIT;
-  auto client = co_await fake_client_connection(ioctx, addr, is_tls_server);
+  auto client = co_await fake_client_connection(ioctx, addr);
   co_await emulate_client_connection(client);
 
   SECTION("regular request") {
@@ -122,7 +122,7 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
 
 SERVER_TEST("server sessions limit", test_ssl_ctx()) {
   server.get_options().limit_clients_count = 0;
-  auto client = co_await fake_client_connection(ioctx, addr, is_tls_server);
+  auto client = co_await fake_client_connection(ioctx, addr);
   try {
     co_await emulate_client_connection(client);
   } catch (...) {
@@ -135,7 +135,7 @@ SERVER_TEST("server sessions limit", test_ssl_ctx()) {
 SERVER_TEST("server CONTINUATION limit", test_ssl_ctx()) {
   constexpr size_t LIMIT = 100;
   server.get_options().max_continuation_len_bytes = LIMIT;
-  auto client = co_await fake_client_connection(ioctx, addr, is_tls_server);
+  auto client = co_await fake_client_connection(ioctx, addr);
   co_await emulate_client_connection(client);
   constexpr size_t FIRST_CHUNK = 10;
   static_assert(FIRST_CHUNK < LIMIT);

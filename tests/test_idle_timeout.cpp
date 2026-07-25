@@ -7,7 +7,7 @@ using namespace std::chrono_literals;
 SERVER_TEST("idle timeout") {
   // проверка происходит раз в 100 мс, так что таймаут по бездействию не может быть слишком маленьким
   server.get_options().idleTimeout = 50ms;
-  auto client = co_await fake_client_connection(ioctx, addr, /*tls=*/false);
+  auto client = co_await fake_client_connection(ioctx, addr);
   co_await emulate_client_connection(client);
 
   bool with_request = GENERATE(false, true);

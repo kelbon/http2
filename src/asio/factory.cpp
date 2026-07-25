@@ -212,7 +212,7 @@ any_io_context make_asio_io_context(tcp_connection_options opts) {
   return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(opts)); }});
 }
 
-any_io_context make_asio_tls_io_context(asio::io_context& ctx, ssl_context_ptr ssl,
+any_io_context make_asio_tls_io_context(asio::io_context& ctx, client_ssl_context_ptr ssl,
                                         tcp_connection_options opts) {
   if (ssl)
     return any_io_context(
@@ -221,18 +221,30 @@ any_io_context make_asio_tls_io_context(asio::io_context& ctx, ssl_context_ptr s
     return make_asio_io_context(ctx, std::move(opts));
   }
 }
+
+any_io_context make_asio_tls_io_context(asio::io_context& ctx, server_ssl_context_ptr ssl,
+                                        tcp_connection_options opts) {
+  if (ssl)
+    return any_io_context(
+        aa::inplaced{[&] { return asio_tls_ref_factory(ctx, std::move(ssl), std::move(opts)); }});
+  else {
+    return make_asio_io_context(ctx, std::move(opts));
+  }
+}
+
 // TODO rename (одна функция просто по дефолту = nullptr)
-any_io_context make_asio_tls_io_context(ssl_context_ptr ssl, tcp_connection_options opts) {
+any_io_context make_asio_tls_io_context(client_ssl_context_ptr ssl, tcp_connection_options opts) {
   if (ssl)
     return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(opts)); }});
   else
     return make_asio_io_context(std::move(opts));
 }
 
-any_io_context make_asio_tls_io_context(std::vector<std::filesystem::path> certs) {
-  tcp_connection_options options;
-  options.additional_ssl_certificates = std::move(certs);
-  return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(options)); }});
+any_io_context make_asio_tls_io_context(server_ssl_context_ptr ssl, tcp_connection_options opts) {
+  if (ssl)
+    return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(opts)); }});
+  else
+    return make_asio_io_context(std::move(opts));
 }
 
 static dd::task<any_connection_t> do_create_connection_client(auto& self, endpoint ep, deadline_t deadline) {
@@ -374,8 +386,9 @@ static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, en
   if (self.starter)
     co_await self.starter(tcp_sock, deadline);
   self.options.apply(tcp_sock);
-  assert(self.sslctx);
-  std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), self.sslctx));
+  if (!self.client_sslctx)
+    self.client_sslctx = make_ssl_context_for_client(self.options.additional_ssl_certificates).p;
+  std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), self.client_sslctx));
   if (self.options.host_for_name_verification) {
     res->sock.set_verify_mode(ssl::verify_peer);
     res->sock.set_verify_callback(
@@ -393,13 +406,14 @@ static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, en
   co_return any_connection_t(std::move(res));
 }
 
-asio_tls_factory::asio_tls_factory(tcp_connection_options opts, starter_t s)
-    : asio_tls_factory(make_ssl_context_for_http2(opts.additional_ssl_certificates), opts, std::move(s)) {
+asio_tls_factory::asio_tls_factory(client_ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
+    : asio_factory_base(), options(std::move(opts)), client_sslctx(std::move(ctx.p)), starter(std::move(s)) {
+  assert(client_sslctx != nullptr);
 }
 
-asio_tls_factory::asio_tls_factory(ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
-    : asio_factory_base(), options(std::move(opts)), sslctx(std::move(ctx)), starter(std::move(s)) {
-  assert(sslctx != nullptr);
+asio_tls_factory::asio_tls_factory(server_ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
+    : asio_factory_base(), options(std::move(opts)), server_sslctx(std::move(ctx.p)), starter(std::move(s)) {
+  assert(server_sslctx != nullptr);
 }
 
 dd::task<any_connection_t> asio_tls_factory::create_connection_client(endpoint endpoint,
@@ -439,22 +453,33 @@ struct asio_tls_acceptor {
 };
 
 any_acceptor asio_tls_factory::create_acceptor(internet_address addr, bool reuse_address) {
-  return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}, sslctx};
+  assert(server_sslctx);
+  return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address},
+                           server_sslctx};
 }
 
-asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, tcp_connection_options opts, starter_t s)
-    : asio_tls_ref_factory(ctx, make_ssl_context_for_http2(opts.additional_ssl_certificates), opts,
-                           std::move(s)) {
-}
-
-asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, ssl_context_ptr ssl,
+asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, client_ssl_context_ptr ssl,
                                            tcp_connection_options opts, starter_t s)
-    : asio_factory_ref_base(ctx), options(std::move(opts)), sslctx(std::move(ssl)), starter(std::move(s)) {
-  assert(sslctx != nullptr);
+    : asio_factory_ref_base(ctx),
+      options(std::move(opts)),
+      client_sslctx(std::move(ssl.p)),
+      starter(std::move(s)) {
+  assert(client_sslctx != nullptr);
+}
+
+asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, server_ssl_context_ptr ssl,
+                                           tcp_connection_options opts, starter_t s)
+    : asio_factory_ref_base(ctx),
+      options(std::move(opts)),
+      server_sslctx(std::move(ssl.p)),
+      starter(std::move(s)) {
+  assert(server_sslctx != nullptr);
 }
 
 any_acceptor asio_tls_ref_factory::create_acceptor(internet_address addr, bool reuse_address) {
-  return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}, sslctx};
+  assert(server_sslctx);
+  return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address},
+                           server_sslctx};
 }
 
 dd::task<any_connection_t> asio_tls_ref_factory::create_connection_client(endpoint endpoint,
