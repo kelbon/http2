@@ -1,8 +1,8 @@
 
 
-#include "http2/http2_send_frames.hpp"
+#include "hidi/http2_send_frames.hpp"
 
-#include "http2/http2_connection.hpp"
+#include "hidi/http2_connection.hpp"
 
 namespace hidi {
 

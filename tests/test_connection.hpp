@@ -9,17 +9,17 @@
 #include <map>
 #include <set>
 
-#include <http2/http2_protocol.hpp>
-#include <http2/utils/deadline.hpp>
-#include <http2/http_body_bytes.hpp>
-#include <http2/utils/unique_name.hpp>
-#include <http2/asio/ssl_context.hpp>
-#include <http2/asio/awaiters.hpp>
-#include <http2/asio/factory.hpp>
-#include <http2/http2_client.hpp>
-#include <http2/http2_connection.hpp>
-#include <http2/http2_server.hpp>
-#include <http2/asio/asio_executor.hpp>
+#include "hidi/http2_protocol.hpp"
+#include "hidi/utils/deadline.hpp"
+#include "hidi/http_body_bytes.hpp"
+#include "hidi/utils/unique_name.hpp"
+#include "hidi/asio/ssl_context.hpp"
+#include "hidi/asio/awaiters.hpp"
+#include "hidi/asio/factory.hpp"
+#include "hidi/http2_client.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_server.hpp"
+#include "hidi/asio/asio_executor.hpp"
 #include "fuzzer.hpp"
 
 #include <kelcoro/task.hpp>

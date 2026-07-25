@@ -1,9 +1,9 @@
 
 
-#include "http2/http2_connection.hpp"
+#include "hidi/http2_connection.hpp"
 
-#include "http2/http2_send_frames.hpp"
-#include "http2/logger.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/logger.hpp"
 
 #include <unordered_set>
 #include <zal/zal.hpp>

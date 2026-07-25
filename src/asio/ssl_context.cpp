@@ -1,6 +1,6 @@
-#include "http2/asio/ssl_context.hpp"
-#include "http2/errors.hpp"
-#include "http2/logger.hpp"
+#include "hidi/asio/ssl_context.hpp"
+#include "hidi/errors.hpp"
+#include "hidi/logger.hpp"
 
 #include <filesystem>
 

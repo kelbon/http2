@@ -1,8 +1,8 @@
 
-#include "http2/http2_server.hpp"
+#include "hidi/http2_server.hpp"
 #include "fuzzer.hpp"
-#include "http2/asio/asio_executor.hpp"
-#include "http2/http2_client.hpp"
+#include "hidi/asio/asio_executor.hpp"
+#include "hidi/http2_client.hpp"
 
 #include <boost/stacktrace.hpp>
 #include <csignal>

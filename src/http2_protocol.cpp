@@ -1,9 +1,9 @@
 
 
-#include "http2/http2_protocol.hpp"
+#include "hidi/http2_protocol.hpp"
 
-#include "http2/http_base.hpp"
-#include "http2/http2_connection.hpp"
+#include "hidi/http_base.hpp"
+#include "hidi/http2_connection.hpp"
 
 #include <hpack/hpack.hpp>
 #include <strswitch/strswitch.hpp>

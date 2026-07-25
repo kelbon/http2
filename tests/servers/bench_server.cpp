@@ -1,6 +1,6 @@
 
 #include "benchmark_server.hpp"
-#include <http2/asio/awaiters.hpp>
+#include "hidi/asio/awaiters.hpp"
 
 #include <csignal>
 #include <iostream>

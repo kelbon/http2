@@ -1,6 +1,6 @@
-#include "http2/utils/timer.hpp"
+#include "hidi/utils/timer.hpp"
 
-#include "http2/errors.hpp"
+#include "hidi/errors.hpp"
 
 #include <boost/asio/steady_timer.hpp>
 

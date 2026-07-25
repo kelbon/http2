@@ -1,6 +1,6 @@
-#include <http2/http2_client.hpp>
-#include <http2/asio/factory.hpp>
-#include <http2/http2_server.hpp>
+#include "hidi/http2_client.hpp"
+#include "hidi/asio/factory.hpp"
+#include "hidi/http2_server.hpp"
 #include <fuzzer.hpp>
 
 #include <iostream>
