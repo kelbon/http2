@@ -248,10 +248,8 @@ struct test_h2connection {
 
 // connects to `addr`, returns tls connection after tls handshake if `io` is tls
 inline dd::task<test_h2connection> fake_client_connection(
-    any_io_context_ref io, endpoint addr, bool tls,
-    deadline_t deadline = deadline_after(DEFAULT_CONN_TIMEOUT),
+    any_io_context_ref io, endpoint addr, deadline_t deadline = deadline_after(DEFAULT_CONN_TIMEOUT),
     std::source_location = std::source_location::current()) {
-  // TODO хм по моему при тлс что то не так (TLS не используется вообще)
   auto c = co_await io.create_connection_client(addr, deadline);
   co_return test_h2connection(new h2connection(std::move(c), *&io), /*client=*/true);
 }
@@ -276,7 +274,7 @@ inline dd::task<test_h2connection> fake_server_session(any_io_context_ref ctx, s
     std::abort();
   });
   timer.arm(deadline.tp);
-  any_io_context io = make_asio_tls_io_context(servertls);
+  any_io_context io = make_asio_tls_io_context(server_ssl_context_ptr(servertls));
   any_acceptor a = io.create_acceptor(addr.addr, addr.reuse_address);
   a.listen();
   io_error_code ec;
@@ -352,7 +350,7 @@ inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& en
 }
 
 template <auto* Foo>
-void server_test_impl(std::string_view name, moko3::section_info* section, ssl_context_ptr ssl) {
+void server_test_impl(std::string_view name, moko3::section_info* section, server_ssl_context_ptr ssl) {
   echo_server server(http2_server_options{}, make_asio_tls_io_context(ssl));
   internet_address addr(asio::ip::address_v4::loopback(), /*port_num=*/0);
   addr = server.listen({.addr = addr, .reuse_address = true});

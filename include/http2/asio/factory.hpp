@@ -170,14 +170,17 @@ struct asio_tls_connection : connection_i {
 
 struct asio_tls_factory : asio_factory_base {
   tcp_connection_options options;
-  ssl_context_ptr sslctx;  // never null
   // invoked after tcp handshake (before TLS), may set socket options etc
   starter_t starter;
+  // must be setted for server
+  ssl_context_ptr server_sslctx = nullptr;
+  // optional for client
+  ssl_context_ptr client_sslctx = nullptr;
 
-  // by default creates context for http2 client
-  explicit asio_tls_factory(tcp_connection_options = {}, starter_t = {});
   // pre: ctx != nullptr
-  asio_tls_factory(ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
+  asio_tls_factory(client_ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
+  // pre: ctx != nullptr
+  asio_tls_factory(server_ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
 
   dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
@@ -185,14 +188,20 @@ struct asio_tls_factory : asio_factory_base {
 
 struct asio_tls_ref_factory : asio_factory_ref_base {
   tcp_connection_options options;
-  ssl_context_ptr sslctx;  // never null
   // invoked after tcp handshake (before TLS), may set socket options etc
   starter_t starter;
+  // must be setted for server
+  ssl_context_ptr server_sslctx = nullptr;
+  // optional for client
+  ssl_context_ptr client_sslctx = nullptr;
 
-  // by default creates context for http2 client
-  explicit asio_tls_ref_factory(asio::io_context&, tcp_connection_options = {}, starter_t = {});
   // pre: ctx != nullptr
-  asio_tls_ref_factory(asio::io_context&, ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
+  asio_tls_ref_factory(asio::io_context&, client_ssl_context_ptr ctx, tcp_connection_options = {},
+                       starter_t = {});
+
+  // pre: ctx != nullptr
+  asio_tls_ref_factory(asio::io_context&, server_ssl_context_ptr ctx, tcp_connection_options = {},
+                       starter_t = {});
 
   dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);

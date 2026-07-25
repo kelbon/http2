@@ -41,7 +41,7 @@ struct http2_server {
 
   // if ssl context ptr is nullptr, then its http server (not https)
   // uses asio_factory/asio_tls_factory
-  explicit http2_server(ssl_context_ptr, http2_server_options = {}, tcp_connection_options = {});
+  explicit http2_server(server_ssl_context_ptr, http2_server_options = {}, tcp_connection_options = {});
 
   http2_server(std::filesystem::path certificate, std::filesystem::path server_private_key,
                http2_server_options opts = {})

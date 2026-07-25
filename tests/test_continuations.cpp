@@ -5,7 +5,7 @@
 using namespace http2;
 
 SERVER_TEST("server continuations") {
-  auto client = co_await fake_client_connection(ioctx, addr, /*tls=*/false);
+  auto client = co_await fake_client_connection(ioctx, addr);
   co_await emulate_client_connection(client);
   std::vector<header> hdrs{
       {":method", "GET"},

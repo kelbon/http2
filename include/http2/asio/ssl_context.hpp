@@ -41,15 +41,42 @@ struct ssl_context {
   }
 };
 
-ssl_context_ptr make_ssl_context_for_http2(std::span<const std::filesystem::path> additional_certs,
-                                           const log_context& = empty_log_context);
+// tag
+struct client_ssl_context_ptr {
+  ssl_context_ptr p;
 
-ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::path> additional_certs,
-                                            const log_context& = empty_log_context);
+  explicit client_ssl_context_ptr(ssl_context_ptr p) noexcept : p(std::move(p)) {
+  }
 
-// returns null on error
-ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certificate,
-                                            std::filesystem::path server_private_key,
-                                            const log_context& = empty_log_context);
+  client_ssl_context_ptr(nullptr_t) noexcept : p(nullptr) {
+  }
+
+  explicit operator bool() const noexcept {
+    return p != nullptr;
+  }
+};
+
+// tag
+struct server_ssl_context_ptr {
+  ssl_context_ptr p;
+
+  explicit server_ssl_context_ptr(ssl_context_ptr p) noexcept : p(std::move(p)) {
+  }
+  server_ssl_context_ptr(nullptr_t) noexcept : p(nullptr) {
+  }
+
+  explicit operator bool() const noexcept {
+    return p != nullptr;
+  }
+};
+
+// throw on error
+client_ssl_context_ptr make_ssl_context_for_client(std::span<const std::filesystem::path> additional_certs,
+                                                   const log_context& = empty_log_context);
+
+// throw on error
+server_ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certificate,
+                                                   std::filesystem::path server_private_key,
+                                                   const log_context& = empty_log_context);
 
 }  // namespace http2

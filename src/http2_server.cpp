@@ -311,14 +311,15 @@ http2_server::http2_server(http2_server_options options, any_io_context io)
     : m_impl(std::make_unique<http2_server::impl>(std::move(io), std::move(options), *this)) {
 }
 
-static any_io_context make_server_io_ctx(ssl_context_ptr ssl, tcp_connection_options tcpopts) {
+static any_io_context make_server_io_ctx(server_ssl_context_ptr ssl, tcp_connection_options tcpopts) {
   if (ssl) {
     return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(tcpopts)); }});
   } else {
     return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(tcpopts)); }});
   }
 }
-http2_server::http2_server(ssl_context_ptr ctx, http2_server_options options, tcp_connection_options tcpopts)
+http2_server::http2_server(server_ssl_context_ptr ctx, http2_server_options options,
+                           tcp_connection_options tcpopts)
     : http2_server(std::move(options), make_server_io_ctx(std::move(ctx), std::move(tcpopts))) {
 }
 

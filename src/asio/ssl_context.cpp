@@ -29,8 +29,8 @@ static void keylog_callback(const SSL*, const char* line) {
 
 #endif
 
-ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::path> additional_certs,
-                                            const log_context& logctx) {
+static ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::path> additional_certs,
+                                                   const log_context& logctx) {
   namespace ssl = asio::ssl;
   asio::ssl::context_base::method method =
 #ifndef KELHTTP2_DEBUG_SSL_KEYS_FILE
@@ -67,18 +67,18 @@ ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesystem::pat
   return sslctx;
 }
 
-ssl_context_ptr make_ssl_context_for_http2(std::span<const std::filesystem::path> additional_certs,
-                                           const log_context& logctx) {
+client_ssl_context_ptr make_ssl_context_for_client(std::span<const std::filesystem::path> additional_certs,
+                                                   const log_context& logctx) {
   ssl_context_ptr sslctx = make_ssl_context_for_http11(additional_certs, logctx);
   const unsigned char alpn_protos[] = {0x02, 'h', '2'};  // HTTP/2
   if (0 != SSL_CTX_set_alpn_protos(sslctx->ctx.native_handle(), alpn_protos, sizeof(alpn_protos)))
     throw network_exception{"ALPN ctx broken {}", ERR_error_string(ERR_get_error(), nullptr)};
-  return sslctx;
+  return client_ssl_context_ptr{std::move(sslctx)};
 }
 
-ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certificate,
-                                            std::filesystem::path server_private_key,
-                                            const log_context& logctx) {
+server_ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certificate,
+                                                   std::filesystem::path server_private_key,
+                                                   const log_context& logctx) {
   ssl_context_ptr ctx = new ssl_context(asio::ssl::context_base::tls_server);
   ctx->ctx.set_options(boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2 |
                        boost::asio::ssl::context::single_dh_use);
@@ -88,16 +88,18 @@ ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certificate,
   if (ec) {
     HTTP2_LOG(logctx, ERROR, "cannot load server certificate, path {}, err: {}", certificate.string(),
               ec.what());
-    return nullptr;
+    throw network_exception("cannot load server certificate, path {}, err: {}", certificate.string(),
+                            ec.what());
   }
   ec = ctx->ctx.use_private_key_file(std::filesystem::absolute(server_private_key).string(),
                                      asio::ssl::context::pem, ec);
   if (ec) {
     HTTP2_LOG(logctx, ERROR, "cannot load server private key file, path {}, err: {}",
               server_private_key.string(), ec.what());
-    return nullptr;
+    throw network_exception("cannot load server private key file, path {}, err: {}",
+                            server_private_key.string(), ec.what());
   }
-  return ctx;
+  return server_ssl_context_ptr{std::move(ctx)};
 }
 
 }  // namespace http2
