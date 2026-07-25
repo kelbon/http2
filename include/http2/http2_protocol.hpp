@@ -517,9 +517,8 @@ static O form_connection_initiation(settings_t settings, O out) {
 // throws on control flow errors (stream error)
 // handles both positive (default) and negative (only SETTINGS change) increments
 inline void increment_window_size(cfint_t& size, int32_t window_size_increment, stream_id_t streamid) {
-  if (window_size_increment == 0) {
+  if (window_size_increment == 0)
     throw protocol_error(errc_e::FLOW_CONTROL_ERROR, "invalid window size increment: zero");
-  }
   // avoid overflow (and negative overflow)
   // rfc does not specify minimal negative value for window size,
   // this implementation uses -MAX_WINDOW_SIZE as negative minimum
@@ -560,13 +559,11 @@ inline void decrease_window_size(cfint_t& size, int32_t decrease, const log_cont
 
 // removes padding for DATA/HEADERS with PADDED flag
 inline void strip_padding(std::span<byte_t>& bytes) {
-  if (bytes.empty()) {
+  if (bytes.empty())
     throw protocol_error(errc_e::PROTOCOL_ERROR, "empty frame with PADDED flag");
-  }
   size_t padlen = bytes[0];
-  if (padlen >= bytes.size()) {
+  if (padlen >= bytes.size())
     throw protocol_error(errc_e::PROTOCOL_ERROR, "padding len > frame len");
-  }
   remove_prefix(bytes, 1);
   remove_suffix(bytes, padlen);
 }

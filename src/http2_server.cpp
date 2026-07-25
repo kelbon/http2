@@ -150,9 +150,8 @@ struct http2_server::impl {
     assert(std::this_thread::get_id() == tid);
 
     h2connection_ptr http2con = new h2connection(std::move(socket), ioctx_ref());
-    if (!http2con || !creator) {
+    if (!http2con || !creator)
       co_return;
-    }
     if (sessionsgate.is_closed()) {
       http2con->shutdown(reqerr_e::CANCELLED);
       HTTP2_LOG(logctx(), INFO, "session completed, but server stopped (server session is not created)");
@@ -214,9 +213,8 @@ struct http2_server::impl {
       goto drop_session;
     }
 
-    if (sessionsgate.is_closed()) {
+    if (sessionsgate.is_closed())
       goto drop_session;
-    }
 
     (void)start_writer_for_server(session.connection, sleepcb, request_terminate, options.force_disable_hpack,
                                   session.connection_parts_gate.hold());
@@ -262,9 +260,8 @@ struct http2_server::impl {
   void stop_listeners() {
     assert(std::this_thread::get_id() == tid);
     HTTP2_LOG_TRACE(logctx(), "shutdown: listeners size {}", listeners.size());
-    for (auto& l : listeners) {
+    for (auto& l : listeners)
       l.close();
-    }
     // after this function sessiongate must be closed to ensure all listeners are done
   }
 
@@ -295,9 +292,8 @@ struct http2_server::impl {
       HTTP2_LOG_TRACE(logctx(), "terminate ended");
     };
     auto closeg = sessionsgate.close();
-    for (auto& session : sessions) {
+    for (auto& session : sessions)
       session.request_terminate();
-    }
     stop_listeners();
     co_await closeg;
     co_await yield_on_ioctx(ioctx_ref());
@@ -312,11 +308,10 @@ http2_server::http2_server(http2_server_options options, any_io_context io)
 }
 
 static any_io_context make_server_io_ctx(server_ssl_context_ptr ssl, tcp_connection_options tcpopts) {
-  if (ssl) {
+  if (ssl)
     return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(tcpopts)); }});
-  } else {
+  else
     return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(tcpopts)); }});
-  }
 }
 http2_server::http2_server(server_ssl_context_ptr ctx, http2_server_options options,
                            tcp_connection_options tcpopts)

@@ -141,9 +141,8 @@ dd::task<void> test_h2connection::send_settings() {
   settings.max_concurrent_streams = 0x7fffffff;
   settings.max_frame_size = m_maxFrameSize;
   settings.deprecated_priority_disabled = true;
-  if (m_headerTabSize.has_value()) {
+  if (m_headerTabSize.has_value())
     settings.header_table_size = *m_headerTabSize;
-  }
 
   std::vector<byte_t> bytes;
   settings_frame::form(settings, std::back_inserter(bytes));
@@ -253,28 +252,24 @@ dd::task<void> test_h2connection::send_rsp(stream_id_t streamid, std::vector<hea
   FAKE_HTTP2_LOG(INFO, "");
   h2frame hdrs;
 
-  for (auto&& [name, value, _] : headers) {
+  for (auto&& [name, value, _] : headers)
     con->encoder.encode(name, value, std::back_inserter(hdrs.data));
-  }
   // hope hdrs size < max frame size in tests
   hdrs.hdr.length = uint32_t(hdrs.data.size());
   hdrs.hdr.flags = flags::END_HEADERS;
   hdrs.hdr.type = frame_e::HEADERS;
   hdrs.hdr.streamid = streamid;
-  if (body.empty() && endstream) {
+  if (body.empty() && endstream)
     hdrs.hdr.flags |= flags::END_STREAM;
-  }
   co_await send_frame(std::move(hdrs));
-  if (body.empty()) {
+  if (body.empty())
     co_return;
-  }
   h2frame data;
   REQUIRE(body.size() <= MIN_MAX_FRAME_LEN);
   data.hdr.length = uint32_t(body.size());
   data.hdr.type = frame_e::DATA;  // -V1048
-  if (endstream) {
+  if (endstream)
     data.hdr.flags = flags::END_STREAM;
-  }
   data.hdr.streamid = streamid;
   data.data = std::move(body);
   co_await send_frame(std::move(data));
@@ -432,11 +427,10 @@ dd::task<void> test_h2connection::send_frame(h2frame frame) {
   auto* b = frame.data.data() - FRAME_HEADER_LEN;
   frame.hdr.form(b);
   io_error_code ec;
-  if (frame.data.size() == 0) {
+  if (frame.data.size() == 0)
     co_await con->write({b, FRAME_HEADER_LEN}, ec);
-  } else {
+  else
     co_await con->write({b, frame.data.data() + frame.data.size()}, ec);
-  }
   REQUIRE(!ec);
 }
 

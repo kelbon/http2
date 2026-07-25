@@ -95,9 +95,8 @@ struct ping_callback {
       lastid = con->laststartedstreamid;
       return;
     }
-    if (!con->pingdeadlinetimer.is_armed()) {
+    if (!con->pingdeadlinetimer.is_armed())
       con->pingdeadlinetimer.arm(pingtimeout);
-    }
     // assume will be ended before client dies (io_ctx)
     send_ping(con, PING_VALUE, /*request_pong=*/true).start_and_detach();
   }
@@ -191,9 +190,8 @@ dd::job http2_client::start_connecting(http2_client* self, deadline_t deadline) 
       if (canceled)
         return;
       new_connection->drop_timeouted();
-      if (!new_connection->timers.empty()) {
+      if (!new_connection->timers.empty())
         new_connection->timeout_warden_timer.arm(new_connection->timers.top()->deadline.tp);
-      }
     });
   } catch (std::exception& e) {
     HTTP2_LOG(self->logctx(), ERROR, "exception while trying to connect: {}", e.what());
@@ -390,9 +388,8 @@ protocol_error:
   goto drop_my_connection;
 network_error:
   reason = ec == boost::asio::error::operation_aborted ? reqerr_e::CANCELLED : reqerr_e::NETWORK_ERR;
-  if (reason == reqerr_e::NETWORK_ERR) {
+  if (reason == reqerr_e::NETWORK_ERR)
     HTTP2_LOG_TRACE(c->logctx, "reader drops connection after network err: {}", ec.what());
-  }
 drop_my_connection:
   self->drop_connection(reason);
 connection_dropped:
@@ -424,9 +421,8 @@ http2_client::http2_client(endpoint host, http2_client_options opts, any_io_cont
 
 noexport::waiter_of_connection::~waiter_of_connection() {
   // in case when .destroy on handle called correctly cancels request
-  if (is_linked()) {
+  if (is_linked())
     erase_byref(client->m_connectionWaiters, *this);
-  }
 }
 
 bool noexport::waiter_of_connection::await_ready() noexcept {
@@ -496,12 +492,10 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
                                                    stream_body_maker_t makebody, deadline_t deadline) {
   assert(request.body.data.empty());
   assert(makebody);
-  if (stop_requested()) [[unlikely]] {
+  if (stop_requested()) [[unlikely]]
     co_return reqerr_e::CANCELLED;
-  }
-  if (deadline.is_reached()) [[unlikely]] {
+  if (deadline.is_reached()) [[unlikely]]
     co_return reqerr_e::TIMEOUT;
-  }
   ++m_requestsInProgress;
   on_scope_exit {
     --m_requestsInProgress;
@@ -662,13 +656,11 @@ dd::task<void> http2_client::graceful_stop() {
   // waiting all requests finish
 
   // prevent new requests on this connection
-  if (con && !con->graceful_shutdown_goaway_sended) {
+  if (con && !con->graceful_shutdown_goaway_sended)
     con->initiate_graceful_shutdown(con->last_initiated_streamid());
-  }
   // wait all requests done
-  while (m_requestsInProgress != 0) {
+  while (m_requestsInProgress != 0)
     co_await sleep(std::chrono::nanoseconds(10), ec);
-  }
   // request stop
   ++m_stopRequested;
   on_scope_exit {

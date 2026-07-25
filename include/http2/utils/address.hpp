@@ -69,11 +69,10 @@ struct endpoint {
   }
 
   std::string fqdn_str() const noexcept {
-    if (auto* x = fqdn()) {
+    if (auto* x = fqdn())
       return *x;
-    } else {
+    else
       return ipaddr()->to_string();
-    }
   }
 
   std::string to_string() const {

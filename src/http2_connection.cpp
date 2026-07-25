@@ -21,12 +21,10 @@ void trace_request_headers(h2stream const& node, bool fromclient, const log_cont
   } else {
     s += std::format(":status: {}\n", node.status);
   }
-  if (!req.body.content_type.empty()) {
+  if (!req.body.content_type.empty())
     s += std::format("content-type: {}\n", req.body.content_type);
-  }
-  for (auto& h : req.headers) {
+  for (auto& h : req.headers)
     s += std::format("name: {}, value: {}\n", h.name(), h.value());
-  }
   HTTP2_LOG_TRACE(logctx, "{}", s);
 }
 
@@ -42,9 +40,8 @@ void intrusive_ptr_add_ref(h2connection* p) noexcept {
 
 void intrusive_ptr_release(h2connection* p) noexcept {
   --p->refcount;
-  if (p->refcount == 0) {
+  if (p->refcount == 0)
     delete p;
-  }
 }
 
 void intrusive_ptr_add_ref(h2stream* p) noexcept {
@@ -75,9 +72,8 @@ void h2stream::receive_trailers_headers(hpack::decoder& decoder, http2_frame_t f
   HTTP2_LOG_TRACE(logctx(), "received HEADERS (trailers): stream: {}, len: {}", frame.header.streamid,
                   frame.header.length);
   constexpr auto mask = flags::END_STREAM | flags::END_HEADERS;
-  if (((frame.header.flags & mask) != mask)) {
+  if (((frame.header.flags & mask) != mask))
     throw protocol_error(errc_e::STREAM_CLOSED, "trailers header without END_STREAM | END_HEADERS");
-  }
   on_scope_exit {
     end_stream_received = true;
   };
@@ -134,9 +130,8 @@ void h2stream::receive_response_headers(hpack::decoder& decoder, http2_frame_t f
   // 199 - last informational status. Informational responses are interim and cannot have trailer section
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.1-4
   // Note: ignores END_STREAM flag for interim responses, not marks it as error
-  if (status > 199) [[unlikely]] {
+  if (status > 199) [[unlikely]]
     return receive_trailers_headers(decoder, frame);
-  }
   on_scope_exit {
     end_stream_received = frame.header.flags & flags::END_STREAM;
   };
@@ -146,9 +141,8 @@ void h2stream::receive_response_headers(hpack::decoder& decoder, http2_frame_t f
   // headers must be decoded to maintain HPACK dynamic table in correct state
   hpack::decode_headers_block(decoder, std::span(in, e), [&](std::string_view name, std::string_view value) {
     HTTP2_LOG_TRACE(this->logctx(), "name: {}, value: {}", name, value);
-    if (on_header_fn) {
+    if (on_header_fn)
       (*on_header_fn)(name, value);
-    }
   });
 }
 
@@ -340,9 +334,8 @@ void h2connection::finish_request(h2stream& node, int status) noexcept {
 
 void h2connection::finish_request_with_user_exception(h2stream& node, std::exception_ptr e) noexcept {
   forget(node);
-  if (!node.task) {
+  if (!node.task)
     return;
-  }
   HTTP2_LOG_TRACE(logctx, "stream {} finished with user exception", node.streamid);
   send_rst_stream(this, node.streamid, errc_e::CANCEL).start_and_detach();
   node.task.promise().set_exception(std::move(e));
@@ -359,9 +352,8 @@ void h2connection::finish_request_with_user_exception(h2stream& node, std::excep
 bool h2connection::rststream_client(rst_stream rstframe) {
   validate_rst_frame(rstframe);
   auto* node = find_response_by_streamid(rstframe.header.streamid);
-  if (!node) {
+  if (!node)
     return false;
-  }
   node->canceled_by_rststream = true;
   finish_request(*node, reqerr_e::SERVER_CANCELLED_REQUEST);
   return true;
@@ -536,9 +528,8 @@ h2connection::response_awaiter h2connection::response_received(h2stream& node) n
   if (node.deadline != deadline_t::never()) {
     bool reschedule = timers.empty() || node.deadline < timers.top()->deadline;
     timers.insert(timers.end(), node);
-    if (reschedule) {
+    if (reschedule)
       timeout_warden_timer.arm(timers.top()->deadline.tp);
-    }
   }
   return response_awaiter{this, &node};
 }
@@ -570,9 +561,8 @@ void h2connection::ignore_frame(http2_frame_t frame) {
       // octets
       // ('data' does not contain padding)
       decrease_window_size(my_window_size, int32_t(frame.header.length), logctx);
-      if (is_closed_stream(frame.header.streamid)) {
+      if (is_closed_stream(frame.header.streamid))
         throw stream_error(errc_e::STREAM_CLOSED, frame.header.streamid, "DATA frame sent for closed stream");
-      }
       if (is_idle_stream(frame.header.streamid)) {
         throw protocol_error(
             errc_e::PROTOCOL_ERROR,

@@ -106,9 +106,8 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
     };
     h2connection_ptr con = client.get_inner_connection();
     bytes_t hdrs_bytes;
-    for (auto& h : hdrs) {
+    for (auto& h : hdrs)
       con->encoder.encode_header_and_cache(h.name, h.value, std::back_inserter(hdrs_bytes));
-    }
     hpack::find_result_t r = con->encoder.dyntab.find(hdrs.back().name, hdrs.back().value);
     REQUIRE(r.value_indexed && r.header_name_index != 0);
     // 50 * ("big_header".len() + 100)) > LIMIT

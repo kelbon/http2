@@ -84,9 +84,8 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // marks client as not idle
   void received_frame() {
     ++framecount;
-    if (connection->pingdeadlinetimer.is_armed()) [[unlikely]] {  // client not idle
+    if (connection->pingdeadlinetimer.is_armed()) [[unlikely]]  // client not idle
       connection->pingdeadlinetimer.cancel();
-    }
   }
 
   // creates new stream node, then server reader will collect request parts
@@ -166,9 +165,8 @@ inline void intrusive_ptr_add_ref(server_session* p) noexcept {
 
 inline void intrusive_ptr_release(server_session* p) noexcept {
   --p->refcount;
-  if (p->refcount == 0) {
+  if (p->refcount == 0)
     delete p;
-  }
 }
 
 using server_session_ptr = boost::intrusive_ptr<server_session>;

@@ -117,9 +117,8 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
   accepted_settings_frame().form(buf);
   HTTP2_LOG_TRACE(con->logctx, "sending settings ACK");
   co_await con->write(std::span(buf, H2FHL), ec);
-  if (ec) {
+  if (ec)
     throw network_exception("cannot send accepted settings frame to server, {}", ec.what());
-  }
 
   // SETTINGS frame with ACK flag will be handled later in
   // 'h2connection::server_settings_changed' as regular frame

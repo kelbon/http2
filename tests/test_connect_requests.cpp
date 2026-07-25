@@ -57,9 +57,8 @@ static streaming_body_t do_request(http_response rsp, memory_queue_ptr q, reques
   REQUIRE(rsp.headers == http_headers_t{{"abc", "edf"}, {"ok", "accepted"}});
   std::string data = "hello world data word big liloaf";
 
-  for (char& c : data) {
+  for (char& c : data)
     co_yield {(byte_t*)&c, 1};
-  }
   std::string received;
   while (data != received) {
     auto c = co_await q->next_chunk();

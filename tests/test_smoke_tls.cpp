@@ -107,9 +107,8 @@ void check_streaming_response(const http2::http_response& rsp) {
 }
 
 http2::streaming_body_t makebody(http2::http_headers_t& trailers) {
-  for (const char& c : EXPECTED_DATA) {
+  for (const char& c : EXPECTED_DATA)
     co_yield {(const http2::byte_t*)&c, 1};
-  }
   trailers = EXPECTED_HEADERS;
 }
 

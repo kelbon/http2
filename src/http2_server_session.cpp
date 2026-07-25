@@ -139,11 +139,10 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   node->status = (int)rsp.status;
   node->req = response_bro::torequest(std::move(rsp));
 
-  if (co_await session.response_written(*node)) {
+  if (co_await session.response_written(*node))
     HTTP2_LOG_TRACE(session.logctx(), "response for stream {} successfully written", node->streamid);
-  } else {
+  else
     HTTP2_LOG_TRACE(session.logctx(), "response for stream {} failed", node->streamid);
-  }
   co_return 0;
 }
 
@@ -182,11 +181,10 @@ bool server_session::rst_stream_server(rst_stream rstframe, bool skip_validation
     auto it =
         std::find_if(connection->requests.begin(), connection->requests.end(),
                      [streamid = rstframe.header.streamid](h2stream& rn) { return rn.streamid == streamid; });
-    if (it != connection->requests.end()) {
+    if (it != connection->requests.end())
       n = &*it;
-    } else {
+    else
       return false;
-    }
   }
   n->canceled_by_rststream = true;
   finish_server_request(*n);
@@ -227,9 +225,8 @@ void server_session::request_shutdown() noexcept {
 
 void server_session::request_terminate() noexcept {
   if (terminated) {
-    if (!has_unfinished_requests()) {
+    if (!has_unfinished_requests())
       on_session_done();
-    }
     return;
   }
   terminated = true;
@@ -247,9 +244,8 @@ void server_session::request_terminate() noexcept {
   connection->requests.clear_and_dispose(doforget);
 
   assert(connection->requests.empty() && connection->responses.empty() && connection->timers.empty());
-  if (!has_unfinished_requests()) {
+  if (!has_unfinished_requests())
     on_session_done();
-  }
 }
 
 void server_session::on_response_done() noexcept {
@@ -259,9 +255,8 @@ void server_session::on_response_done() noexcept {
 
 void server_session::on_session_done() noexcept {
   assert(new_requests_forbiden && !has_unfinished_requests());
-  if (done) {
+  if (done)
     return;
-  }
   done = true;
   connection->shutdown(reqerr_e::CANCELLED);
 }

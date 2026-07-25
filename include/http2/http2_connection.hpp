@@ -485,9 +485,7 @@ struct h2connection {
     std::coroutine_handle<> await_suspend(dd::task<int>::handle_type h) noexcept {
       n->task = h;
       if (con->writer.handle)  // if writer waits job now
-      {
         return std::exchange(con->writer.handle, nullptr);
-      }
       return std::noop_coroutine();
     }
 
