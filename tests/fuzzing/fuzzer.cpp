@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 std::string exclude_symbols(std::string_view included, std::string_view excluded) {
   std::string r(included);
@@ -18,4 +18,4 @@ std::string unique_symbols(std::string_view syms) {
   return r;
 }
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

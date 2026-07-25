@@ -3,7 +3,7 @@
 
 #include <anyany/anyany.hpp>
 
-namespace http2 {
+namespace hidi {
 
 template <typename SIGNATURE>
 using fn_ref = aa::ref<aa::call<SIGNATURE>>;
@@ -28,4 +28,4 @@ using move_only_fn_soos = aa::any_with<aa::call<Signature>, aa::move>;
 template <typename Signature>
 using fn = aa::any_with<aa::call<Signature>, aa::copy>;
 
-}  // namespace http2
+}  // namespace hidi

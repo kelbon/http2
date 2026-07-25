@@ -1,7 +1,7 @@
 #include "test_connection.hpp"
 #include <moko3/moko3.hpp>
 
-using namespace http2;
+using namespace hidi;
 using namespace std::chrono_literals;
 
 SERVER_TEST("idle timeout") {

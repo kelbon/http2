@@ -28,7 +28,7 @@
 
 using namespace std::chrono_literals;
 
-namespace http2 {
+namespace hidi {
 
 inline constexpr auto DEFAULT_CONN_TIMEOUT = std::chrono::seconds(10);
 
@@ -362,8 +362,8 @@ void server_test_impl(std::string_view name, moko3::section_info* section, serve
 // TODO tls?
 template <auto* Foo>
 void client_test_impl(std::string_view name, moko3::section_info* toplvl_section) {
-  http2::http2_client client(endpoint(asio::ip::address_v4::loopback()), http2_client_options{},
-                             make_asio_io_context());
+  hidi::http2_client client(endpoint(asio::ip::address_v4::loopback()), http2_client_options{},
+                            make_asio_io_context());
   bool test_ended = false;
   std::exception_ptr ex;
   (void)run_test(name, Foo(client, *&client.ioctx(), toplvl_section), test_ended, ex);
@@ -380,30 +380,30 @@ void client_test_impl(std::string_view name, moko3::section_info* toplvl_section
 // and return dd::task<void>
 // second arg is optional expression for creating TLS context, is this case test goes twice - with tls and
 // without tls (code can use is_tls_server variable)
-#define SERVER_TEST(NAME, ...)                                                                            \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,         \
-                                    ::http2::any_io_context_ref ioctx, ::moko3::section_info* _section,   \
-                                    bool is_tls_server);                                                  \
-  TEST(NAME) {                                                                                            \
-    SECTION("NO TLS", 0) {                                                                                \
-      ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, nullptr);                              \
-    }                                                                                                     \
-    __VA_OPT__(                                                                                           \
-        SECTION("TLS", 1) { ::http2::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, __VA_ARGS__); }) \
-  }                                                                                                       \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::echo_server& server, ::http2::internet_address addr,         \
-                                    ::http2::any_io_context_ref ioctx, ::moko3::section_info* _section,   \
+#define SERVER_TEST(NAME, ...)                                                                           \
+  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::echo_server& server, ::hidi::internet_address addr,          \
+                                    ::hidi::any_io_context_ref ioctx, ::moko3::section_info* _section,   \
+                                    bool is_tls_server);                                                 \
+  TEST(NAME) {                                                                                           \
+    SECTION("NO TLS", 0) {                                                                               \
+      ::hidi::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, nullptr);                              \
+    }                                                                                                    \
+    __VA_OPT__(                                                                                          \
+        SECTION("TLS", 1) { ::hidi::server_test_impl<&UNIQUE_TEST_NAME>(NAME, _section, __VA_ARGS__); }) \
+  }                                                                                                      \
+  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::echo_server& server, ::hidi::internet_address addr,          \
+                                    ::hidi::any_io_context_ref ioctx, ::moko3::section_info* _section,   \
                                     bool is_tls_server)
 
 // after this macro expected function scope, which will use `client`, `ioctx`
 // and return dd::task<void>
-#define CLIENT_TEST(NAME)                                                                             \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::http2::any_io_context_ref ioctx, \
-                                    ::moko3::section_info* _section);                                 \
-  TEST(NAME) {                                                                                        \
-    ::http2::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                     \
-  }                                                                                                   \
-  ::dd::task<void> UNIQUE_TEST_NAME(::http2::http2_client& client, ::http2::any_io_context_ref ioctx, \
+#define CLIENT_TEST(NAME)                                                                           \
+  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::http2_client& client, ::hidi::any_io_context_ref ioctx, \
+                                    ::moko3::section_info* _section);                               \
+  TEST(NAME) {                                                                                      \
+    ::hidi::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                    \
+  }                                                                                                 \
+  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::http2_client& client, ::hidi::any_io_context_ref ioctx, \
                                     ::moko3::section_info* _section)
 
-}  // namespace http2
+}  // namespace hidi

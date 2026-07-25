@@ -10,7 +10,7 @@
 #include <kelcoro/task.hpp>
 #include <kelcoro/thread_pool.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct server_endpoint {
   internet_address addr;
@@ -19,14 +19,14 @@ struct server_endpoint {
 
 // single threaded interface of server
 // user must inherit http2_server and implement virtual methods, then use http2_server itself as
-// signlethreaded or use http2::server as multithreaded
+// signlethreaded or use hidi::mt_server as multithreaded
 struct http2_server {
  private:
   struct impl;
   std::unique_ptr<impl> m_impl;
 
   friend struct mt_server;
-  // used by http2::server
+  // used by hidi::mt_server
   void set_accept_callback(move_only_fn<void(any_connection_t)>);
 
  public:
@@ -78,7 +78,7 @@ struct http2_server {
   // if exception thrown from 'handle_request', server will RST_STREAM (PROTOCOL_ERROR)
   // request_context lighweight object, easy to copy. It will be valid while request in progress, even if
   // .stream_response used
-  // if http2::stream_error thrown, its error code used in RST_STREAM
+  // if hidi::stream_error thrown, its error code used in RST_STREAM
   virtual dd::task<http_response> handle_request(http_request, request_context) = 0;
 
   [[nodiscard]] size_t sessions_count() const noexcept;
@@ -174,4 +174,4 @@ struct mt_server {
   void request_stop();
 };
 
-}  // namespace http2
+}  // namespace hidi

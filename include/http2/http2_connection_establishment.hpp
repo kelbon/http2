@@ -7,7 +7,7 @@
 
 #include <kelcoro/task.hpp>
 
-namespace http2 {
+namespace hidi {
 
 // creates client connection with server
 // accepts unestablished session 'con' and returns established connection or
@@ -19,4 +19,4 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con, 
 // exception
 dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con, http2_server_options);
 
-}  // namespace http2
+}  // namespace hidi

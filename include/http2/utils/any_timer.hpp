@@ -5,7 +5,7 @@
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // arms timer to execute callback after 'd'
 // never executes callback immediately
@@ -31,4 +31,4 @@ anyany_method2_n(set_timer_callback_m, set_callback,
 // non-movable
 using any_timer = aa::any_with<arm_m, arm_periodic_m, is_armed_m, set_timer_callback_m, cancel_m>;
 
-}  // namespace http2
+}  // namespace hidi

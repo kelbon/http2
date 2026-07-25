@@ -10,7 +10,7 @@
 #include <kelcoro/task.hpp>
 #include <kelcoro/gate.hpp>
 
-namespace http2 {
+namespace hidi {
 
 using writer_sleepcb_t = move_only_fn<dd::task<void>(duration_t, io_error_code&)>;
 using writer_on_network_err_t = move_only_fn<void() noexcept>;
@@ -61,4 +61,4 @@ dd::job start_writer_for_client(h2connection_ptr con, writer_sleepcb_t, writer_o
 dd::job start_writer_for_server(h2connection_ptr con, writer_sleepcb_t, writer_on_network_err_t,
                                 bool forcedisablehpack, dd::gate::holder);
 
-}  // namespace http2
+}  // namespace hidi

@@ -5,7 +5,7 @@
 
 #include <anyany/anyany.hpp>
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 struct make_req_m {
   static hreq do_invoke(const auto& self, fuzzer& fuz) {
@@ -58,4 +58,4 @@ struct clone_reqtem {
   }
 };
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

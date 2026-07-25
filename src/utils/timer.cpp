@@ -4,7 +4,7 @@
 
 #include <boost/asio/steady_timer.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct asio_timer::impl {
   boost::asio::steady_timer timer;
@@ -76,4 +76,4 @@ void asio_timer::set_callback(timer_callback_t fn) {
   m_impl->fn = std::move(fn);
 }
 
-}  // namespace http2
+}  // namespace hidi

@@ -27,7 +27,7 @@
 #include <kelcoro/job.hpp>
 #include <kelcoro/task.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct http2_frame_t {
   frame_header header;
@@ -577,4 +577,4 @@ inline bool h2stream::use_bytes(size_t n) noexcept {
 void trace_request_headers(h2stream const&, bool fromclient, const log_context& logctx);
 #endif
 
-}  // namespace http2
+}  // namespace hidi

@@ -11,7 +11,7 @@
 
 #include <kelcoro/gate.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct http2_server;
 struct http2_frame_t;
@@ -171,4 +171,4 @@ inline void intrusive_ptr_release(server_session* p) noexcept {
 
 using server_session_ptr = boost::intrusive_ptr<server_session>;
 
-}  // namespace http2
+}  // namespace hidi

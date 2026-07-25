@@ -8,7 +8,7 @@
 #include <hpack/hpack.hpp>
 #include <strswitch/strswitch.hpp>
 
-namespace http2 {
+namespace hidi {
 
 static void validate_initial_window_size(setting_t s) {
   assert(s.identifier == SETTINGS_INITIAL_WINDOW_SIZE);
@@ -440,4 +440,4 @@ memory_limit_exceeded:
                      "memory limit exceeded when parsing request headers");
 }
 
-}  // namespace http2
+}  // namespace hidi

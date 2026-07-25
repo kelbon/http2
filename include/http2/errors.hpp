@@ -10,7 +10,7 @@
 
 #include <boost/system/error_code.hpp>
 
-namespace http2 {
+namespace hidi {
 
 using io_error_code = boost::system::error_code;
 
@@ -36,4 +36,4 @@ struct timeout_exception : std::exception {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

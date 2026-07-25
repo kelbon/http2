@@ -7,7 +7,7 @@
 
 using namespace std::chrono_literals;
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 static void validate_echo_request(const hreq& req, http_response rsp) {
   if (!req.request.body.content_type.empty()) {
@@ -181,4 +181,4 @@ dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem,
   co_return;
 }
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

@@ -10,7 +10,7 @@
 
 #ifdef HTTP2_ENABLE_TRACE
 
-namespace http2 {
+namespace hidi {
 
 void trace_request_headers(h2stream const& node, bool fromclient, const log_context& logctx) {
   auto& req = node.req;
@@ -28,11 +28,11 @@ void trace_request_headers(h2stream const& node, bool fromclient, const log_cont
   HTTP2_LOG_TRACE(logctx, "{}", s);
 }
 
-}  // namespace http2
+}  // namespace hidi
 
 #endif
 
-namespace http2 {
+namespace hidi {
 
 void intrusive_ptr_add_ref(h2connection* p) noexcept {
   ++p->refcount;
@@ -741,4 +741,4 @@ void h2connection::client_receive_data(http2_frame_t frame) {
     finish_request(*node, node->status);
 }
 
-}  // namespace http2
+}  // namespace hidi

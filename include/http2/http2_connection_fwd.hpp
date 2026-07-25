@@ -9,7 +9,7 @@
 
 #include <boost/intrusive_ptr.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct h2stream;
 
@@ -29,4 +29,4 @@ using on_header_fn_ptr = fn_ptr<void(std::string_view name, std::string_view val
 
 using on_data_part_fn_ptr = fn_ptr<void(std::span<byte_t const> bytes, bool last_part)>;
 
-}  // namespace http2
+}  // namespace hidi

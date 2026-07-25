@@ -49,7 +49,7 @@ RST_STREAM и прочие могли на него повлиять
 
 
 */
-namespace http2 {
+namespace hidi {
 
 // friend of Response
 struct response_bro {
@@ -397,4 +397,4 @@ void server_session::receive_data(http2_frame_t frame) {
   }
 }
 
-}  // namespace http2
+}  // namespace hidi

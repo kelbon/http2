@@ -12,7 +12,7 @@
 
 #include <iostream>
 
-using namespace http2::fuzzing;
+using namespace hidi::fuzzing;
 namespace asio = boost::asio;
 
 using namespace std::chrono_literals;
@@ -25,23 +25,23 @@ int main() try {
   }).detach();
 
   fuzzer fuz;
-  http2::http2_server_options opts;
+  hidi::http2_server_options opts;
   opts.max_concurrent_streams = 10;
-  http2::echo_server server(opts);
+  hidi::echo_server server(opts);
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
-  server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
+  server.listen(hidi::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
-  http2::http2_client client1(
+  hidi::http2_client client1(
       ipv6_endpoint,
       {// avoid sending too many requests because server sets max concurrent streams == 10
        .allow_requests_before_server_settings = false},
-      http2::make_asio_io_context());
+      hidi::make_asio_io_context());
 
   clone_reqtem tem;
   auto& r = tem.req;
   r.is_valid = true;
-  r.deadline = http2::deadline_t::never();
+  r.deadline = hidi::deadline_t::never();
   r.trailers = {};
   auto& rr = tem.req.request;
   rr.path = "/abc";

@@ -9,7 +9,7 @@
 #include "http2/utils/macro.hpp"
 #include "http2/http_body.hpp"
 
-namespace http2 {
+namespace hidi {
 
 struct memory_queue {
  private:
@@ -87,4 +87,4 @@ struct memory_queue {
 
 using memory_queue_ptr = boost::intrusive_ptr<memory_queue>;
 
-}  // namespace http2
+}  // namespace hidi

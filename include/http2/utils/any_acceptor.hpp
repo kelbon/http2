@@ -9,7 +9,7 @@
 #include "http2/errors.hpp"
 #include "http2/utils/address.hpp"
 
-namespace http2 {
+namespace hidi {
 
 anyany_method2_n(get_local_endpoint_m, get_local_endpoint,
                  (const& self) requires(self.get_local_endpoint())->internet_address);
@@ -26,4 +26,4 @@ anyany_method2_n(close_m, close, (&self) requires(self.close())->void);
 using any_acceptor =
     aa::basic_any_with<aa::default_allocator, /*SooS=*/0, get_local_endpoint_m, listen_m, accept_m, close_m>;
 
-}  // namespace http2
+}  // namespace hidi

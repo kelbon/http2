@@ -14,7 +14,7 @@ static void fill_str_random(char* b, char* e) {
   }
 }
 
-namespace http2 {
+namespace hidi {
 
 unique_name::unique_name() {
   static_assert(LEN >= 8);
@@ -34,4 +34,4 @@ void default_log_function(log_level_e, std::string_view fmt_str, std::format_arg
   std::cout << std::vformat(fmt_str, std::move(args));
 }
 
-}  // namespace http2
+}  // namespace hidi

@@ -7,7 +7,7 @@
 
 #include <array>
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 struct methods_weights {
   // Веса методов (можно менять)
@@ -143,4 +143,4 @@ struct hreq_template {
   }
 };
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

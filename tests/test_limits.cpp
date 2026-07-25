@@ -5,7 +5,7 @@
 
 #include <boost/stacktrace.hpp>
 
-using namespace http2;
+using namespace hidi;
 
 static server_ssl_context_ptr test_ssl_ctx() {
   return make_ssl_context_for_server(HTTP2_TLS_DIR "/test_server.crt", HTTP2_TLS_DIR "/test_server.key");

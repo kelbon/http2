@@ -3,7 +3,7 @@
 #include "http2/asio/awaiters.hpp"
 #include "http2/http2_server.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // если echo_server видит этот хедер, то он будет отвечать только через некоторое время, указанное в value как
 // миллисекунды
@@ -48,4 +48,4 @@ struct echo_server : http2_server {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

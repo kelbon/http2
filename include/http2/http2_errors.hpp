@@ -10,7 +10,7 @@
 #include <format>
 #include <hpack/basic_types.hpp>
 
-namespace http2 {
+namespace hidi {
 
 // 0 reserved for connection related
 // odd for client
@@ -130,4 +130,4 @@ struct goaway_exception : std::exception {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

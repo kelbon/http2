@@ -9,7 +9,7 @@
 
 #include <iostream>
 
-using namespace http2::fuzzing;
+using namespace hidi::fuzzing;
 namespace asio = boost::asio;
 
 using namespace std::chrono_literals;
@@ -22,29 +22,29 @@ int main() try {
   }).detach();
 
   fuzzer fuz;
-  http2::http2_server_options opts;
+  hidi::http2_server_options opts;
   opts.max_concurrent_streams = 10;
   // make CONTINUATIONS possible
-  opts.max_receive_frame_size = http2::MIN_MAX_FRAME_LEN;
-  http2::echo_server server(opts);
+  opts.max_receive_frame_size = hidi::MIN_MAX_FRAME_LEN;
+  hidi::echo_server server(opts);
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
-  server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
+  server.listen(hidi::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
-  http2::http2_client client1(
+  hidi::http2_client client1(
       ipv6_endpoint, {// avoid sending too many requests because server sets max concurrent streams == 10
                       .allow_requests_before_server_settings = false});
 
   clone_reqtem tem;
   auto& r = tem.req;
   r.is_valid = true;
-  r.deadline = http2::deadline_t::never();
+  r.deadline = hidi::deadline_t::never();
   r.trailers = {};
   auto& rr = tem.req.request;
   rr.path = "/abc";
   for (int i = 0; i < 5; ++i) {
-    std::string bigstr = fuz.rstring(http2::MIN_MAX_FRAME_LEN + fuz.rint(1, 100));
-    rr.headers.emplace_back(http2::http_header_t(std::format("header{}", i), std::move(bigstr)));
+    std::string bigstr = fuz.rstring(hidi::MIN_MAX_FRAME_LEN + fuz.rint(1, 100));
+    rr.headers.emplace_back(hidi::http_header_t(std::format("header{}", i), std::move(bigstr)));
   }
   std::string bd = "hello world";
   rr.body.content_type = "text/plain";

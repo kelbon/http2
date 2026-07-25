@@ -1,7 +1,7 @@
 
 #include "request_template.hpp"
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 std::span<const std::string_view> realistic_valid_pathes() {
   static std::string_view paths[] = {
@@ -158,4 +158,4 @@ std::span<const http_header_t> realistic_invalid_http2_headers() {
   return hdrs;
 }
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

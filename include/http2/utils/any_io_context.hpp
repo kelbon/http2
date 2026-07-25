@@ -12,7 +12,7 @@
 #include <kelcoro/executor_interface.hpp>
 #include <kelcoro/task.hpp>
 
-namespace http2 {
+namespace hidi {
 
 // returns true if executes something
 anyany_method2_n(poll_one_m, poll_one, (&self) requires(self.poll_one())->bool);
@@ -76,4 +76,4 @@ using rebind_context_method_t = void (*)(any_connection_t&, any_io_context_ref);
 // con != nullptr
 anyany_pseudomethod(rebind_context_m, requires(&Self::rebind_context)->rebind_context_method_t);
 
-}  // namespace http2
+}  // namespace hidi

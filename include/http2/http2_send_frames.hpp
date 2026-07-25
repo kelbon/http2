@@ -6,7 +6,7 @@
 
 #include <kelcoro/task.hpp>
 
-namespace http2 {
+namespace hidi {
 
 // returns false is goaway was not sended
 dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t laststreamid, errc_e errc, std::string dbginfo);
@@ -29,4 +29,4 @@ dd::task<bool> send_window_update(h2connection_ptr con, stream_id_t id, uint32_t
 // sends WINDOW_UPDATE correctly to set window size to max
 dd::task<void> update_window_to_max(cfint_t& size, stream_id_t streamid, h2connection_ptr con);
 
-}  // namespace http2
+}  // namespace hidi

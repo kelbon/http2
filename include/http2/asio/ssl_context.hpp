@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <span>
 
-namespace http2 {
+namespace hidi {
 
 namespace asio = boost::asio;
 
@@ -79,4 +79,4 @@ server_ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certifi
                                                    std::filesystem::path server_private_key,
                                                    const log_context& = empty_log_context);
 
-}  // namespace http2
+}  // namespace hidi

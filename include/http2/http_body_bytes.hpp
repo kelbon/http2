@@ -5,7 +5,7 @@
 
 #include <vector>
 
-namespace http2 {
+namespace hidi {
 
 namespace detail {
 
@@ -20,7 +20,7 @@ struct noinit {
 };
 
 // этот аллокатор гарантирует FRAME_HEADER_LEN (9) байт до каждой аллокации. Это
-// используется при отправке http2 запроса для оптимизации: уже отправленные
+// используется при отправке HTTP/2 запроса для оптимизации: уже отправленные
 // байты запроса используются как буфер при отправке следующих template для
 // поддержки rebind (static assert в std::vector)
 template <typename T>
@@ -125,4 +125,4 @@ struct http_body_bytes : private std::vector<byte_t, detail::allocator_p9<byte_t
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

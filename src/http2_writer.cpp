@@ -24,7 +24,7 @@
 
 #include <boost/asio/error.hpp>
 
-namespace http2 {
+namespace hidi {
 
 constexpr inline auto H2FHL = FRAME_HEADER_LEN;
 
@@ -492,5 +492,5 @@ dd::job start_writer_for_server(h2connection_ptr con, writer_sleepcb_t sleepcb,
                                                forcedisablehpack, std::move(guard));
 }
 
-}  // namespace http2
+}  // namespace hidi
 #pragma GCC diagnostic pop

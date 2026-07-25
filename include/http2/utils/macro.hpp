@@ -10,11 +10,11 @@
   #define KELHTTP2_TRIVIAL_ABI
 #endif
 
-namespace http2 {
+namespace hidi {
 
 [[noreturn]] inline void unreachable() noexcept {
   assert(false);
   KELCORO_UNREACHABLE;
 }
 
-}  // namespace http2
+}  // namespace hidi

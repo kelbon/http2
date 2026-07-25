@@ -11,7 +11,7 @@
     std::exit(__LINE__);                                    \
   }
 
-using namespace http2;
+using namespace hidi;
 
 // all noinlines here is workaround gcc-12 bug (miscompilation)
 #define GCC_WORKAROUND [[gnu::noinline]]
@@ -64,7 +64,7 @@ struct test_server : http2_server {
   using http2_server::http2_server;
 
   bool answer_before_data(http_request const& r) const noexcept override {
-    return r.method == http2::http_method_e::CONNECT;
+    return r.method == hidi::http_method_e::CONNECT;
   }
 
   dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(
@@ -79,7 +79,7 @@ struct test_server : http2_server {
   }
 
   dd::task<http_response> handle_request(http_request req, request_context ctx) override {
-    error_if(req.method == http2::http_method_e::CONNECT);
+    error_if(req.method == hidi::http_method_e::CONNECT);
     http_response rsp = answer_req(std::move(req));
     co_return rsp;
   }

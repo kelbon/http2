@@ -13,7 +13,7 @@
 
 #include <boost/intrusive/slist_hook.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct writer_node : bi::slist_base_hook<> {
   std::coroutine_handle<> callback;
@@ -93,4 +93,4 @@ struct write_awaiter : writer_node {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

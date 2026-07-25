@@ -11,7 +11,7 @@
 
 #include <zal/zal.hpp>
 
-namespace http2 {
+namespace hidi {
 
 // handles only utility frames (not DATA / HEADERS)
 static void server_handle_utility_frame(http2_frame_t frame, server_session& session) {
@@ -67,7 +67,7 @@ static void server_handle_utility_frame(http2_frame_t frame, server_session& ses
   }
 }
 
-dd::task<int> start_server_reader_for(http2::server_session& session) try {
+dd::task<int> start_server_reader_for(server_session& session) try {
   auto guard = session.connection_parts_gate.hold();
   assert(session.connection);
   using enum frame_e;
@@ -86,7 +86,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
 
     // read frame header
 
-    frame.data = buffer.get_exactly(http2::FRAME_HEADER_LEN);
+    frame.data = buffer.get_exactly(FRAME_HEADER_LEN);
 
     co_await con.read(frame.data, ec);
 
@@ -144,7 +144,7 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
     }
 
     // connection control flow (streamlevel in server_handle_frame)
-    if (con.my_window_size < http2::MAX_WINDOW_SIZE / 2)
+    if (con.my_window_size < MAX_WINDOW_SIZE / 2)
       co_await update_window_to_max(con.my_window_size, 0, &con);
   }
   unreachable();
@@ -169,4 +169,4 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   co_return reqerr_e::UNKNOWN_ERR;
 }
 
-}  // namespace http2
+}  // namespace hidi

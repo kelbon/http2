@@ -15,7 +15,7 @@
             "{}" __VA_OPT__(, ) __VA_ARGS__, \
             __func__, "[FAKE]")
 
-namespace http2 {
+namespace hidi {
 
 std::string sourceloc_str(std::source_location loc) {
   return std::format("{}:{}:{}", loc.file_name(), loc.line(), loc.column());
@@ -33,9 +33,9 @@ void remove_padding_etc(h2frame& f) {
   }
 }
 
-}  // namespace http2
+}  // namespace hidi
 
-namespace http2 {
+namespace hidi {
 
 test_h2connection::test_h2connection(h2connection_ptr ccon, bool client) noexcept
     : con(std::move(ccon)), is_client_con(client) {
@@ -515,4 +515,4 @@ void test_h2connection::close() {
   }
 }
 
-}  // namespace http2
+}  // namespace hidi

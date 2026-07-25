@@ -5,7 +5,7 @@
 #include "http2/request_context.hpp"
 #include "http2/utils/macro.hpp"
 
-namespace http2 {
+namespace hidi {
 
 std::string_view e2str(reqerr_e::values_e e) noexcept {
   using enum reqerr_e::values_e;
@@ -110,4 +110,4 @@ stream_body_maker_t streaming_body_with_trailers(streaming_body_t body, http_hea
   };
 }
 
-}  // namespace http2
+}  // namespace hidi

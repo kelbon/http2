@@ -3,7 +3,7 @@
 #include "any_request_template.hpp"
 #include <moko3/moko3.hpp>
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 // all here expects server to be echo server
 
@@ -40,4 +40,4 @@ inline dd::async_task<void> on_another_thread(dd::task<void> emulated_client_tas
   co_await emulated_client_task;
 }
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

@@ -13,7 +13,7 @@
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/memory.hpp"
 
-namespace http2::fuzzing {
+namespace hidi::fuzzing {
 
 #define FUZ_ENGLISH_ALP_LC "abcdefghijklmnopqrstuvwxyz"
 #define FUZ_ENGLISH_ALP_UC "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -190,4 +190,4 @@ struct fuzzer {
   }
 };
 
-}  // namespace http2::fuzzing
+}  // namespace hidi::fuzzing

@@ -10,7 +10,7 @@
 namespace {
 
 struct work_awaiter {
-  http2::noexport::single_writer_guarantee* i = nullptr;
+  hidi::noexport::single_writer_guarantee* i = nullptr;
   ZAL_PIN;
 
   bool await_ready() const noexcept {
@@ -26,7 +26,7 @@ struct work_awaiter {
 
 }  // namespace
 
-namespace http2 {
+namespace hidi {
 
 static void rebind_executor(asio_connection& c, asio::io_context& new_ioctx) {
   asio::ip::tcp::socket newsock(new_ioctx);
@@ -95,7 +95,7 @@ static dd::job start_inner_writer_for(auto* self) {
         });
         // встаём на ожидание .destroy
         co_await work_awaiter(&wd);
-        http2::unreachable();
+        hidi::unreachable();
       }
     }
     // TODO experiment flush
@@ -536,4 +536,4 @@ void asio_tls_ref_factory::rebind_context(any_connection_t& con, any_io_context_
   do_rebind_context<asio_tls_connection, asio_tls_ref_factory>(con, other);
 }
 
-}  // namespace http2
+}  // namespace hidi

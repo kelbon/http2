@@ -5,7 +5,7 @@
 
 #include <memory_resource>
 
-namespace http2 {
+namespace hidi {
 
 struct reusable_buffer {
  private:
@@ -58,4 +58,4 @@ struct reusable_buffer {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

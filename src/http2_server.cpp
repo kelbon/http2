@@ -51,7 +51,7 @@ terminate отсылает goaway и отменяет все запросы на
 
 */
 
-namespace http2 {
+namespace hidi {
 
 struct http2_server::impl {
   // on top bcs of destroy order
@@ -496,4 +496,4 @@ void mt_server::request_stop() {
   do_request_stop(this).start_and_detach();
 }
 
-}  // namespace http2
+}  // namespace hidi

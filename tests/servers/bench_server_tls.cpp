@@ -5,7 +5,7 @@
 #include <csignal>
 #include <iostream>
 
-using namespace http2;
+using namespace hidi;
 
 mt_server server(std::in_place_type<bench_server>, HTTP2_TLS_DIR "/test_server.crt",
                  HTTP2_TLS_DIR "/test_server.key");

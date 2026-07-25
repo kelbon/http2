@@ -7,7 +7,7 @@
 #include <cstring>
 #include <span>
 
-namespace http2 {
+namespace hidi {
 
 using byte_t = unsigned char;
 
@@ -100,4 +100,4 @@ constexpr std::span<T> suffix(std::span<T> s, size_t n) noexcept {
   return std::span<T>(b, e);
 }
 
-}  // namespace http2
+}  // namespace hidi
