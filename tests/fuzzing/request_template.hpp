@@ -1,9 +1,9 @@
 #pragma once
 
 #include "fuzzer.hpp"
-#include "http2/http_base.hpp"
-#include "http2/utils/deadline.hpp"
-#include "http2/utils/memory_queue.hpp"
+#include "hidi/http_base.hpp"
+#include "hidi/utils/deadline.hpp"
+#include "hidi/utils/memory_queue.hpp"
 
 #include <array>
 

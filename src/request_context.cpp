@@ -1,6 +1,6 @@
-#include "http2/request_context.hpp"
+#include "hidi/request_context.hpp"
 
-#include "http2/http2_connection.hpp"
+#include "hidi/http2_connection.hpp"
 
 namespace hidi {
 

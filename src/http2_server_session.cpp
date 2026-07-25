@@ -1,17 +1,17 @@
 
 
-#include "http2/http2_server_session.hpp"
+#include "hidi/http2_server_session.hpp"
 
-#include "http2/http2_connection.hpp"
-#include "http2/http2_protocol.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/logger.hpp"
-#include "http2/asio/asio_executor.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_protocol.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/logger.hpp"
+#include "hidi/asio/asio_executor.hpp"
+#include "hidi/http2_server.hpp"
 
 #include <algorithm>
 #include <utility>
 
-#include <http2/http2_server.hpp>
 #include <zal/zal.hpp>
 
 /*

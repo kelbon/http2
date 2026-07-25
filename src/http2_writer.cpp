@@ -9,15 +9,14 @@
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #pragma GCC diagnostic ignored "-Wsign-compare"
 
-#include "http2/http2_writer.hpp"
-
-#include "http2/http2_connection.hpp"
-#include "http2/http2_protocol.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/http_base.hpp"
-#include "http2/http_body.hpp"
-#include "http2/asio/asio_executor.hpp"
-#include "http2/request_context.hpp"
+#include "hidi/http2_writer.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_protocol.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/http_base.hpp"
+#include "hidi/http_body.hpp"
+#include "hidi/asio/asio_executor.hpp"
+#include "hidi/request_context.hpp"
 
 #include <hpack/encoder.hpp>
 #include <zal/zal.hpp>

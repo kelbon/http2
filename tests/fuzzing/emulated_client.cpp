@@ -1,6 +1,6 @@
 #include "emulated_client.hpp"
-#include "http2/asio/asio_executor.hpp"
-#include "http2/asio/awaiters.hpp"
+#include "hidi/asio/asio_executor.hpp"
+#include "hidi/asio/awaiters.hpp"
 
 #include <kelcoro/algorithm.hpp>
 #include <moko3/moko3.hpp>

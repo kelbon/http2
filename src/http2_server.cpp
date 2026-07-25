@@ -1,30 +1,29 @@
 
-#include "http2/http2_server.hpp"
+#include "hidi/http2_server.hpp"
 
-#include "http2/asio/asio_executor.hpp"
-#include "http2/asio/factory.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/http2_server_session.hpp"
+#include "hidi/asio/asio_executor.hpp"
+#include "hidi/asio/factory.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/http2_server_session.hpp"
+#include "hidi/asio/aio_context.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_connection_establishment.hpp"
+#include "hidi/http2_protocol.hpp"
+#include "hidi/http2_server_reader.hpp"
+#include "hidi/http2_writer.hpp"
+#include "hidi/logger.hpp"
+#include "hidi/utils/reusable_buffer.hpp"
+#include "hidi/asio/awaiters.hpp"
 
 #include <exception>
 #include <latch>
 #include <list>
-
-#include <http2/http2_connection.hpp>
-#include <http2/http2_connection_establishment.hpp>
-#include <http2/http2_protocol.hpp>
-#include <http2/http2_server_reader.hpp>
-#include <http2/http2_writer.hpp>
-#include <http2/logger.hpp>
-#include <http2/utils/reusable_buffer.hpp>
-#include <http2/asio/awaiters.hpp>
 
 #include <kelcoro/common.hpp>
 #include <kelcoro/algorithm.hpp>
 
 #include <zal/zal.hpp>
 
-#include "http2/asio/aio_context.hpp"
 #include <boost/asio/ip/tcp.hpp>
 
 /*

@@ -9,9 +9,9 @@
 #include <algorithm>
 
 #include <kelcoro/generator.hpp>
-#include "http2/errors.hpp"
-#include "http2/utils/deadline.hpp"
-#include "http2/utils/memory.hpp"
+#include "hidi/errors.hpp"
+#include "hidi/utils/deadline.hpp"
+#include "hidi/utils/memory.hpp"
 
 namespace hidi::fuzzing {
 

@@ -1,13 +1,13 @@
 
 
-#include "http2/http2_server_reader.hpp"
+#include "hidi/http2_server_reader.hpp"
 
-#include "http2/http2_connection.hpp"
-#include "http2/http2_protocol.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/http2_server_session.hpp"
-#include "http2/logger.hpp"
-#include "http2/utils/reusable_buffer.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_protocol.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/http2_server_session.hpp"
+#include "hidi/logger.hpp"
+#include "hidi/utils/reusable_buffer.hpp"
 
 #include <zal/zal.hpp>
 

@@ -3,20 +3,19 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
-#include "http2/http2_client.hpp"
-
-#include "http2/asio/asio_executor.hpp"
-#include "http2/http2_connection.hpp"
-#include "http2/http2_connection_establishment.hpp"
-#include "http2/http2_errors.hpp"
-#include "http2/http2_protocol.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/http2_writer.hpp"
-#include "http2/logger.hpp"
-#include "http2/utils/macro.hpp"
-#include "http2/utils/reusable_buffer.hpp"
-#include "http2/utils/timer.hpp"
-#include "http2/asio/awaiters.hpp"
+#include "hidi/http2_client.hpp"
+#include "hidi/asio/asio_executor.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_connection_establishment.hpp"
+#include "hidi/http2_errors.hpp"
+#include "hidi/http2_protocol.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/http2_writer.hpp"
+#include "hidi/logger.hpp"
+#include "hidi/utils/macro.hpp"
+#include "hidi/utils/reusable_buffer.hpp"
+#include "hidi/utils/timer.hpp"
+#include "hidi/asio/awaiters.hpp"
 
 #include <hpack/hpack.hpp>
 #include <zal/zal.hpp>

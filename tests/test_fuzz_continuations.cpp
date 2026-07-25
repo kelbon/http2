@@ -1,6 +1,6 @@
 #include <thread>
 
-#include <http2/http2_client.hpp>
+#include "hidi/http2_client.hpp"
 #include "servers/echo_server.hpp"
 #include "any_request_template.hpp"
 #include "emulated_client.hpp"

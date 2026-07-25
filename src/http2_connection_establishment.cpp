@@ -1,10 +1,9 @@
 
 
-#include "http2/http2_connection_establishment.hpp"
-
-#include "http2/http2_connection.hpp"
-#include "http2/http2_send_frames.hpp"
-#include "http2/utils/reusable_buffer.hpp"
+#include "hidi/http2_connection_establishment.hpp"
+#include "hidi/http2_connection.hpp"
+#include "hidi/http2_send_frames.hpp"
+#include "hidi/utils/reusable_buffer.hpp"
 
 namespace hidi {
 

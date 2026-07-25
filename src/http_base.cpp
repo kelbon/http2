@@ -1,9 +1,10 @@
 
-#include "http2/http_base.hpp"
+#include "hidi/http_base.hpp"
+
+#include "hidi/request_context.hpp"
+#include "hidi/utils/macro.hpp"
 
 #include <strswitch/strswitch.hpp>
-#include "http2/request_context.hpp"
-#include "http2/utils/macro.hpp"
 
 namespace hidi {
 
