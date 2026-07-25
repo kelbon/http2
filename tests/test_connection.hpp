@@ -262,11 +262,10 @@ inline internet_address localhost() noexcept {
 // returns fake server
 // connects `client` into fake server and returns BEFORE http2 connection establishment
 // and AFTER tls handshake
-inline dd::task<test_h2connection> fake_server_session(any_io_context_ref ctx, server_endpoint addr,
+inline dd::task<test_h2connection> fake_server_session(any_io_context_ref io, server_endpoint addr,
                                                        http2_client& client,
-                                                       ssl_context_ptr servertls = nullptr,
                                                        deadline_t deadline = deadline_after(10s)) {
-  any_timer timer = ctx.create_timer();
+  any_timer timer = io.create_timer();
   timer.set_callback([](bool canceled) {
     if (canceled)
       return;
@@ -274,7 +273,6 @@ inline dd::task<test_h2connection> fake_server_session(any_io_context_ref ctx, s
     std::abort();
   });
   timer.arm(deadline.tp);
-  any_io_context io = make_asio_tls_io_context(server_ssl_context_ptr(servertls));
   any_acceptor a = io.create_acceptor(addr.addr, addr.reuse_address);
   a.listen();
   io_error_code ec;

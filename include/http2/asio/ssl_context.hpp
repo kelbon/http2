@@ -48,7 +48,7 @@ struct client_ssl_context_ptr {
   explicit client_ssl_context_ptr(ssl_context_ptr p) noexcept : p(std::move(p)) {
   }
 
-  client_ssl_context_ptr(nullptr_t) noexcept : p(nullptr) {
+  client_ssl_context_ptr(std::nullptr_t) noexcept : p(nullptr) {
   }
 
   explicit operator bool() const noexcept {
@@ -62,7 +62,7 @@ struct server_ssl_context_ptr {
 
   explicit server_ssl_context_ptr(ssl_context_ptr p) noexcept : p(std::move(p)) {
   }
-  server_ssl_context_ptr(nullptr_t) noexcept : p(nullptr) {
+  server_ssl_context_ptr(std::nullptr_t) noexcept : p(nullptr) {
   }
 
   explicit operator bool() const noexcept {
