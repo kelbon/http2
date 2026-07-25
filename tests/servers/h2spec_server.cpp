@@ -2,7 +2,8 @@
 #include <csignal>
 #include <iostream>
 
-http2::h2spec_server server;
+hidi::h2spec_server server;
+
 int main() try {
   std::signal(
       SIGINT, +[](int) {

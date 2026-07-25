@@ -4,7 +4,7 @@
 
 #include <variant>
 
-namespace http2 {
+namespace hidi {
 
 namespace asio = boost::asio;
 
@@ -92,4 +92,4 @@ struct endpoint {
   bool operator==(const endpoint&) const = default;
 };
 
-}  // namespace http2
+}  // namespace hidi

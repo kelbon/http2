@@ -10,7 +10,7 @@
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/fn_ref.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // for using in single thread!
 struct asio_timer {
@@ -52,4 +52,4 @@ struct asio_timer {
   void set_callback(timer_callback_t);
 };
 
-}  // namespace http2
+}  // namespace hidi

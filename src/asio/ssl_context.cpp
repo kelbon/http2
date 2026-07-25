@@ -9,7 +9,7 @@
   #include <iostream>
 #endif
 
-namespace http2 {
+namespace hidi {
 
 ssl_context::ssl_context(asio::ssl::context_base::method m) : ctx(m) {
 }
@@ -102,4 +102,4 @@ server_ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certifi
   return server_ssl_context_ptr{std::move(ctx)};
 }
 
-}  // namespace http2
+}  // namespace hidi

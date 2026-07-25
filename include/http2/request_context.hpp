@@ -8,7 +8,7 @@
 #include "http2/utils/memory_queue.hpp"
 #include "kelcoro/task.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // Note: its NOT thread safe to copy on other thread
 struct request_context {
@@ -48,4 +48,4 @@ struct request_context {
   any_io_context_ptr owner_ioctx() const;
 };
 
-}  // namespace http2
+}  // namespace hidi

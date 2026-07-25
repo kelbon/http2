@@ -3,7 +3,7 @@
 #include <chrono>
 #include <compare>
 
-namespace http2 {
+namespace hidi {
 
 using duration_t = std::chrono::steady_clock::duration;
 
@@ -51,4 +51,4 @@ constexpr deadline_t::deadline_t(std::chrono::duration<REP, PERIOD> d) noexcept
     : deadline_t(deadline_after(d)) {
 }
 
-}  // namespace http2
+}  // namespace hidi

@@ -4,12 +4,12 @@
 #include <cstdint>
 #include <cassert>
 
-namespace http2 {
+namespace hidi {
 
 // optimized unordered_set<intmax_t>, creates segments and merge them
 // examples: [1, 4] + 5 => [1, 5]
 // [0, 3], [5, 6] + 4 = [0, 6]
-// used for storing information about already closed http2 streams for correct errors, its likely, that in
+// used for storing information about already closed HTTP/2 streams for correct errors, its likely, that in
 // this case there are only one segment (stream ids are 1 3 5 etc, but before add_point /2 makes them 0 1 2)
 struct merged_segments {
  private:
@@ -89,4 +89,4 @@ struct merged_segments {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

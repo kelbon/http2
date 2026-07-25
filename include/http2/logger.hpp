@@ -9,7 +9,7 @@
 #define HTTP2_CHECK_NOT_EMPTY_IMPL(TOKEN) HTTP2_TOKEN_IS_EMPTY_##TOKEN
 #define HTTP2_CHECK_NOT_EMPTY(...) HTTP2_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
 
-namespace http2 {
+namespace hidi {
 // avoids compiler error with rvalue args in std::make_format_args (`args` will never outlive expression)
 // format string here only for compile time checking
 template <typename... Args>
@@ -17,13 +17,13 @@ constexpr auto make_temp_fmt_args(std::format_string<Args...>, Args&&... args) {
   return std::make_format_args(args...);
 }
 
-}  // namespace http2
+}  // namespace hidi
 
-#define HTTP2_DO_LOG(LOGCTX, LEVEL, FMT_STR, ...)                                     \
-  do {                                                                                \
-    if (LOGCTX.should_log(::http2::log_level_e::LEVEL))                               \
-      LOGCTX.dolog(::http2::log_level_e::LEVEL, "[" #LEVEL "][HTTP/2] " FMT_STR "\n", \
-                   ::http2::make_temp_fmt_args(FMT_STR, __VA_ARGS__));                \
+#define HTTP2_DO_LOG(LOGCTX, LEVEL, FMT_STR, ...)                                    \
+  do {                                                                               \
+    if (LOGCTX.should_log(::hidi::log_level_e::LEVEL))                               \
+      LOGCTX.dolog(::hidi::log_level_e::LEVEL, "[" #LEVEL "][HTTP/2] " FMT_STR "\n", \
+                   ::hidi::make_temp_fmt_args(FMT_STR, __VA_ARGS__));                \
   } while (false)
 
 #define HTTP2_LOG(LOGCTX, TYPE, FMT_STR, ...) \

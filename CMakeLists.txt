@@ -1,6 +1,6 @@
 
 cmake_minimum_required(VERSION 3.20)
-project(http2)
+project(hidi)
 
 option(KELHTTP2_ENABLE_TESTING  "Set to ON to enable tests"      OFF)
 option(KELHTTP2_USE_CPM "Set to ON to enable use CPM for get dependencies" ON)

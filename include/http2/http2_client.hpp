@@ -20,7 +20,7 @@
 
 #include <zal/zal.hpp>
 
-namespace http2 {
+namespace hidi {
 
 struct http2_client;
 
@@ -67,9 +67,9 @@ struct new_connection_guard {
 };
 
 }  // namespace noexport
-}  // namespace http2
+}  // namespace hidi
 
-namespace http2 {
+namespace hidi {
 
 struct http2_client {
  protected:
@@ -93,7 +93,7 @@ struct http2_client {
   //  used to correctly wait in 'stop' while all connect calls will end
   dd::gate m_connectionGate;
 
-  // fills requests from raw http2 frames
+  // fills requests from raw HTTP/2 frames
   static dd::job start_reader_for(http2_client*, h2connection_ptr);
 
   // postconditon: returns not null, !returned->dropped && returned->stream_id <= MAX_STREAM_ID
@@ -275,4 +275,4 @@ struct http2_client {
   friend struct http2_tester;
 };
 
-}  // namespace http2
+}  // namespace hidi

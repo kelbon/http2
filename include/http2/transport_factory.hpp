@@ -14,7 +14,7 @@
 #include <anyany/anyany.hpp>
 #include <anyany/anyany_macro.hpp>
 
-namespace http2 {
+namespace hidi {
 
 namespace asio = boost::asio;
 
@@ -83,4 +83,4 @@ any_io_context make_asio_tls_io_context(asio::io_context& ctx, server_ssl_contex
 any_io_context make_asio_tls_io_context(client_ssl_context_ptr ssl, tcp_connection_options = {});
 any_io_context make_asio_tls_io_context(server_ssl_context_ptr ssl, tcp_connection_options = {});
 
-}  // namespace http2
+}  // namespace hidi

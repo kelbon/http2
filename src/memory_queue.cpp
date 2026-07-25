@@ -1,7 +1,7 @@
 #include "http2/utils/memory_queue.hpp"
 #include "http2/http2_connection.hpp"
 
-namespace http2 {
+namespace hidi {
 
 memory_queue::memory_queue(h2stream& node) noexcept {
   assert(!node.on_data_part_fn);
@@ -16,4 +16,4 @@ memory_queue::~memory_queue() {
   n->on_data_part_fn = nullptr;
 }
 
-}  // namespace http2
+}  // namespace hidi

@@ -4,7 +4,7 @@
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/unique_name.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // server drops connection if client inactive this amount of time
 constexpr inline duration_t SERVER_DEFAULT_IDLE_TIMEOUT = std::chrono::seconds(25);
@@ -35,4 +35,4 @@ struct http2_server_options {
   log_context logctx = {};
 };
 
-}  // namespace http2
+}  // namespace hidi

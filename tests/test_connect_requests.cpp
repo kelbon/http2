@@ -10,7 +10,7 @@
 
 #include <moko3/moko3.hpp>
 
-using namespace http2;
+using namespace hidi;
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 
@@ -72,7 +72,7 @@ std::atomic<bool> done = false;
 dd::task<void> run_one_request(http2_client& c) {
   http_request req;
   req.authority = "abcd";
-  req.method = http2::http_method_e::CONNECT;
+  req.method = hidi::http_method_e::CONNECT;
   req.headers.push_back({"abc", "edf"});
   int status = co_await c.send_connect_request(std::move(req), &do_request);
   REQUIRE(status == 200);
@@ -134,7 +134,7 @@ static dd::generator<dd::task<http_response>> different_requests(http2_client& c
                                                                  std::chrono::milliseconds timeout) {
   http_request r;
   r.path = "/abc";
-  r.method = http2::http_method_e::PUT;
+  r.method = hidi::http_method_e::PUT;
   r.body.content_type = "text/plain";
   r.body.data.resize(15, byte_t(1));
   auto deadline = [&] { return deadline_after(timeout); };

@@ -5,7 +5,7 @@
 
 #include "http2/utils/fn_ref.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // unique name for logging (server / server session/ client / client connection)
 // allows grep by name and find all logs associated with entity
@@ -64,13 +64,13 @@ struct log_context {
 static const log_context empty_log_context{
     .lvl = log_level_e::NOTHING, .dolog = &noop_log_function, .name = unique_name(nullptr)};
 
-}  // namespace http2
+}  // namespace hidi
 
 namespace std {
 
 template <>
-struct formatter<::http2::unique_name> : formatter<string_view> {
-  auto format(::http2::unique_name const& n, auto& ctx) const -> decltype(ctx.out()) {
+struct formatter<::hidi::unique_name> : formatter<string_view> {
+  auto format(::hidi::unique_name const& n, auto& ctx) const -> decltype(ctx.out()) {
     return formatter<string_view>::format(n.str(), ctx);
   }
 };

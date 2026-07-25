@@ -8,7 +8,7 @@
 
 #include <kelcoro/job.hpp>
 
-namespace http2 {
+namespace hidi {
 
 using starter_t = move_only_fn<dd::task<void>(boost::asio::ip::tcp::socket&, deadline_t) const>;
 
@@ -223,4 +223,4 @@ struct asio_tls_ref_factory : asio_factory_ref_base {
   static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
 
-}  // namespace http2
+}  // namespace hidi

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace http2 {
+namespace hidi {
 
 using bytes_t = std::vector<uint8_t>;
 
@@ -20,4 +20,4 @@ struct http_body {
   }
 };
 
-}  // namespace http2
+}  // namespace hidi

@@ -2,7 +2,7 @@
 
 #include "http2/http2_connection.hpp"
 
-namespace http2 {
+namespace hidi {
 
 stream_id_t request_context::streamid() const noexcept {
   return node->streamid;
@@ -62,4 +62,4 @@ any_io_context_ptr request_context::owner_ioctx() const {
   return &node->connection->ioctx;
 }
 
-}  // namespace http2
+}  // namespace hidi

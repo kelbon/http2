@@ -36,7 +36,7 @@ int main() {
   const int MIN_POINT = 1;
   const int MAX_POINT = 10000;
 
-  http2::merged_segments ms;
+  hidi::merged_segments ms;
   primitive_merged_segments pms;
 
   // tests points [1, 2, ... MAX_POINT]

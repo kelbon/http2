@@ -8,7 +8,7 @@
 #include "http2/utils/any_io_context.hpp"
 #include "kelcoro/common.hpp"
 
-namespace http2 {
+namespace hidi {
 
 // schedules coroutine to be executed on `ctx`
 // if not yet on it
@@ -57,4 +57,4 @@ inline auto yield_on_asio_ioctx(auto& ctx) {
   #define HTTP2_ASSUME_THREAD_UNCHANGED_END (void)0
 #endif
 
-}  // namespace http2
+}  // namespace hidi

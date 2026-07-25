@@ -2,7 +2,7 @@
 #include "test_connection.hpp"
 #include <moko3/moko3.hpp>
 
-using namespace http2;
+using namespace hidi;
 
 SERVER_TEST("server continuations") {
   auto client = co_await fake_client_connection(ioctx, addr);

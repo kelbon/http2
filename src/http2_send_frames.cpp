@@ -4,7 +4,7 @@
 
 #include "http2/http2_connection.hpp"
 
-namespace http2 {
+namespace hidi {
 
 dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t laststreamid, errc_e errc, std::string dbginfo) {
   if (!con || con->is_dropped())
@@ -133,4 +133,4 @@ dd::task<void> update_window_to_max(cfint_t& size, stream_id_t streamid, h2conne
   HTTP2_LOG(con->logctx, ERROR, "sending window update ended with error: {}", e.what());
 }
 
-}  // namespace http2
+}  // namespace hidi

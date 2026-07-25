@@ -4,7 +4,7 @@
 #include "http2/utils/deadline.hpp"
 #include "http2/utils/unique_name.hpp"
 
-namespace http2 {
+namespace hidi {
 
 struct http2_client_options {
   // may be used to handle requests while sending big frames, such as files data
@@ -28,4 +28,4 @@ struct http2_client_options {
   log_context logctx = {};
 };
 
-}  // namespace http2
+}  // namespace hidi

@@ -6,7 +6,7 @@
 #include "http2/http2_send_frames.hpp"
 #include "http2/utils/reusable_buffer.hpp"
 
-namespace http2 {
+namespace hidi {
 
 static void validate_first_server_frame_header(const frame_header& header, const log_context& logctx) {
   if (header.type != frame_e::SETTINGS || header.length > FRAME_LEN_MAX) {
@@ -213,4 +213,4 @@ dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
   co_return con;
 }
 
-}  // namespace http2
+}  // namespace hidi

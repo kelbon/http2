@@ -22,7 +22,7 @@ Also removes problems with asio overloads (there so many of them and they are co
 and many problems with asio::buffer (it has ~50 constructor overloads)
 */
 
-namespace http2 {
+namespace hidi {
 
 using io_error_code = boost::system::error_code;
 
@@ -336,4 +336,4 @@ struct net_t {
 // async net operations without ADL
 constexpr inline net_t net = {};
 
-}  // namespace http2
+}  // namespace hidi

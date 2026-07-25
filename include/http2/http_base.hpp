@@ -13,7 +13,7 @@
 
 #include <kelcoro/channel.hpp>
 
-namespace http2 {
+namespace hidi {
 
 [[nodiscard]] static constexpr bool is_lowercase(std::string_view s) noexcept {
   auto isuppercasechar = [](char c) { return c >= 'A' && c <= 'Z'; };
@@ -23,7 +23,7 @@ namespace http2 {
 struct reqerr_e {
   enum values_e : int {
     DONE = 0,                       //
-    CANCELLED = -1,                 // e.g. handle.destroy() in http2
+    CANCELLED = -1,                 // e.g. handle.destroy() in HTTP/2
     TIMEOUT = -3,                   //
     NETWORK_ERR = -4,               //
     PROTOCOL_ERR = -5,              // http protocol error
@@ -142,13 +142,13 @@ inline stream_body_maker_t streaming_body_without_trailers(streaming_body_t stre
 
 stream_body_maker_t streaming_body_with_trailers(streaming_body_t body, http_headers_t trailers);
 
-}  // namespace http2
+}  // namespace hidi
 
 namespace std {
 
 template <>
-struct formatter<::http2::http_header_t> : formatter<std::string_view> {
-  auto format(::http2::http_header_t const& hdr, auto& ctx) const -> decltype(ctx.out()) {
+struct formatter<::hidi::http_header_t> : formatter<std::string_view> {
+  auto format(::hidi::http_header_t const& hdr, auto& ctx) const -> decltype(ctx.out()) {
     return std::format_to(ctx.out(), "{}: {}", hdr.name(), hdr.value());
   }
 };

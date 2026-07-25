@@ -2,7 +2,7 @@
 #include "test_connection.hpp"
 #include <moko3/moko3.hpp>
 
-using namespace http2;
+using namespace hidi;
 using namespace std::chrono;
 
 CLIENT_TEST("connects") {
@@ -38,7 +38,7 @@ CLIENT_TEST("trailers") {
   http_request req;
   std::string bodydata = "hello world";
   req.body.data.assign(bodydata.begin(), bodydata.end());
-  req.method = http2::http_method_e::GET;
+  req.method = hidi::http_method_e::GET;
   req.path = "/mypath";
   req.headers.push_back(http_header_t{"name", "value"});
   http_headers_t trailers{{"trail1", "trail_value"}};

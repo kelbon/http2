@@ -53,7 +53,7 @@ task.resume, будя корутину send_request
 также приведёт к `finish_request`
 */
 
-namespace http2 {
+namespace hidi {
 
 void http2_client::notify_connection_waiters(h2connection_ptr result) noexcept {
   // assume only i have access to waiters
@@ -747,5 +747,5 @@ size_t http2_client::max_count_requests_allowed() const noexcept {
   return m_connection ? m_connection->remote_settings.max_concurrent_streams : size_t(-1);
 }
 
-}  // namespace http2
+}  // namespace hidi
 #pragma GCC diagnostic pop

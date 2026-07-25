@@ -15,12 +15,12 @@
 
 /*
 
- All in this file based on RFC 9113 HTTP2
+ All in this file based on RFC 9113 HTTP/2
  https://datatracker.ietf.org/doc/html/rfc9113
 
 */
 
-namespace http2 {
+namespace hidi {
 
 namespace noexport {
 
@@ -34,9 +34,9 @@ It copy_n(const byte_t* ptr, size_t sz, It out) noexcept {
 
 struct http_request;
 
-}  // namespace http2
+}  // namespace hidi
 
-namespace http2 {
+namespace hidi {
 
 enum struct frame_e : uint8_t {
   DATA = 0x0,
@@ -127,22 +127,22 @@ struct frame_header {
   bool operator==(frame_header const&) const = default;
 };
 
-}  // namespace http2
+}  // namespace hidi
 
 namespace std {
 
 template <>
-struct formatter<::http2::frame_header> : formatter<std::string_view> {
-  auto format(const ::http2::frame_header& h, auto& ctx) const -> decltype(ctx.out()) {
+struct formatter<::hidi::frame_header> : formatter<std::string_view> {
+  auto format(const ::hidi::frame_header& h, auto& ctx) const -> decltype(ctx.out()) {
     auto it = ctx.out();
-    return format_to(it, "{} flags: 0b{:b}, len: {}, streamid: {}", ::http2::e2str(h.type), h.flags, h.length,
+    return format_to(it, "{} flags: 0b{:b}, len: {}, streamid: {}", ::hidi::e2str(h.type), h.flags, h.length,
                      h.streamid);
   }
 };
 
 }  // namespace std
 
-namespace http2 {
+namespace hidi {
 
 // MUST be followed by a SETTINGS frame which MAY be empty
 constexpr inline unsigned char CONNECTION_PREFACE[] = {
@@ -574,4 +574,4 @@ struct h2stream;
 // дублированные или пропущенные псевдохедеры
 void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> bytes);
 
-}  // namespace http2
+}  // namespace hidi

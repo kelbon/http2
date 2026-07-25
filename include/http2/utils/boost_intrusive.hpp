@@ -9,7 +9,7 @@
 
 namespace bi = boost::intrusive;
 
-namespace http2 {
+namespace hidi {
 
 template <typename INTRUSIVE_CONTAINER>
 static void erase_byref(INTRUSIVE_CONTAINER& c, typename INTRUSIVE_CONTAINER::value_type& node) noexcept {
@@ -24,4 +24,4 @@ constexpr inline bi::link_mode_type DEFAULT_LINK_MODE = bi::safe_link;
 
 using link_option_t = bi::link_mode<DEFAULT_LINK_MODE>;
 
-}  // namespace http2
+}  // namespace hidi

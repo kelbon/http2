@@ -11,7 +11,7 @@
     std::exit(__LINE__);                                    \
   }
 
-using namespace http2;
+using namespace hidi;
 
 // all noinlines here is workaround gcc-12 bug (miscompilation)
 #define GCC_WORKAROUND [[gnu::noinline]]
@@ -20,21 +20,21 @@ constexpr inline std::string_view STREAM_REQUEST_PATH = "/bcd";
 constexpr inline std::string_view REQUEST_PATH = "/abc";
 
 const inline http_headers_t EXPECTED_HEADERS{
-    http2::http_header_t{"hash", "55555"},
-    http2::http_header_t{"ok", "yes"},
-    http2::http_header_t{"content-type", "mycontent/type"},
+    hidi::http_header_t{"hash", "55555"},
+    hidi::http_header_t{"ok", "yes"},
+    hidi::http_header_t{"content-type", "mycontent/type"},
 };
 
 const inline http_headers_t EXPECTED_CONNECT_HEADERS{
-    http2::http_header_t{":protocol", "websocket"},
-    http2::http_header_t{"some-special-hdr", "chat, superchat"},
+    hidi::http_header_t{":protocol", "websocket"},
+    hidi::http_header_t{"some-special-hdr", "chat, superchat"},
 };
 
 constexpr inline std::string_view EXPECTED_DATA = "hello world!";
 
-GCC_WORKAROUND http2::http_response answer_req(http2::http_request req) {
-  http2::http_response rsp;
-  if (req.path == REQUEST_PATH && req.method == http2::http_method_e::GET) {
+GCC_WORKAROUND hidi::http_response answer_req(hidi::http_request req) {
+  hidi::http_response rsp;
+  if (req.path == REQUEST_PATH && req.method == hidi::http_method_e::GET) {
     rsp.status = 200;
     rsp.headers = EXPECTED_HEADERS;
     rsp.body.insert(rsp.body.end(), EXPECTED_DATA.begin(), EXPECTED_DATA.end());
@@ -64,7 +64,7 @@ struct test_server : http2_server {
   using http2_server::http2_server;
 
   bool answer_before_data(http_request const& r) const noexcept override {
-    return r.method == http2::http_method_e::CONNECT;
+    return r.method == hidi::http_method_e::CONNECT;
   }
 
   dd::task<std::pair<http_response, bistream_body_maker_t>> handle_request_stream(
@@ -79,7 +79,7 @@ struct test_server : http2_server {
   }
 
   dd::task<http_response> handle_request(http_request req, request_context ctx) override {
-    error_if(req.method == http2::http_method_e::CONNECT);
+    error_if(req.method == hidi::http_method_e::CONNECT);
     http_response rsp = answer_req(std::move(req));
     co_return rsp;
   }
@@ -87,39 +87,39 @@ struct test_server : http2_server {
 
 inline bool all_good = false;
 
-GCC_WORKAROUND dd::task<http2::http_response> make_test_request(http2::http2_client& client) {
-  http2::http_request req{
+GCC_WORKAROUND dd::task<hidi::http_response> make_test_request(hidi::http2_client& client) {
+  hidi::http_request req{
       .path = std::string(REQUEST_PATH),
-      .method = http2::http_method_e::GET,
+      .method = hidi::http_method_e::GET,
   };
-  return client.send_request(std::move(req), http2::deadline_t::never());
+  return client.send_request(std::move(req), hidi::deadline_t::never());
 }
 
-GCC_WORKAROUND void check_response(const http2::http_response& rsp) {
+GCC_WORKAROUND void check_response(const hidi::http_response& rsp) {
   error_if(rsp.headers != EXPECTED_HEADERS);
   error_if(!std::ranges::equal(EXPECTED_DATA, rsp.body));
 }
 
-void check_streaming_response(const http2::http_response& rsp) {
+void check_streaming_response(const hidi::http_response& rsp) {
   error_if(rsp.status != 200);
   error_if(rsp.headers != EXPECTED_HEADERS);
   error_if(rsp.body_strview() != EXPECTED_DATA);
 }
 
-http2::streaming_body_t makebody(http2::http_headers_t& trailers) {
+hidi::streaming_body_t makebody(hidi::http_headers_t& trailers) {
   for (const char& c : EXPECTED_DATA)
-    co_yield {(const http2::byte_t*)&c, 1};
+    co_yield {(const hidi::byte_t*)&c, 1};
   trailers = EXPECTED_HEADERS;
 }
 
-dd::task<http2::http_response> make_test_stream_request(http2::http2_client& client) {
-  http2::http_request req{
+dd::task<hidi::http_response> make_test_stream_request(hidi::http2_client& client) {
+  hidi::http_request req{
       .path = std::string(STREAM_REQUEST_PATH),
-      .method = http2::http_method_e::PUT,
+      .method = hidi::http_method_e::PUT,
   };
   req.body.content_type = "text/plain";
-  auto body = [](http2::http_headers_t& trailers, request_context) { return makebody(trailers); };
-  co_return co_await client.send_streaming_request(std::move(req), body, http2::deadline_t::never());
+  auto body = [](hidi::http_headers_t& trailers, request_context) { return makebody(trailers); };
+  co_return co_await client.send_streaming_request(std::move(req), body, hidi::deadline_t::never());
 }
 
 streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, request_context) {
@@ -141,13 +141,13 @@ dd::task<void> make_test_websocket_request(http2_client& client) {
   http_request req;
   req.headers = EXPECTED_CONNECT_HEADERS;
   req.path = "/ada";
-  req.method = http2::http_method_e::CONNECT;
+  req.method = hidi::http_method_e::CONNECT;
   int status = co_await client.send_connect_request(std::move(req), &websocket_connect_test);
   error_if(status != 200);  // server accepted request
 }
 
-dd::task<void> main_coro(http2::http2_client& client) {
-  http2::http_response rsp = co_await make_test_request(client);
+dd::task<void> main_coro(hidi::http2_client& client) {
+  hidi::http_response rsp = co_await make_test_request(client);
   check_response(rsp);
 
   rsp = co_await make_test_stream_request(client);
@@ -168,13 +168,13 @@ int main() try {
 
   namespace asio = boost::asio;
 
-  http2::http2_client client(endpoint("localhost", 8080), {},
-                             make_asio_tls_io_context(make_ssl_context_for_client({})));
+  hidi::http2_client client(endpoint("localhost", 8080), {},
+                            make_asio_tls_io_context(make_ssl_context_for_client({})));
 
   test_server server(HTTP2_TLS_DIR "/test_server.crt", HTTP2_TLS_DIR "/test_server.key");
 
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
-  server.listen(http2::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
+  server.listen(hidi::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
   main_coro(client).start_and_detach();
 
