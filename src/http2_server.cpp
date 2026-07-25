@@ -395,60 +395,28 @@ http2_server_options& http2_server::get_options() noexcept {
 const http2_server_options& http2_server::get_options() const noexcept {
   return m_impl->options;
 }
-#if TODO
 
 // multi threaded server
-
-static void rebind_executor(any_connection_t& connection, asio::io_context& new_ioctx, io_error_code& ec) {
-  // ограничено работает только для известных контекстов
-  if (auto* c = dynamic_cast<asio_connection*>(connection.get())) {
-    asio::ip::tcp::socket newsock(new_ioctx);
-    auto p = c->sock.local_endpoint(ec).protocol();
-    if (ec)
-      return;
-    auto rawsock = c->sock.release(ec);
-    if (ec)
-      return;
-    ec = newsock.assign(p, rawsock, ec);
-    if (ec)
-      return;
-    c->sock = std::move(newsock);
-    return;
-  } else if (auto* c = dynamic_cast<asio_tls_connection*>(connection.get())) {
-    asio::ip::tcp::socket newsock(new_ioctx);
-    auto p = c->sock.lowest_layer().local_endpoint(ec).protocol();
-    if (ec)
-      return;
-    auto rawsock = c->sock.lowest_layer().release(ec);
-    if (ec)
-      return;
-    ec = newsock.assign(p, rawsock, ec);
-    if (ec)
-      return;
-    c->sock.lowest_layer() = std::move(newsock);
-    return;
-  } else {
-    ec = boost::asio::error::operation_not_supported;
-    return;
-  }
-}
 
 void mt_server::initialize() {
   auto cb = [this](any_connection_t sock) {
     auto& server = next_server().server;
 
-    io_error_code ec;
-    rebind_executor(sock, server->ioctx(), ec);
-    if (ec) {
-      HTTP2_LOG(server->m_impl->logctx(), ERROR, "error when transfering accepted socket, err: {}",
-                ec.what());
+    try {
+      aa::invoke<rebind_context_m>(server->ioctx())(sock, *&server->ioctx());
+    } catch (std::exception& e) {
+      HTTP2_LOG(server->m_impl->logctx(), ERROR, "error when transfering accepted socket, err: {}", e.what());
       return;
     }
-    asio::post(server->ioctx(), [&server, s = std::move(sock)]() mutable {
+    // переезжаем на обрабатывающий поток
+    [](std::unique_ptr<http2_server>& server, any_connection_t sock) -> dd::job {
+      dd::schedule_status e = co_await dd::jump_on(server->ioctx());
+      assert(!!e);
       if (server->m_impl->sessionsgate.is_closed()) [[unlikely]]
-        return;
-      server->m_impl->sessionLifecycle(server->m_impl->sessionsgate.hold(), std::move(s)).start_and_detach();
-    });
+        co_return;
+      server->m_impl->sessionLifecycle(server->m_impl->sessionsgate.hold(), std::move(sock))
+          .start_and_detach();
+    }(server, std::move(sock));
   };
 
   listen_server().server->set_accept_callback(cb);
@@ -478,9 +446,12 @@ void mt_server::run() {
           all_done.count_down();
         };
         try {
-          auto guard = asio::make_work_guard(ptr->server->ioctx());
-          ptr->work_guard = &guard;
+          ptr->server->ioctx().start_task();
+          on_scope_failure(endtask) {
+            ptr->server->ioctx().end_task();
+          };
           ptr->server->run();
+          endtask.no_longer_needed();
         } catch (std::exception& e) {
           HTTP2_LOG(ptr->server->m_impl->logctx(), ERROR, "cannot schedule `run` task: err: {}", e.what());
         }
@@ -488,9 +459,12 @@ void mt_server::run() {
     }
   }
   auto& main_server = listen_server();
-  auto guard = asio::make_work_guard(main_server.server->ioctx());
-  main_server.work_guard = &guard;
+  main_server.server->ioctx().start_task();
+  on_scope_failure(endtask) {
+    main_server.server->ioctx().end_task();
+  };
   main_server.server->run();
+  endtask.no_longer_needed();
   assert(!stopping);
   all_done.arrive_and_wait();
 }
@@ -498,7 +472,7 @@ void mt_server::run() {
 void mt_server::request_stop() {
   auto do_request_stop = [](mt_server* self) mutable -> dd::task<void> {
     // run to listen thread to access to `running` only from one thread
-    co_await jump_on_ioctx(self->listen_server().server->ioctx());
+    (void)co_await dd::jump_on(self->listen_server().server->ioctx());
     if (!self->running)
       co_return;
     if (self->stopping)
@@ -509,26 +483,22 @@ void mt_server::request_stop() {
     };
     // stop listen thread (0) first to avoid creating new sessions
     auto stop1 = [](local_server_ctx& c) -> dd::task<void> {
-      co_await jump_on_ioctx(c.server->ioctx());
+      (void)co_await dd::jump_on(c.server->ioctx());
       co_await c.server->shutdown();
-      c.work_guard->reset();
-      c.work_guard = nullptr;
+      c.server->ioctx().end_task();  // allow stop .run
     };
     std::vector<dd::task<void>> tasks;
     for (size_t i = 1; i < self->servers.size(); ++i)
       tasks.push_back(stop1(self->servers[i]));
     co_await self->listen_server().server->shutdown();
     (void)co_await dd::when_all(std::move(tasks));
-    co_await jump_on_ioctx(self->listen_server().server->ioctx());
+    (void)co_await dd::jump_on(self->listen_server().server->ioctx());
     self->stopping = false;
-    self->listen_server().work_guard->reset();
-    self->listen_server().work_guard = nullptr;
+    self->listen_server().server->ioctx().end_task();  // allow stop .run
     term.no_longer_needed();
   };
 
   do_request_stop(this).start_and_detach();
 }
-
-#endif
 
 }  // namespace http2

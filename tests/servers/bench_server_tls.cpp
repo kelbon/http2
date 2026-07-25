@@ -7,10 +7,6 @@
 
 using namespace http2;
 
-// TODO
-int main() {
-}
-#if 0
 mt_server server(std::in_place_type<bench_server>, HTTP2_TLS_DIR "/test_server.crt",
                  HTTP2_TLS_DIR "/test_server.key");
 
@@ -29,4 +25,3 @@ int main() try {
 } catch (std::exception& e) {
   std::cout << e.what() << std::endl;
 }
-#endif

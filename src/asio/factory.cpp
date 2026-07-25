@@ -28,6 +28,43 @@ struct work_awaiter {
 
 namespace http2 {
 
+static void rebind_executor(asio_connection& c, asio::io_context& new_ioctx) {
+  asio::ip::tcp::socket newsock(new_ioctx);
+  io_error_code ec;
+  auto p = c.sock.local_endpoint(ec).protocol();
+  if (ec)
+    throw network_exception(ec);
+  auto rawsock = c.sock.release(ec);
+  if (ec)
+    throw network_exception(ec);
+  ec = newsock.assign(p, rawsock, ec);
+  if (ec)
+    throw network_exception(ec);
+  c.sock = std::move(newsock);
+}
+
+static void rebind_executor(asio_tls_connection& c, asio::io_context& new_ioctx) {
+  asio::ip::tcp::socket newsock(new_ioctx);
+  io_error_code ec;
+  auto p = c.sock.lowest_layer().local_endpoint(ec).protocol();
+  if (ec)
+    throw network_exception(ec);
+  auto rawsock = c.sock.lowest_layer().release(ec);
+  if (ec)
+    throw network_exception(ec);
+  ec = newsock.assign(p, rawsock, ec);
+  if (ec)
+    throw network_exception(ec);
+  c.sock.lowest_layer() = std::move(newsock);
+}
+
+template <typename Connection, typename Context>
+static void do_rebind_context(any_connection_t& con, any_io_context_ref other) {
+  auto* p = dynamic_cast<Connection*>(con.get());
+  assert(p);
+  rebind_executor(*p, aa::any_cast<std::remove_cv_t<Context>&>(other).ioctx);
+}
+
 // Гарантирует:
 // * writer либо в wait_work либо в net.write, никогда не завершается сам
 // * если в очереди ничего нет, значит ничего не пишется и сейчас нет активного write
@@ -328,6 +365,10 @@ any_acceptor asio_factory::create_acceptor(internet_address addr, bool reuse_add
   return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
 }
 
+void asio_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_connection, asio_factory>(con, other);
+}
+
 asio_ref_factory::asio_ref_factory(asio::io_context& ctx, tcp_connection_options opts, starter_t s)
     : asio_factory_ref_base(ctx), options(std::move(opts)), starter(std::move(s)) {
 }
@@ -338,6 +379,10 @@ dd::task<any_connection_t> asio_ref_factory::create_connection_client(endpoint e
 
 any_acceptor asio_ref_factory::create_acceptor(internet_address addr, bool reuse_address) {
   return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
+}
+
+void asio_ref_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_connection, asio_ref_factory>(con, other);
 }
 
 // TLS
@@ -458,6 +503,10 @@ any_acceptor asio_tls_factory::create_acceptor(internet_address addr, bool reuse
                            server_sslctx};
 }
 
+void asio_tls_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_tls_connection, asio_tls_factory>(con, other);
+}
+
 asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, client_ssl_context_ptr ssl,
                                            tcp_connection_options opts, starter_t s)
     : asio_factory_ref_base(ctx),
@@ -485,6 +534,10 @@ any_acceptor asio_tls_ref_factory::create_acceptor(internet_address addr, bool r
 dd::task<any_connection_t> asio_tls_ref_factory::create_connection_client(endpoint endpoint,
                                                                           deadline_t deadline) {
   return do_create_connection_client_tls(*this, endpoint, deadline);
+}
+
+void asio_tls_ref_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_tls_connection, asio_tls_ref_factory>(con, other);
 }
 
 }  // namespace http2

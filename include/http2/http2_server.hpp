@@ -110,13 +110,11 @@ struct http2_server {
   friend struct http2_tester;
 };
 
-#if TODO
 // multithreaded version
 struct mt_server {
  private:
   struct local_server_ctx {
     std::unique_ptr<http2_server> server;
-    asio::executor_work_guard<asio::io_context::executor_type>* work_guard;
   };
   std::vector<local_server_ctx> servers;
   size_t last_selected_server = 0;
@@ -175,6 +173,5 @@ struct mt_server {
   // server may be stopped only once!
   void request_stop();
 };
-#endif
 
 }  // namespace http2

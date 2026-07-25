@@ -92,6 +92,12 @@ struct asio_factory_base {
   bool running_in_this_thread() {
     return ioctx.get_executor().running_in_this_thread();
   }
+  void start_task() {
+    ioctx.get_executor().on_work_started();
+  }
+  void end_task() {
+    ioctx.get_executor().on_work_finished();
+  }
 };
 
 struct asio_factory_ref_base {
@@ -125,6 +131,12 @@ struct asio_factory_ref_base {
   bool running_in_this_thread() {
     return ioctx.get_executor().running_in_this_thread();
   }
+  void start_task() {
+    ioctx.get_executor().on_work_started();
+  }
+  void end_task() {
+    ioctx.get_executor().on_work_finished();
+  }
 };
 
 struct asio_factory : asio_factory_base {
@@ -136,6 +148,7 @@ struct asio_factory : asio_factory_base {
 
   dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
+  static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
 
 struct asio_ref_factory : asio_factory_ref_base {
@@ -147,6 +160,7 @@ struct asio_ref_factory : asio_factory_ref_base {
 
   dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
+  static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
 
 struct asio_tls_connection : connection_i {
@@ -184,6 +198,7 @@ struct asio_tls_factory : asio_factory_base {
 
   dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
+  static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
 
 struct asio_tls_ref_factory : asio_factory_ref_base {
@@ -205,6 +220,7 @@ struct asio_tls_ref_factory : asio_factory_ref_base {
 
   dd::task<any_connection_t> create_connection_client(endpoint, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
+  static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
 
 }  // namespace http2
