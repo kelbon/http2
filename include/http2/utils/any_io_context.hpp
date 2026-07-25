@@ -26,12 +26,18 @@ anyany_method2_n(stopped_m, stopped, (&self) requires(self.stopped())->bool);
 // allows call .run / poll / poll_one again
 anyany_method2_n(restart_m, restart, (&self) requires(self.restart())->void);
 
+// нужно только в mt_server. Помечает для 'run', что прекращать run нельзя
+anyany_method2_n(start_task_m, start_task, (&self) requires(self.start_task())->void);
+
+// нужно только в mt_server. Помечает для 'run', что работа начатая в 'start_task' окончена
+anyany_method2_n(end_task_m, end_task, (&self) requires(self.end_task())->void);
+
 anyany_method2_n(running_in_this_thread_m, running_in_this_thread,
                  (&self) requires(self.running_in_this_thread())->bool);
 
 anyany_method2_n(create_timer_m, create_timer, (&self) requires(self.create_timer())->any_timer);
 // never invokes task immediately, pushes it into queue always
-// may be invoked from another thread
+// may be invoked from another thread (ONLY IN mt_server)
 // 'attach' for compatibility with dd::any_executor_ref
 anyany_method2_n(attach_task_m, attach, (&self, dd::task_node* n) requires(self.attach(n))->void);
 
@@ -49,15 +55,25 @@ anyany_method2_n(create_acceptor_m, create_acceptor,
                   bool reuse_address) requires(self.create_acceptor(addr, reuse_address))
                      ->any_acceptor);
 
-// TODO! block run / deblock run. Для поддержки mt_server
+struct rebind_context_m;
 
 // movable (SooS == 0)
 using any_io_context =
-    aa::basic_any_with<aa::default_allocator, /*SooS=*/0, aa::type_info, create_timer_m, attach_task_m,
-                       poll_one_m, poll_m, run_m, stop_m, stopped_m, restart_m, running_in_this_thread_m,
-                       create_connection_client_m, create_acceptor_m>;
+    aa::basic_any_with<aa::default_allocator, /*SooS=*/0, create_timer_m, attach_task_m, poll_one_m, poll_m,
+                       run_m, stop_m, stopped_m, restart_m, running_in_this_thread_m,
+                       create_connection_client_m, create_acceptor_m, rebind_context_m, start_task_m,
+                       end_task_m, aa::type_info>;
 
 using any_io_context_ref = any_io_context::ref;
 using any_io_context_ptr = any_io_context::ptr;
+
+using rebind_context_method_t = void (*)(any_connection_t&, any_io_context_ref);
+// нужно только для mt_server
+// static метод
+// 'con' было получено из accept/create_connection_client этого контекста
+// `other` такого же типа как и self
+// никак не трогает self, по сути "статическая" функция
+// con != nullptr
+anyany_pseudomethod(rebind_context_m, requires(&Self::rebind_context)->rebind_context_method_t);
 
 }  // namespace http2

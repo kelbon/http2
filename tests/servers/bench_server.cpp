@@ -7,10 +7,6 @@
 
 using namespace http2;
 
-// TODO
-int main() {
-}
-#if 0
 mt_server server(std::in_place_type<bench_server>);
 
 void on_ctrl_c(int) {
@@ -27,4 +23,3 @@ int main() try {
 } catch (std::exception& e) {
   std::cout << e.what() << std::endl;
 }
-#endif
