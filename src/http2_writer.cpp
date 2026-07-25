@@ -50,18 +50,16 @@ static void generate_http2_connect_headers(h2stream const& node, hpack::encoder&
     using hdrs = hpack::static_table_t::values;
     hdrs scheme = req.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
     encoder.encode_header_fully_indexed(scheme, out);
-    if (!req.authority.empty()) {
+    if (!req.authority.empty())
       encoder.encode_with_cache(hdrs::authority, req.authority, out);
-    }
     encoder.encode_with_cache(hdrs::path, req.path, out);
   } else {
     // https://www.rfc-editor.org/rfc/rfc9113.html#name-the-connect-method
     // :path :scheme MUST be omitted, authority required
     assert(!req.authority.empty());  // must be setted, address for server TCP connection
   }
-  for (auto& h : req.headers) {
+  for (auto& h : req.headers)
     encoder.encode(h.name(), h.value(), out);
-  }
 }
 
 template <bool IS_CLIENT>
@@ -99,18 +97,16 @@ static void generate_http2_headers_to(h2stream const& node, hpack::encoder& enco
     hdrs scheme = request.scheme == scheme_e::HTTPS ? hdrs::scheme_https : hdrs::scheme_http;
     encoder.encode_header_fully_indexed(scheme, out);
     encoder.encode_with_cache(hdrs::path, request.path, out);
-    if (!request.authority.empty()) {
+    if (!request.authority.empty())
       encoder.encode_with_cache(hdrs::authority, request.authority, out);
-    }
   } else {
     // server, required only :status
     assert(node.status > 0);
     encoder.encode_status(node.status, out);
   }
 
-  if (!request.body.content_type.empty()) {
+  if (!request.body.content_type.empty())
     encoder.encode_with_cache(hdrs::content_type, request.body.content_type, out);
-  }
 
   // custom headers
 
@@ -128,26 +124,24 @@ static void generate_http2_headers_to(h2stream const& node, hpack::encoder& enco
 // precondition: 'out' contains atleast 9 valid bytes
 template <bool Streaming>
 [[nodiscard]] static cfint_t fill_data_header(h2stream const& node, h2connection const& con,
-                                              size_t unhandledBytes, byte_t* out) noexcept {
+                                              size_t unhandled_bytes, byte_t* out) noexcept {
   using enum frame_e;
   using namespace flags;
 
   assert(!node.req.body.data.empty());
-  assert(node.req.body.data.size() >= unhandledBytes);
+  assert(node.req.body.data.size() >= unhandled_bytes);
   frame_header header;
-  cfint_t len = std::min<int64_t>({int64_t(unhandledBytes), con.remoteSettings.maxFrameSize,
-                                   node.lrStreamlevelWindowSize, con.receiverWindowSize});
-  if (len <= 0) [[unlikely]] {
+  cfint_t len = std::min<int64_t>({int64_t(unhandled_bytes), con.remote_settings.max_frame_size,
+                                   node.lr_streamlevel_windowsize, con.receiver_window_size});
+  if (len <= 0) [[unlikely]]
     return len;
-  }
   header.length = len;
   header.type = DATA;
-  if constexpr (!Streaming) {
-    header.flags = unhandledBytes == header.length ? END_STREAM : EMPTY_FLAGS;
-  } else {
+  if constexpr (!Streaming)
+    header.flags = unhandled_bytes == header.length ? END_STREAM : EMPTY_FLAGS;
+  else
     header.flags = EMPTY_FLAGS;
-  }
-  header.streamId = node.streamid;
+  header.streamid = node.streamid;
   header.form(out);
 
   return header.length;
@@ -165,25 +159,24 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
 
   cfint_t framelen = 0;
   byte_t* in = data.data();
-  byte_t* dataEnd = in + data.size();
+  byte_t* data_end = in + data.size();
 
-  for (; in != dataEnd; in += framelen) {
-    if (work->finished() || con->isDropped()) {
+  for (; in != data_end; in += framelen) {
+    if (work->finished() || con->is_dropped())
       co_return;
-    }
-    framelen = fill_data_header<Streaming>(*work, *con, std::distance(in, dataEnd), in - H2FHL);
+
+    framelen = fill_data_header<Streaming>(*work, *con, std::distance(in, data_end), in - H2FHL);
     if (framelen <= 0) [[unlikely]] {
       HTTP2_LOG_TRACE(con->logctx,
                       "cannot send bytes now! unhandled: {}, max_frame_len: {}, "
                       "stream wsz {}, con wsz: {}",
-                      std::distance(in, dataEnd), con->remoteSettings.maxFrameSize,
-                      work->lrStreamlevelWindowSize, con->receiverWindowSize);
+                      std::distance(in, data_end), con->remote_settings.max_frame_size,
+                      work->lr_streamlevel_windowsize, con->receiver_window_size);
       co_await cbs->sleepcb(std::chrono::nanoseconds(500), ec);
       if (ec) {
         HTTP2_LOG(con->logctx, ERROR, "something went wrong while sleeping, err: {}", ec.what());
-        if (ec == boost::asio::error::operation_aborted) {
+        if (ec == boost::asio::error::operation_aborted)
           co_return;
-        }
         // continue, ignore sleep errors
       }
       framelen = 0;  // avoid in += framelen which is < 0
@@ -191,9 +184,9 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
     }
     HTTP2_LOG_TRACE(con->logctx,
                     "FRAME for stream {}, len: {}, unhandled: {}, rws: {}, "
-                    "csSlWsz: {}, maxFrameSize: {}, DATA: {}",
-                    work->streamid, framelen, std::distance(in, dataEnd), con->receiverWindowSize,
-                    work->lrStreamlevelWindowSize, con->remoteSettings.maxFrameSize,
+                    "rs max frame max: {}, max_frame_size: {}, DATA: {}",
+                    work->streamid, framelen, std::distance(in, data_end), con->receiver_window_size,
+                    work->lr_streamlevel_windowsize, con->remote_settings.max_frame_size,
                     std::string_view((char const*)in, framelen));
     // send frame
     HTTP2_WAIT_WRITE(*con);
@@ -202,13 +195,13 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
     if (ec)
       co_return;
     // control flow
-    decrease_window_size(con->receiverWindowSize, framelen, con->logctx);           // connection
-    decrease_window_size(work->lrStreamlevelWindowSize, framelen, work->logctx());  // stream
+    decrease_window_size(con->receiver_window_size, framelen, con->logctx);           // connection
+    decrease_window_size(work->lr_streamlevel_windowsize, framelen, work->logctx());  // stream
   }  // end loop
   HTTP2_LOG_TRACE(con->logctx, "DATA for stream {} successfully sended", work->streamid);
   co_return;
 } catch (std::exception& e) {
-  con->finishRequest(*work, reqerr_e::UNKNOWN_ERR);
+  con->finish_request(*work, reqerr_e::UNKNOWN_ERR);
   send_rst_stream(con, work->streamid, errc_e::CANCEL).start_and_detach();
   HTTP2_LOG(con->logctx, ERROR, "writing DATA for stream {} ended with error, err: {}", work->streamid,
             e.what());
@@ -224,25 +217,25 @@ static dd::task<void> write_continuations(h2connection_ptr con, stream_id_t stre
   byte_t* b = hdrs.data() + handled;
   byte_t* e = hdrs.data() + hdrs.size();
   HTTP2_WAIT_WRITE(*con);
-  con->continuationGateway.close();
+  con->continuation_gateway.close();
   on_scope_exit {
     dd::any_executor_ref exe{con->ioctx};
-    con->continuationGateway.open(exe);
+    con->continuation_gateway.open(exe);
   };
   size_t framesz;
   for (; b != e; b += framesz) {
-    framesz = std::min<size_t>(con->remoteSettings.maxFrameSize, e - b);
+    framesz = std::min<size_t>(con->remote_settings.max_frame_size, e - b);
     frame_header h{
         .length = uint32_t(framesz),
         .type = frame_e::CONTINUATION,
         .flags = framesz == e - b ? flags::END_HEADERS : flags::EMPTY_FLAGS,
-        .streamId = streamid,
+        .streamid = streamid,
     };
     h.form(b - H2FHL);
     HTTP2_LOG_TRACE(con->logctx, "writing CONTINUATION frame for stream {}, len: {}", streamid, framesz);
     co_await con->write(std::span(b - H2FHL, framesz + H2FHL), ec);
 
-    if (ec || con->isDropped())
+    if (ec || con->is_dropped())
       co_return;
   }
 }
@@ -259,21 +252,19 @@ static dd::task<void> write_trailers(h2connection& con, stream_id_t streamid, ht
   }
   size_t framelen = bytes.size() - H2FHL;
   frame_header fhdr;
-  fhdr.length = std::min<uint32_t>(framelen, con.remoteSettings.maxFrameSize);
+  fhdr.length = std::min<uint32_t>(framelen, con.remote_settings.max_frame_size);
   bool one_frame = fhdr.length == framelen;
   fhdr.type = frame_e::HEADERS;
-  fhdr.streamId = streamid;
-  if (one_frame) [[likely]] {
+  fhdr.streamid = streamid;
+  if (one_frame) [[likely]]
     fhdr.flags = flags::END_STREAM | flags::END_HEADERS;  // trailers
-  } else {
+  else
     fhdr.flags = flags::END_STREAM;
-  }
   fhdr.form(bytes.data());
   HTTP2_WAIT_WRITE(con);
   co_await con.write(std::span(bytes.data(), fhdr.length + H2FHL), ec);
-  if (!one_frame) [[unlikely]] {
+  if (!one_frame) [[unlikely]]
     co_await write_continuations(&con, streamid, fhdr.length + H2FHL, std::move(bytes), ec);
-  }
 }
 
 template <bool IS_CLIENT>
@@ -288,7 +279,7 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
   // channel may fill trailers to send them
   http_headers_t trailers;
 
-  // Note: order. `chan` destroyed before `makebody` (which destroyed in returnNode)
+  // Note: order. `chan` destroyed before `makebody` (which destroyed in `return_node`)
   streaming_body_t chan = snode.makebody(trailers, request_context(*node));
 
   on_scope_exit {
@@ -302,7 +293,7 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
   for (; b != chan.end(); (void)(co_await (++b))) {
     HTTP2_ASSUME_THREAD_UNCHANGED_END;
     std::span<const byte_t> chunk = *b;
-    if (snode.finished() || con->isDropped())
+    if (snode.finished() || con->is_dropped())
       co_return;
     if (chunk.empty())
       continue;
@@ -317,20 +308,19 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
   }
 
   if (std::exception_ptr e = chan.take_exception()) {
-    con->finishRequestWithUserException(*node, std::move(e));
+    con->finish_request_with_user_exception(*node, std::move(e));
     HTTP2_LOG(con->logctx, ERROR, "writing streaming data for stream {} ended with user exception",
               node->streamid);
     co_return;
   }
 
-  if (snode.finished() || con->isDropped()) {
+  if (snode.finished() || con->is_dropped())
     co_return;
-  }
 
   if (!trailers.empty()) {
     co_await write_trailers(*con, node->streamid, std::move(trailers), ec);
 
-    if (snode.finished() || con->isDropped())
+    if (snode.finished() || con->is_dropped())
       co_return;
     if (ec)
       goto end;
@@ -341,25 +331,25 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
     HTTP2_WAIT_WRITE(*con);
     co_await con->write(bytes, ec);
 
-    if (snode.finished() || con->isDropped())
+    if (snode.finished() || con->is_dropped())
       co_return;
     if (ec)
       goto end;
   }
   if constexpr (!IS_CLIENT) {
-    con->finishRequest(snode, snode.status);
+    con->finish_request(snode, snode.status);
   } else {
     // client sends all what it need, do not want to receive anything
     if (snode.is_connect_request())
-      con->finishRequest(snode, snode.status);
+      con->finish_request(snode, snode.status);
   }
   co_return;
 end:
-  con->finishRequest(
+  con->finish_request(
       snode, ec != boost::asio::error::operation_aborted ? reqerr_e::NETWORK_ERR : reqerr_e::CANCELLED);
   cbs->neterrcb();
 } catch (std::exception& e) {
-  con->finishRequest(*node, reqerr_e::UNKNOWN_ERR);
+  con->finish_request(*node, reqerr_e::UNKNOWN_ERR);
   send_rst_stream(con, node->streamid, errc_e::CANCEL).start_and_detach();
   HTTP2_LOG(con->logctx, ERROR, "writing streaming DATA for stream {} ended with error, err: {}",
             node->streamid, e.what());
@@ -386,28 +376,28 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
   for (;;) {
     // waiting for job or connection shutdown
 
-    if (!co_await con->waitWork()) {
+    if (!co_await con->wait_work())
       goto end;
-    }
+
     assert(!con->requests.empty());
 
     while (!con->requests.empty()) {
       stream_ptr node = &con->requests.front();
 
       con->requests.pop_front();
-      con->insertResponseNode(*node);
+      con->insert_response_node(*node);
 
       // send headers
 
       if constexpr (IS_CLIENT) {
-        while (con->concurrentStreamsNow() >= con->remoteSettings.maxConcurrentStreams) [[unlikely]] {
+        while (con->concurrent_streams_now() >= con->remote_settings.max_concurrent_streams) [[unlikely]] {
           HTTP2_LOG_TRACE(con->logctx, "too many streams, waiting (max is {})",
-                          con->remoteSettings.maxConcurrentStreams);
+                          con->remote_settings.max_concurrent_streams);
           co_await yield_on_ioctx(con->ioctx);
-          if (ec || con->isDropped()) {
-            if (ec != boost::asio::error::operation_aborted) {
-              con->finishRequest(*node, reqerr_e::NETWORK_ERR);
-            }
+          if (ec || con->is_dropped()) {
+            if (ec != boost::asio::error::operation_aborted)
+              con->finish_request(*node, reqerr_e::NETWORK_ERR);
+
             goto end;
           }
         }
@@ -421,15 +411,14 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
       using namespace flags;
       size_t hdrslen = headers.size() - H2FHL;
       frame_header fhdr;
-      fhdr.length = std::min<uint32_t>(con->remoteSettings.maxFrameSize, hdrslen);
+      fhdr.length = std::min<uint32_t>(con->remote_settings.max_frame_size, hdrslen);
       bool one_frame = hdrslen == fhdr.length;
       fhdr.type = frame_e::HEADERS;
-      fhdr.streamId = node->streamid;
-      if (one_frame) [[likely]] {
+      fhdr.streamid = node->streamid;
+      if (one_frame) [[likely]]
         fhdr.flags = flags_t(node->has_body() ? END_HEADERS : (END_HEADERS | END_STREAM));
-      } else {
+      else
         fhdr.flags = flags_t(node->has_body() ? EMPTY_FLAGS : END_STREAM);
-      }
       fhdr.form(headers.data());
       HTTP2_LOG_TRACE(con->logctx, "sending headers block: stream {}, block size: {}", node->streamid,
                       headers.size() - H2FHL);
@@ -440,22 +429,22 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
       HTTP2_WAIT_WRITE(*con);
       co_await con->write(std::span(headers.data(), fhdr.length + H2FHL), ec);
 
-      if (ec || con->isDropped()) {
+      if (ec || con->is_dropped()) {
         // otherwise will be finished by drop_connection with
         // reqerr_e::cancelled
-        if (ec != boost::asio::error::operation_aborted) {
-          con->finishRequest(*node, reqerr_e::NETWORK_ERR);
-        }
+        if (ec != boost::asio::error::operation_aborted)
+          con->finish_request(*node, reqerr_e::NETWORK_ERR);
+
         goto end;
       }
 
       if (!one_frame) [[unlikely]] {
         co_await write_continuations(con, node->streamid, fhdr.length + H2FHL, std::move(headers), ec);
 
-        if (ec || con->isDropped()) {
-          if (ec != boost::asio::error::operation_aborted) {
-            con->finishRequest(*node, reqerr_e::NETWORK_ERR);
-          }
+        if (ec || con->is_dropped()) {
+          if (ec != boost::asio::error::operation_aborted)
+            con->finish_request(*node, reqerr_e::NETWORK_ERR);
+
           goto end;
         }
       }
@@ -464,28 +453,24 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
       if (!node->req.body.data.empty()) {
         co_await write_data</*Streaming=*/false>(node, con, cbs, ec);
 
-        if (ec || con->isDropped()) {
-          if (ec != boost::asio::error::operation_aborted) {
-            con->finishRequest(*node, reqerr_e::NETWORK_ERR);
-          }
+        if (ec || con->is_dropped()) {
+          if (ec != boost::asio::error::operation_aborted)
+            con->finish_request(*node, reqerr_e::NETWORK_ERR);
+
           goto end;
         }
-        if constexpr (!IS_CLIENT) {
-          con->finishRequest(*node, node->status);
-        }
+        if constexpr (!IS_CLIENT)
+          con->finish_request(*node, node->status);
       } else if (!node->is_output_streaming()) {
         // request has no body
-        if constexpr (!IS_CLIENT) {
-          con->finishRequest(*node, node->status);
-        }
-      } else {
-        if constexpr (IS_CLIENT) {
-          if (!node->is_connect_request())
-            (void)write_stream_data<IS_CLIENT>(node, con, cbs);
-        } else {
-          // stream finished in write_stream-data
+        if constexpr (!IS_CLIENT)
+          con->finish_request(*node, node->status);
+      } else if constexpr (IS_CLIENT) {
+        if (!node->is_connect_request())
           (void)write_stream_data<IS_CLIENT>(node, con, cbs);
-        }
+      } else {
+        // stream finished in write_stream-data
+        (void)write_stream_data<IS_CLIENT>(node, con, cbs);
       }
     }
   }  // end loop handling requests

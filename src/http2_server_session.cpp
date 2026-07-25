@@ -19,14 +19,14 @@
 Путь каждого запроса внутри сессии сервера:
 
 1. server_reader читает HEADERS фрейм от клиента
-2. server_reader вызывает startRequestAssemble, который создаёт стрим ноду и:
+2. server_reader вызывает `start_request_assemble`, который создаёт стрим ноду и:
     * добавляет её в connection.responses (в сервере responses используются также для сборки запроса)
     * выставляет статус reqerr_e::REQUEST_CREATED чтобы обозначить, что запрос ещё не собран
-    ** после выхода из startRequestAssemble стрим остаётся без владельца
+    ** после выхода из `start_request_assemble` стрим остаётся без владельца
 3. server_reader продолжает получать фреймы от клиента, собирая их в один внутри responses
-и вызывает onRequestReady, когда приходит фрейм с флагом END_STREAM (это может быть самый первый фрейм
+и вызывает `on_request_ready`, когда приходит фрейм с флагом END_STREAM (это может быть самый первый фрейм
 HEADERS)
-4. onRequestReady
+4. on_request_ready
     * стартует корутину send_response перехватывает владение стримом
     * выставляет статус RESPONSE_IN_PROGRESS
     * вызывает пользовательский калбек для получения Response
@@ -34,15 +34,15 @@ HEADERS)
 только потом удалится вместе с стримом .task в стриме ещё nullptr, чтобы не разбудить send_response во время
 ожидания Response
 5. После получения Response корутина send_response выставляет стрим.status и стрим.request, засыпает на
-responseWritten, предварительно выставляя в стрим.task свой хендл и перенося стрим из connection.responses в
-connection.requests (очередь на отправку для писателя)
+`response_written`, предварительно выставляя в стрим.task свой хендл и перенося стрим из connection.responses
+в connection.requests (очередь на отправку для писателя)
 6. Писатель забирает из очереди стрим с готовым для отправки Response и пишет его, после завершения вызывает
-connection.finsihRequest
+connection.finish_request
 
-На любом из этапов стрим может быть отменён, например через получение фрейма RST_STREAM или .requestTerminate.
-Во время и для завершения учитываются stream.task, и владельцы (если стрим сейчас без владельца, он
-уничтожается на месте) Удаление из контейнеров requests/responses (forget) предотвращает любое получение
-фреймов для этого стрима в server_reader
+На любом из этапов стрим может быть отменён, например через получение фрейма RST_STREAM или
+.request_terminate. Во время и для завершения учитываются stream.task, и владельцы (если стрим сейчас без
+владельца, он уничтожается на месте) Удаление из контейнеров requests/responses (forget) предотвращает любое
+получение фреймов для этого стрима в server_reader
 
   Важно: стрим всегда должен быть хотя бы в одном из контейнеров responses/requests, чтобы пришедшие фреймы
 RST_STREAM и прочие могли на него повлиять
@@ -68,13 +68,13 @@ server_session::server_session(h2connection_ptr con, http2_server_options opts, 
     : connection(std::move(con)), options(opts), server(&s) {
   assert(connection);
   connection->used_bytes_limit = options.limit_requests_memory_usage_bytes;
-  options.maxReceiveFrameSize = std::min(FRAME_LEN_MAX, options.maxReceiveFrameSize);
+  options.max_receive_frame_size = std::min(FRAME_LEN_MAX, options.max_receive_frame_size);
   options.max_continuation_len_bytes = std::min(options.max_continuation_len_bytes, MAX_CONTINUATION_LEN);
   connection->max_continuation_len = options.max_continuation_len_bytes;
 }
 
 server_session::~server_session() {
-  assert(connection->isDropped() && connection->requests.empty() && connection->responses.empty() &&
+  assert(connection->is_dropped() && connection->requests.empty() && connection->responses.empty() &&
          "server session was not closed before destroy");
   HTTP2_LOG_TRACE(logctx(), "session ended");
 }
@@ -85,10 +85,10 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   HTTP2_LOG_TRACE(session.logctx(), "sending response for stream {}", node->streamid);
   on_scope_exit {
     HTTP2_LOG_TRACE(session.logctx(), "sent response for stream {}", node->streamid);
-    session.onResponseDone();
+    session.on_response_done();
   };
-  if (session.responsegate.is_closed() || session.connection->isDropped() ||
-      !node->responsesHook.is_linked()) {
+  if (session.responsegate.is_closed() || session.connection->is_dropped() ||
+      !node->responses_hook.is_linked()) {
     // already canceled
     co_return 0;
   }
@@ -116,7 +116,7 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
     HTTP2_LOG(session.logctx(), ERROR, "handle request failed: {}", e.what());
     HTTP2_ASSUME_THREAD_UNCHANGED_END;
     assert(e.streamid == node->streamid);
-    session.requestShutdown();
+    session.request_shutdown();
     session.connection->shutdown(reqerr_e::reqerr_e::SERVER_CANCELLED_REQUEST);
     co_return 0;
   } catch (stream_error& e) {
@@ -139,7 +139,7 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   node->status = (int)rsp.status;
   node->req = response_bro::torequest(std::move(rsp));
 
-  if (co_await session.responseWritten(*node)) {
+  if (co_await session.response_written(*node)) {
     HTTP2_LOG_TRACE(session.logctx(), "response for stream {} successfully written", node->streamid);
   } else {
     HTTP2_LOG_TRACE(session.logctx(), "response for stream {} failed", node->streamid);
@@ -147,18 +147,18 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   co_return 0;
 }
 
-void server_session::onRequestReady(h2stream& n) noexcept {
+void server_session::on_request_ready(h2stream& n) noexcept {
   if (n.responded) [[unlikely]]
     return;
   else
     n.responded = true;
-  // was detached before in startRequestAssemble
+  // was detached before in `start_request_assemble`
   stream_ptr np(&n, /*add_ref=*/false);
   np->status = reqerr_e::RESPONSE_IN_PROGRESS;
   on_scope_failure(nodedone) {
-    onResponseDone();
+    on_response_done();
   };
-  if (!np->responsesHook.is_linked()) {
+  if (!np->responses_hook.is_linked()) {
     // already canceled
     HTTP2_LOG_TRACE(logctx(), "stream {} response canceled due session shutdown", np->streamid);
     return;
@@ -174,92 +174,91 @@ void server_session::onRequestReady(h2stream& n) noexcept {
   }
 }
 
-bool server_session::rstStreamServer(rst_stream rstframe, bool skip_validation) {
+bool server_session::rst_stream_server(rst_stream rstframe, bool skip_validation) {
   if (!skip_validation)
-    connection->validateRstFrame(rstframe);
-  h2stream* n = connection->findResponseByStreamid(rstframe.header.streamId);
+    connection->validate_rst_frame(rstframe);
+  h2stream* n = connection->find_response_by_streamid(rstframe.header.streamid);
   if (!n) {
     auto it =
         std::find_if(connection->requests.begin(), connection->requests.end(),
-                     [streamid = rstframe.header.streamId](h2stream& rn) { return rn.streamid == streamid; });
+                     [streamid = rstframe.header.streamid](h2stream& rn) { return rn.streamid == streamid; });
     if (it != connection->requests.end()) {
       n = &*it;
     } else {
       return false;
     }
   }
-  n->canceledByRstStream = true;
-  finishServerRequest(*n);
+  n->canceled_by_rststream = true;
+  finish_server_request(*n);
   return true;
 }
 
-void server_session::rstStreamAfterError(stream_error const& e) {
+void server_session::rst_stream_after_error(stream_error const& e) {
   rst_stream rst;
   rst.header = rst.make_header(e.streamid);
-  rst.errorCode = e.errc;
+  rst.error_code = e.errc;
   // reuse rst stream like if someone sent it
-  rstStreamServer(rst, /*skip_validation=*/true);
+  rst_stream_server(rst, /*skip_validation=*/true);
   send_rst_stream(connection, e.streamid, e.errc).start_and_detach();
 }
 
-size_t server_session::requestsLeftExactly() const noexcept {
+size_t server_session::requests_left_exactly() const noexcept {
   size_t count = 0;
   // some streams may be in .requests AND in .responses
   for (h2stream& n : connection->requests) {
-    if (connection->findResponseByStreamid(n.streamid) == nullptr)
+    if (connection->find_response_by_streamid(n.streamid) == nullptr)
       ++count;
   }
   return count + connection->responses.size();
 }
 
-void server_session::requestShutdown() noexcept {
-  if (!newRequestsForbiden) {
-    newRequestsForbiden = true;
+void server_session::request_shutdown() noexcept {
+  if (!new_requests_forbiden) {
+    new_requests_forbiden = true;
     if (established) {
-      send_goaway(connection, connection->lastInitiatedStreamId(), errc_e::NO_ERROR, "graceful shutdown")
+      send_goaway(connection, connection->last_initiated_streamid(), errc_e::NO_ERROR, "graceful shutdown")
           .start_and_detach();
     }
   }
 
-  if (!hasUnfinishedRequests())
-    onSessionDone();
+  if (!has_unfinished_requests())
+    on_session_done();
 }
 
-void server_session::requestTerminate() noexcept {
+void server_session::request_terminate() noexcept {
   if (terminated) {
-    if (!hasUnfinishedRequests()) {
-      onSessionDone();
+    if (!has_unfinished_requests()) {
+      on_session_done();
     }
     return;
   }
   terminated = true;
-  newRequestsForbiden = true;
+  new_requests_forbiden = true;
 
-  send_goaway(connection, connection->lastInitiatedStreamId(), errc_e::NO_ERROR, "graceful shutdown")
+  send_goaway(connection, connection->last_initiated_streamid(), errc_e::NO_ERROR, "graceful shutdown")
       .start_and_detach();
 
   // forget requests (including not finished)
   auto doforget = [&](h2stream* n) {
     stream_ptr p = n;  // prevent node destroy
-    finishServerRequest(*n);
+    finish_server_request(*n);
   };
   connection->responses.clear_and_dispose(doforget);
   connection->requests.clear_and_dispose(doforget);
 
   assert(connection->requests.empty() && connection->responses.empty() && connection->timers.empty());
-  if (!hasUnfinishedRequests()) {
-    onSessionDone();
+  if (!has_unfinished_requests()) {
+    on_session_done();
   }
 }
 
-void server_session::onResponseDone() noexcept {
-  if (newRequestsForbiden && !hasUnfinishedRequests()) {
-    onSessionDone();
-  }
+void server_session::on_response_done() noexcept {
+  if (new_requests_forbiden && !has_unfinished_requests())
+    on_session_done();
 }
 
-void server_session::onSessionDone() noexcept {
-  assert(newRequestsForbiden && !hasUnfinishedRequests());
+void server_session::on_session_done() noexcept {
+  assert(new_requests_forbiden && !has_unfinished_requests());
   if (done) {
     return;
   }
@@ -274,133 +273,132 @@ stream_ptr server_session::new_empty_stream_node(stream_id_t id) {
   return connection->new_stream_node({}, deadline_t::never(), nullptr, nullptr, id);
 }
 
-void server_session::startRequestAssemble(const http2_frame_t& frame) {
+void server_session::start_request_assemble(const http2_frame_t& frame) {
   assert(frame.header.type == frame_e::HEADERS);
 
   // if stream already exist, its trailers or error
-  if (auto* r = connection->findResponseByStreamid(frame.header.streamId)) [[unlikely]] {
+  if (auto* r = connection->find_response_by_streamid(frame.header.streamid)) [[unlikely]] {
     if (r->is_half_closed()) {
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            std::format("client initiates stream, which was already open, streamid: {}",
-                                       frame.header.streamId));
+                                       frame.header.streamid));
     } else {
       // trailer headers received
-      r->receiveRequestTrailers(connection->decoder, frame);
+      r->receive_request_trailers(connection->decoder, frame);
       assert(r->end_stream_received);  // if not, it must be protocol error
       // Note: manages 'node' lifetime
-      onRequestReady(*r);
+      on_request_ready(*r);
       return;
     }
   }
 
-  if (frame.header.streamId <= connection->laststartedstreamid) {
+  if (frame.header.streamid <= connection->laststartedstreamid) {
     // https://www.rfc-editor.org/rfc/rfc9113.html#section-5.1.1-2
     // "identifier of a newly established stream MUST be numerically greater than all streams that the
     // initiating endpoint has opened"
     throw protocol_error(
         errc_e::PROTOCOL_ERROR,
         std::format("stream identifier that is not numerically greater than previous (new: {}, prev: {})",
-                    frame.header.streamId, connection->laststartedstreamid));
+                    frame.header.streamid, connection->laststartedstreamid));
   }
 
   // Note: before making a decision about a stream, to keep in mind the client's desire to create such stream
-  connection->laststartedstreamid = frame.header.streamId;
+  connection->laststartedstreamid = frame.header.streamid;
 
-  if (connection->is_closed_stream(frame.header.streamId)) {
+  if (connection->is_closed_stream(frame.header.streamid)) {
     throw protocol_error(errc_e::STREAM_CLOSED,
                          std::format("stream already closed, but received HEADERS frame. Stream id: {}",
-                                     frame.header.streamId));
-  } else if (requestsLeftApprox() >= connection->localSettings.maxConcurrentStreams) {
-    size_t exactreq = requestsLeftExactly();
-    if (exactreq >= connection->localSettings.maxConcurrentStreams) {
-      throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamId,
+                                     frame.header.streamid));
+  } else if (requests_left_approx() >= connection->local_settings.max_concurrent_streams) {
+    size_t exactreq = requests_left_exactly();
+    if (exactreq >= connection->local_settings.max_concurrent_streams) {
+      throw stream_error(errc_e::REFUSED_STREAM, frame.header.streamid,
                          std::format("refused due max concurrent streams exceeded, max count: {}, actual: {}",
-                                     connection->localSettings.maxConcurrentStreams, exactreq));
+                                     connection->local_settings.max_concurrent_streams, exactreq));
     }
   }
 
-  stream_ptr n = new_empty_stream_node(frame.header.streamId);
+  stream_ptr n = new_empty_stream_node(frame.header.streamid);
   n->status = reqerr_e::REQUEST_CREATED;
-  connection->insertResponseNode(*n);
+  connection->insert_response_node(*n);
   // Note: после этого detach() стрим остаётся без владельца
-  // это учитывается в onRequestReady и finishServerRequest
+  // это учитывается в `on_request_ready` и `finish_server_request`
   h2stream& node = *n.detach();
-  node.receiveRequestHeaders(frame);
-  if (node.end_stream_received) {  // setted in receiveRequestHeaders
+  node.receive_request_headers(frame);
+  if (node.end_stream_received) {  // setted in `receive_request_headers`
     // Note: manages 'node' lifetime
-    onRequestReady(node);
+    on_request_ready(node);
   } else if (server->answer_before_data(node.req)) {
     // should be setted only if data will be present
     node.answered_before_data = true;
-    onRequestReady(node);
+    on_request_ready(node);
   }
 }
 
-void server_session::clientSettingsChanged(http2_frame_t newsettings) {
+void server_session::client_settings_changed(http2_frame_t newsettings) {
   connection->settings_changed(newsettings, /*remote_is_client=*/true);
 }
 
-void server_session::clientRequestsGracefulShutdown(goaway_frame f) {
+void server_session::client_requests_graceful_shutdown(goaway_frame f) {
   (void)f;
-  HTTP2_LOG_TRACE(logctx(), "received goaway from client, laststreamid: {}, dbginfo: {}", f.lastStreamId,
-                  f.debugInfo);
+  HTTP2_LOG_TRACE(logctx(), "received goaway from client, laststreamid: {}, dbginfo: {}", f.last_streamid,
+                  f.debug_info);
   // nothing to do, since server do not start streams
   // and client wants to work until all requests are done (ok just work, then
   // drop connection)
 }
 
-void server_session::finishServerRequest(h2stream& n) noexcept {
-  if (n.onDataPart) {
+void server_session::finish_server_request(h2stream& n) noexcept {
+  if (n.on_data_part_fn) {
     // prevent endless waiting if client does not send anything etc
-    (*n.onDataPart)({}, /*last chunk*/ true);
+    (*n.on_data_part_fn)({}, /*last chunk*/ true);
   }
   if (n.status == reqerr_e::REQUEST_CREATED) {
     // request did not assembled yet
     assert(n.task == nullptr);
     connection->forget(n);
     HTTP2_LOG_TRACE(logctx(), "stream {} canceled before its asembled", n.streamid);
-    // single owner, which was 'detach' in startRequestAssemble
+    // single owner, which was 'detach' in `start_request_assemble`
     intrusive_ptr_release(&n);
-    onResponseDone();
+    on_response_done();
   } else {
     bool orphan = !n.task;
-    connection->finishRequest(n, reqerr_e::CANCELLED);
-    if (orphan) {
-      onResponseDone();
-    }
+    connection->finish_request(n, reqerr_e::CANCELLED);
+    if (orphan)
+      on_response_done();
   }
 }
 
 void server_session::receive_headers(http2_frame_t frame) {
   assert(frame.header.type == frame_e::HEADERS);
   frame.validate_streamid();
-  frame.removePadding();
-  frame.ignoreDeprecatedPriority();
-  if (newRequestsForbiden) [[unlikely]] {
-    connection->ignoreFrame(frame);
-    send_rst_stream(connection, frame.header.streamId, errc_e::REFUSED_STREAM).start_and_detach();
+  frame.remove_padding();
+  frame.ignore_deprecated_priority();
+  if (new_requests_forbiden) [[unlikely]] {
+    connection->ignore_frame(frame);
+    send_rst_stream(connection, frame.header.streamid, errc_e::REFUSED_STREAM).start_and_detach();
     return;
   }
-  startRequestAssemble(frame);
+  start_request_assemble(frame);
 }
 
 void server_session::receive_data(http2_frame_t frame) {
   assert(frame.header.type == frame_e::DATA);
   frame.validate_streamid();
-  frame.removePadding();
-  h2stream* node = connection->findResponseByStreamid(frame.header.streamId);
+  frame.remove_padding();
+  h2stream* node = connection->find_response_by_streamid(frame.header.streamid);
   if (!node) {
-    connection->ignoreFrame(frame);
+    connection->ignore_frame(frame);
     return;
   }
   // applicable only to data
   // Note: includes padding!
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2-1
-  decrease_window_size(connection->myWindowSize, int32_t(frame.header.length), logctx());
-  node->receiveRequestData(frame);
-  if (node->end_stream_received) {  // setted in receiveRequestData
+  decrease_window_size(connection->my_window_size, int32_t(frame.header.length), logctx());
+  node->receive_request_data(frame);
+  if (node->end_stream_received) {  // setted in `receive_request_data`
     // Note: manages 'node' lifetime
-    onRequestReady(*node);
+    on_request_ready(*node);
   }
 }
 

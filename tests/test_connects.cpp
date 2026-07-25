@@ -24,7 +24,7 @@ CLIENT_TEST("connects") {
   time_point n = steady_clock::now();
   co_await client.graceful_stop();
   // соединение должно быть прерывано даже на половине
-  REQUIRE((steady_clock::now() - n) < client.get_options().connectionTimeout);
+  REQUIRE((steady_clock::now() - n) < client.get_options().connection_timeout);
 }
 
 CLIENT_TEST("trailers") {
@@ -44,8 +44,8 @@ CLIENT_TEST("trailers") {
   http_headers_t trailers{{"trail1", "trail_value"}};
   client.send_request_with_trailers(req, trailers, 10s).start_and_detach();
 
-  hdrs_and_data hd = co_await server.receiveReq();
-  REQUIRE(hd.streamId = 1);
+  hdrs_and_data hd = co_await server.receive_req();
+  REQUIRE(hd.streamid = 1);
   REQUIRE(hd.body_strview() == bodydata);
   REQUIRE(std::find(hd.headers.begin(), hd.headers.end(), req.headers.front()) != hd.headers.end());
   REQUIRE(hd.trailers && hd.trailers->size() == 1 && hd.trailers->front() == trailers.front());
@@ -54,8 +54,8 @@ CLIENT_TEST("trailers") {
   req.body = {};
   client.send_request_with_trailers(req, trailers, 10s).start_and_detach();
 
-  hd = co_await server.receiveReq();
-  REQUIRE(hd.streamId = 3);
+  hd = co_await server.receive_req();
+  REQUIRE(hd.streamid = 3);
   REQUIRE(hd.body_strview() == "");
   REQUIRE(std::find(hd.headers.begin(), hd.headers.end(), req.headers.front()) != hd.headers.end());
   REQUIRE(hd.trailers && hd.trailers->size() == 1 && hd.trailers->front() == trailers.front());
@@ -71,9 +71,9 @@ SERVER_TEST("server connection drop") {
       {":authority", addr.address().to_string()},
       {std::string(TERMINATE_THIS_SESSION_HDR), ""},
   };
-  co_await client.sendReq(1, hdrs);
-  co_await client.receiveGoAway(1, errc_e::NO_ERROR, ping_e::RESPONSE);
-  co_await client.waitConnectionDropped(deadline_t(1s));
+  co_await client.send_req(1, hdrs);
+  co_await client.receive_goaway(1, errc_e::NO_ERROR, ping_e::RESPONSE);
+  co_await client.wait_connection_dropped(deadline_t(1s));
 }
 
 REGISTER_TEST_LISTENER(moko3::gtest_listener);

@@ -4,8 +4,8 @@
 namespace http2 {
 
 memory_queue::memory_queue(h2stream& node) noexcept {
-  assert(!node.onDataPart);
-  node.onDataPart = this;
+  assert(!node.on_data_part_fn);
+  node.on_data_part_fn = this;
   n = &node;
   // on server side memory queue must be created after receiving HEADERS, before any DATA
   // on client side must be created only in send_connect_request, no data is sent for it
@@ -13,7 +13,7 @@ memory_queue::memory_queue(h2stream& node) noexcept {
 }
 
 memory_queue::~memory_queue() {
-  n->onDataPart = nullptr;
+  n->on_data_part_fn = nullptr;
 }
 
 }  // namespace http2

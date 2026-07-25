@@ -18,8 +18,8 @@ struct network_exception : std::exception {
   std::string data;
 
   template <typename... ARGS>
-  explicit network_exception(std::format_string<ARGS...> fmtStr, ARGS&&... args)
-      : data(std::format(fmtStr, std::forward<ARGS>(args)...)) {
+  explicit network_exception(std::format_string<ARGS...> fmt, ARGS&&... args)
+      : data(std::format(fmt, std::forward<ARGS>(args)...)) {
   }
   explicit network_exception(io_error_code const& ec) : data(std::format("{}", ec.message())) {
   }

@@ -37,7 +37,7 @@ struct h2frame {
   http_body_bytes data = {};
 
   // parses frame. First 9 bytes are header, all other - data
-  static h2frame fromBytes(std::span<byte_t const> bytes) {
+  static h2frame from_bytes(std::span<byte_t const> bytes) {
     h2frame f;
     f.hdr = frame_header::parse({bytes.data(), FRAME_HEADER_LEN});
     f.data.assign(bytes.begin() + FRAME_HEADER_LEN, bytes.end());
@@ -71,13 +71,13 @@ inline deadline_t testdeadline(duration_t d) {
 
 // represents received HEADER + DATA frame
 struct hdrs_and_data {
-  uint32_t streamId = 0;   // streamid for both HEADERS and DATA frame
-  bool endStream = false;  // if END_STREAM flag was setted
+  uint32_t streamid = 0;    // streamid for both HEADERS and DATA frame
+  bool end_stream = false;  // if END_STREAM flag was setted
   std::vector<header> headers = {};
   http_body_bytes body = {};
   std::optional<std::vector<header>> trailers = std::nullopt;
 
-  std::string_view findHdr(std::string_view name) {
+  std::string_view find_hdr(std::string_view name) {
     auto it = std::find_if(headers.begin(), headers.end(), [name](auto& v) { return v.name == name; });
     if (it != headers.end()) {
       return it->value;
@@ -86,7 +86,7 @@ struct hdrs_and_data {
     return {};
   }
 
-  bool isHdrIndexed(std::string_view name) {
+  bool is_hdr_indexed(std::string_view name) {
     auto it = std::find_if(headers.begin(), headers.end(), [name](auto& v) { return v.name == name; });
     REQUIRE(it != headers.end());
     return it->indexed;
@@ -138,76 +138,77 @@ struct test_h2connection {
     close();
   }
 
-  dd::task<void> receiveClientMagic(std::source_location = std::source_location::current());
-  dd::task<void> sendClientMagic();
+  dd::task<void> receive_client_magic(std::source_location = std::source_location::current());
+  dd::task<void> send_client_magic();
 
   // ignores frame correctness, allowing to send incorrect frames for tests
-  dd::task<void> sendFrame(h2frame);
-  dd::task<void> sendRawFrame(std::vector<byte_t>);
+  dd::task<void> send_frame(h2frame);
+  dd::task<void> send_raw_frame(std::vector<byte_t>);
   // ignores any logic like control flow, window update, ping answer etc
-  dd::task<h2frame> receiveFrame(deadline_t, std::source_location = std::source_location::current());
+  dd::task<h2frame> receive_frame(deadline_t, std::source_location = std::source_location::current());
 
-  dd::task<h2frame> nextFrame(deadline_t, ping_e, window_e = window_e::RETURN,
-                              std::source_location = std::source_location::current());
+  dd::task<h2frame> next_frame(deadline_t, ping_e, window_e = window_e::RETURN,
+                               std::source_location = std::source_location::current());
 
   // handles SETTINGS_HEADER_TABLE_SIZE, sets m_encoder and m_decoder into correct state
-  dd::task<void> receiveAndCheckSettings(std::map<setting_id_e, uint32_t> expected,
-                                         std::set<setting_id_e> unexpected, deadline_t = deadline_after(5s),
-                                         std::source_location = std::source_location::current());
+  dd::task<void> receive_and_check_settings(std::map<setting_id_e, uint32_t> expected,
+                                            std::set<setting_id_e> unexpected,
+                                            deadline_t = deadline_after(5s),
+                                            std::source_location = std::source_location::current());
 
   // gets and validates settings frame, returns them.
   // handles only SETTINGS_HEADER_TABLE_SIZE, sets m_encoder and m_decoder into correct state
-  dd::task<h2frame> receiveSettings(deadline_t = deadline_after(5s),
-                                    std::source_location = std::source_location::current());
-  dd::task<void> receiveSettingsAck(deadline_t = deadline_after(5s),
-                                    std::source_location = std::source_location::current());
-  dd::task<void> sendSettingsAck();
+  dd::task<h2frame> receive_settings(deadline_t = deadline_after(5s),
+                                     std::source_location = std::source_location::current());
+  dd::task<void> receive_settings_ack(deadline_t = deadline_after(5s),
+                                      std::source_location = std::source_location::current());
+  dd::task<void> send_settings_ack();
   // sends default SETTINGS frame
-  dd::task<void> sendSettings();
+  dd::task<void> send_settings();
 
   // waits ping request (not ACK ping frame), ignores WINDOW_UPDATE
-  dd::task<uint64_t> receivePing(deadline_t deadline = deadline_after(5s),
-                                 std::source_location = std::source_location::current());
-  // sends PING frame with request pong (ACK == false)
-  dd::task<void> sendPing(uint64_t opaqueData);
-  // sends PING frame answer (ACK == true)
-  dd::task<void> sendPong(uint64_t opaqueData);
-
-  dd::task<void> receiveGoAway(stream_id_t lastStreamId, errc_e errorCode, ping_e ping,
-                               deadline_t deadline = deadline_after(5s),
-                               std::source_location = std::source_location::current());
-  dd::task<void> sendGoAway(stream_id_t lastStreamId, errc_e error, std::string_view debug = {});
-
-  dd::task<void> receiveRstStream(stream_id_t streamId, errc_e, deadline_t = deadline_after(5s),
+  dd::task<uint64_t> receive_ping(deadline_t deadline = deadline_after(5s),
                                   std::source_location = std::source_location::current());
-  dd::task<void> sendRstStream(stream_id_t streamId, errc_e);
+  // sends PING frame with request pong (ACK == false)
+  dd::task<void> send_ping(uint64_t opaque_data);
+  // sends PING frame answer (ACK == true)
+  dd::task<void> send_pong(uint64_t opaque_data);
 
-  dd::task<void> sendHeaders(stream_id_t streamid, std::vector<header> headers, bool endstream);
+  dd::task<void> receive_goaway(stream_id_t last_streamid, errc_e error_code, ping_e ping,
+                                deadline_t deadline = deadline_after(5s),
+                                std::source_location = std::source_location::current());
+  dd::task<void> send_goaway(stream_id_t last_streamid, errc_e error, std::string_view debug = {});
+
+  dd::task<void> receive_rst_stream(stream_id_t streamid, errc_e, deadline_t = deadline_after(5s),
+                                    std::source_location = std::source_location::current());
+  dd::task<void> send_rst_stream(stream_id_t streamid, errc_e);
+
+  dd::task<void> send_headers(stream_id_t streamid, std::vector<header> headers, bool endstream);
 
   // sends HEADERS frame and if `body` present - DATA frame. Sends END_STREAM only if `endstream` == true
-  dd::task<void> sendReq(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
-                         bool endstream = true);
+  dd::task<void> send_req(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
+                          bool endstream = true);
   // sends HEADERS frame and if `body` present - DATA frame. Sends END_STREAM only if `endstream` == true
-  dd::task<void> sendRsp(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
-                         bool endstream = true);
+  dd::task<void> send_rsp(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
+                          bool endstream = true);
 
   // receives HEADERS frame and, if required, DATA frame.
-  // returns streamid, if marked endStream, decoded headers, untouched body bytes
-  dd::task<hdrs_and_data> receiveReq(deadline_t deadline = deadline_after(5s),
-                                     std::source_location = std::source_location::current());
-  // same as receiveReq, name different for better code readability
-  dd::task<hdrs_and_data> receiveRsp(deadline_t deadline = deadline_after(5s),
-                                     std::source_location loc = std::source_location::current()) {
+  // returns streamid, if marked `end_stream`, decoded headers, untouched body bytes
+  dd::task<hdrs_and_data> receive_req(deadline_t deadline = deadline_after(5s),
+                                      std::source_location = std::source_location::current());
+  // same as `receive_req`, name different for better code readability
+  dd::task<hdrs_and_data> receive_rsp(deadline_t deadline = deadline_after(5s),
+                                      std::source_location loc = std::source_location::current()) {
     REQUIRE(is_client());
-    return receiveReq(deadline, loc);
+    return receive_req(deadline, loc);
   }
 
-  dd::task<void> sendData(stream_id_t streamId, std::string_view body, bool end_stream);
+  dd::task<void> send_data(stream_id_t streamid, std::string_view body, bool end_stream);
   // sends HEADERS frame with raw `headers` bytes, does not check `headers` correctness
   // if `split` is true headers will be splitted into random count of CONTINUATION frames
-  dd::task<void> sendRawHdr(stream_id_t streamId, std::span<const byte_t> headers, bool end_stream = true,
-                            bool split = false);
-  dd::task<void> sendRawContinuation(stream_id_t streamId, std::span<byte_t> headers, bool end_headers);
+  dd::task<void> send_raw_hdr(stream_id_t streamid, std::span<const byte_t> headers, bool end_stream = true,
+                              bool split = false);
+  dd::task<void> send_raw_continuation(stream_id_t streamid, std::span<byte_t> headers, bool end_headers);
 
   // caller must send header (or encoder dyntab will be invalid)
   std::vector<byte_t> encode_headers(std::vector<header> hdrs);
@@ -215,28 +216,25 @@ struct test_h2connection {
   // receives data, handles DATA padding etc.
   // Note: hdr.length may be not equal to data.size(). data.size() - actual data, hdr.length includes padding
   // for control flow
-  dd::task<h2frame> receiveData(stream_id_t streamId, deadline_t deadline = deadline_after(5s));
+  dd::task<h2frame> receive_data(stream_id_t streamid, deadline_t deadline = deadline_after(5s));
 
-  dd::task<void> sendWindowSizeIncrement(stream_id_t streamId, uint32_t windIncr);
+  dd::task<void> send_window_size_increment(stream_id_t streamid, uint32_t wind_incr);
 
-  dd::task<void> waitConnectionDropped(deadline_t deadline = deadline_after(5s),
-                                       std::source_location = std::source_location::current());
+  dd::task<void> wait_connection_dropped(deadline_t deadline = deadline_after(5s),
+                                         std::source_location = std::source_location::current());
 
   void close();
 
-  dd::task<void> recvFrame(deadline_t deadline = deadline_after(5s),
-                           std::source_location = std::source_location::current());
-
   // makes sense only before sending SETTINGS frame, sets SETTINGS_MAX_FRAME_SIZE
-  void setMaxFrameSize(uint32_t size) noexcept {
+  void set_max_frame_size(uint32_t size) noexcept {
     m_maxFrameSize = size;
   }
-  uint32_t getMaxFrameSize() const noexcept {
+  uint32_t get_max_frame_size() const noexcept {
     return m_maxFrameSize;
   }
 
   // makes sense only before sending SETTINGS frame, sets SETTINGS_HEADER_TABLE_SIZE
-  void setHeaderTableSize(uint32_t size) {
+  void set_header_table_size(uint32_t size) {
     con->decoder.dyntab.set_user_protocol_max_size(size);
     m_headerTabSize = size;
   }
@@ -286,24 +284,24 @@ inline dd::task<test_h2connection> fake_server_session(any_io_context_ref io, se
 inline dd::task<void> emulate_server_connection(test_h2connection& conn) {
   REQUIRE(conn.is_server());
 
-  co_await conn.receiveClientMagic();
+  co_await conn.receive_client_magic();
 
-  (void)co_await conn.receiveSettings();
-  co_await conn.sendSettings();
+  (void)co_await conn.receive_settings();
+  co_await conn.send_settings();
 
-  co_await conn.receiveSettingsAck();
-  co_await conn.sendSettingsAck();
+  co_await conn.receive_settings_ack();
+  co_await conn.send_settings_ack();
 }
 
 inline dd::task<void> emulate_client_connection(test_h2connection& conn) {
   REQUIRE(conn.is_client());
-  co_await conn.sendClientMagic();
+  co_await conn.send_client_magic();
 
-  co_await conn.sendSettings();
-  (void)co_await conn.receiveSettings();
+  co_await conn.send_settings();
+  (void)co_await conn.receive_settings();
 
-  co_await conn.sendSettingsAck();
-  co_await conn.receiveSettingsAck();
+  co_await conn.send_settings_ack();
+  co_await conn.receive_settings_ack();
 }
 
 inline std::string source_location_msg_str(std::source_location loc) {
@@ -319,7 +317,7 @@ inline void on_timeout_test_failure(std::source_location loc) {
 template <std::invocable PRED, typename ON_TIMEOUT = decltype(&on_timeout_test_failure)>
 dd::task<void> wait_until(PRED pred, any_io_context_ref ctx, deadline_t deadline = deadline_after(5s),
                           std::source_location loc = std::source_location::current(),
-                          ON_TIMEOUT onTimeout = &on_timeout_test_failure) {
+                          ON_TIMEOUT on_timeout = &on_timeout_test_failure) {
   for (;;) {
     if constexpr (dd::co_awaitable<std::invoke_result_t<PRED>>) {
       if (co_await pred())
@@ -328,8 +326,8 @@ dd::task<void> wait_until(PRED pred, any_io_context_ref ctx, deadline_t deadline
       if (pred())
         co_return;
     }
-    if (deadline.isReached()) [[unlikely]] {
-      onTimeout(loc);
+    if (deadline.is_reached()) [[unlikely]] {
+      on_timeout(loc);
       co_return;
     }
     co_await yield_on_ioctx(ctx);

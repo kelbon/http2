@@ -101,7 +101,7 @@ std::span<const http_header_t> realistic_valid_http2_headers() {
       {"x-business-intent", "CheckPricingFlow"},
       {"user-segment", "Enterprise"},
       {"x-partner-code", "partner-code=998"},
-      {"x-device-model", "iPhone16,2"},
+      {"x-device-model", "name"},
       {"internal-correlation", "CorrID=239FD"},
       {"x-compliance-mode", "StrictModeOn"},
       {"app-metric-source", "MobileApp"},

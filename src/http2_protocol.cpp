@@ -86,9 +86,9 @@ static void validate_enable_push_from_server(setting_t s) {
 static void validate_rst_stream(const frame_header& h) {
   assert(h.type == frame_e::RST_STREAM);
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.4-6
-  if (h.streamId == 0) {
+  if (h.streamid == 0) {
     throw protocol_error(errc_e::PROTOCOL_ERROR,
-                         std::format("RST_STREAM frame with streamid == 0 ({})", h.streamId));
+                         std::format("RST_STREAM frame with streamid == 0 ({})", h.streamid));
   }
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.4-8
   if (h.length != 4) {
@@ -100,9 +100,9 @@ static void validate_rst_stream(const frame_header& h) {
 static void validate_ping(const frame_header& h) {
   assert(h.type == frame_e::PING);
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.7-8
-  if (h.streamId != 0) {
+  if (h.streamid != 0) {
     throw protocol_error(errc_e::PROTOCOL_ERROR,
-                         std::format("PING frame with streamid != 0 ({})", h.streamId));
+                         std::format("PING frame with streamid != 0 ({})", h.streamid));
   }
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.7-9
   if (h.length != 8) {
@@ -114,9 +114,9 @@ static void validate_ping(const frame_header& h) {
 static void validate_goaway(const frame_header& h) {
   assert(h.type == frame_e::GOAWAY);
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.8-11
-  if (h.streamId != 0) {
+  if (h.streamid != 0) {
     throw protocol_error(errc_e::PROTOCOL_ERROR,
-                         std::format("GOAWAY frame with streamid != 0 ({})", h.streamId));
+                         std::format("GOAWAY frame with streamid != 0 ({})", h.streamid));
   }
   // must be atleast last stream id and error code both 32 bit
   if (h.length < 8) {
@@ -143,13 +143,13 @@ static void validate_window_update_increment(const frame_header& h, cfint_t incr
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9-9
   // (but now both stream and connection related errors are connection error, not stream error)
   if (increment == 0) {
-    if (h.streamId != 0) {
-      throw stream_error(errc_e::PROTOCOL_ERROR, h.streamId,
+    if (h.streamid != 0) {
+      throw stream_error(errc_e::PROTOCOL_ERROR, h.streamid,
                          std::format("invalid window update frame, increment == 0"));
     } else {
       throw protocol_error(
           errc_e::PROTOCOL_ERROR,
-          std::format("invalid window update frame, increment == 0, streamid == 0", h.streamId));
+          std::format("invalid window update frame, increment == 0, streamid == 0", h.streamid));
     }
   }
 }
@@ -185,33 +185,33 @@ std::string_view e2str(frame_e e) noexcept {
 void server_settings_visitor::operator()(setting_t s) {
   switch (s.identifier) {
     case SETTINGS_HEADER_TABLE_SIZE:
-      settings.headerTableSize = s.value;
+      settings.header_table_size = s.value;
       return;
     case SETTINGS_ENABLE_PUSH:
       validate_enable_push_from_server(s);
-      settings.enablePush = s.value;
+      settings.enable_push = s.value;
       return;
     case SETTINGS_MAX_CONCURRENT_STREAMS:
-      settings.maxConcurrentStreams = s.value;
+      settings.max_concurrent_streams = s.value;
       return;
     case SETTINGS_INITIAL_WINDOW_SIZE:
       validate_initial_window_size(s);
-      settings.initialStreamWindowSize = s.value;
+      settings.initial_stream_window_size = s.value;
       return;
     case SETTINGS_MAX_FRAME_SIZE:
       validate_max_frame_size(s);
-      settings.maxFrameSize = s.value;
+      settings.max_frame_size = s.value;
       return;
     case SETTINGS_MAX_HEADER_LIST_SIZE:
-      settings.maxHeaderListSize = s.value;
+      settings.max_header_list_size = s.value;
       return;
     case SETTINGS_ENABLE_CONNECT_PROTOCOL:
       validate_enable_connect_protocol_from_server(s);
       settings.enable_connect_protocol = s.value;
       return;
     case SETTINGS_NO_RFC7540_PRIORITIES:
-      validate_norfc7540_priority(s, firstframe, settings.deprecatedPriorityDisabled);
-      settings.deprecatedPriorityDisabled = s.value;
+      validate_norfc7540_priority(s, firstframe, settings.deprecated_priority_disabled);
+      settings.deprecated_priority_disabled = s.value;
       return;
     default:
         // ignore if dont know
@@ -222,33 +222,33 @@ void server_settings_visitor::operator()(setting_t s) {
 void client_settings_visitor::operator()(setting_t s) {
   switch (s.identifier) {
     case SETTINGS_HEADER_TABLE_SIZE:
-      settings.headerTableSize = s.value;
+      settings.header_table_size = s.value;
       return;
     case SETTINGS_ENABLE_PUSH:
       validate_enable_push_from_client(s);
-      settings.enablePush = s.value;
+      settings.enable_push = s.value;
       return;
     case SETTINGS_MAX_CONCURRENT_STREAMS:
-      settings.maxConcurrentStreams = s.value;
+      settings.max_concurrent_streams = s.value;
       return;
     case SETTINGS_INITIAL_WINDOW_SIZE:
       validate_initial_window_size(s);
-      settings.initialStreamWindowSize = s.value;
+      settings.initial_stream_window_size = s.value;
       return;
     case SETTINGS_MAX_FRAME_SIZE:
       validate_max_frame_size(s);
-      settings.maxFrameSize = s.value;
+      settings.max_frame_size = s.value;
       return;
     case SETTINGS_MAX_HEADER_LIST_SIZE:
-      settings.maxHeaderListSize = s.value;
+      settings.max_header_list_size = s.value;
       return;
     case SETTINGS_ENABLE_CONNECT_PROTOCOL:
       validate_enable_connect_protocol_from_client(s);
       settings.enable_connect_protocol = s.value;
       return;
     case SETTINGS_NO_RFC7540_PRIORITIES:
-      validate_norfc7540_priority(s, firstframe, settings.deprecatedPriorityDisabled);
-      settings.deprecatedPriorityDisabled = s.value;
+      validate_norfc7540_priority(s, firstframe, settings.deprecated_priority_disabled);
+      settings.deprecated_priority_disabled = s.value;
       return;
     default:
         // ignore if dont know
@@ -261,8 +261,8 @@ rst_stream rst_stream::parse(frame_header h, std::span<byte_t const> bytes) {
   assert(h.length == bytes.size());
 
   rst_stream frame(h);
-  memcpy(&frame.errorCode, bytes.data(), 4);
-  htonli(frame.errorCode);
+  memcpy(&frame.error_code, bytes.data(), 4);
+  htonli(frame.error_code);
   return frame;
 }
 
@@ -280,11 +280,12 @@ goaway_frame goaway_frame::parse(frame_header header, std::span<byte_t const> by
   assert(header.length == bytes.size());
 
   goaway_frame frame;
-  memcpy(&frame.lastStreamId, bytes.data(), 4);
-  memcpy(&frame.errorCode, bytes.data() + 4, 4);
-  htonli(frame.lastStreamId);
-  htonli(frame.errorCode);
-  frame.debugInfo = std::string_view((char const*)bytes.data() + 8, (char const*)bytes.data() + bytes.size());
+  memcpy(&frame.last_streamid, bytes.data(), 4);
+  memcpy(&frame.error_code, bytes.data() + 4, 4);
+  htonli(frame.last_streamid);
+  htonli(frame.error_code);
+  frame.debug_info =
+      std::string_view((char const*)bytes.data() + 8, (char const*)bytes.data() + bytes.size());
   return frame;
 }
 
@@ -293,9 +294,9 @@ window_update_frame window_update_frame::parse(frame_header header, std::span<by
   validate_window_update(header);
 
   window_update_frame frame{.header = header};
-  std::memcpy(&frame.windowSizeIncrement, bytes.data(), 4);
-  htonli(frame.windowSizeIncrement);
-  validate_window_update_increment(header, frame.windowSizeIncrement);
+  std::memcpy(&frame.window_size_increment, bytes.data(), 4);
+  htonli(frame.window_size_increment);
+  validate_window_update_increment(header, frame.window_size_increment);
   return frame;
 }
 
@@ -355,11 +356,11 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
   // parse required pseudoheaders
   http_request& req = s.req;
   hpack::decoder& d = s.connection->decoder;
-  bool schemeParsed = false;
-  bool pathParsed = false;
-  bool methodParsed = false;
-  bool authorityParsed = false;
-  bool contenttypeParsed = false;
+  bool scheme_parsed = false;
+  bool path_parsed = false;
+  bool method_parsed = false;
+  bool authority_parsed = false;
+  bool contenttype_parsed = false;
 
   auto checkrequired = [&](std::string_view hdrname, bool parsed) {
     if (!parsed) [[unlikely]] {
@@ -376,10 +377,10 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
     }
     std::string_view hval = header.value.str();
     if (header.name == ":path") {
-      if (pathParsed) {
+      if (path_parsed) {
         throw duplicated_pseudoheader(":path");
       }
-      pathParsed = true;
+      path_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       req.path = hval;
@@ -387,34 +388,34 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
         throw protocol_error(errc_e::PROTOCOL_ERROR, ":path header is empty");
       }
     } else if (header.name == ":method") {
-      if (methodParsed) {
+      if (method_parsed) {
         throw duplicated_pseudoheader(":method");
       }
-      methodParsed = true;
+      method_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       (void)efromstr(hval, req.method);
     } else if (header.name == ":scheme") {
-      if (schemeParsed) {
+      if (scheme_parsed) {
         throw duplicated_pseudoheader(":scheme");
       }
-      schemeParsed = true;
+      scheme_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       (void)efromstr(hval, req.scheme);
     } else if (header.name == ":authority") {
-      if (authorityParsed) {
+      if (authority_parsed) {
         throw duplicated_pseudoheader(":authority");
       }
-      authorityParsed = true;
+      authority_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       req.authority = hval;
     } else if (header.name == "content-type") {
-      if (contenttypeParsed) {
+      if (contenttype_parsed) {
         throw duplicated_pseudoheader("content-type");
       }
-      contenttypeParsed = true;
+      contenttype_parsed = true;
       if (!s.use_bytes(hval.size())) [[unlikely]]
         goto memory_limit_exceeded;
       req.body.content_type = hval;
@@ -434,10 +435,10 @@ void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> byt
     req.headers.push_back(http_header_t(std::string(header.name.str()), std::string(header.value.str())));
   }
 
-  checkrequired(":method", methodParsed);
+  checkrequired(":method", method_parsed);
   if (req.method != http_method_e::CONNECT) [[likely]] {
-    checkrequired(":path", pathParsed);
-    checkrequired(":scheme", schemeParsed);
+    checkrequired(":path", path_parsed);
+    checkrequired(":scheme", scheme_parsed);
   }
   // authority not checked, since its possible to not receive authority (client not required to sent it)
   return;

@@ -34,21 +34,21 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
 
     // size == LIMIT
 
-    co_await client.sendRawHdr(1, hdrs_bytes, /*end_stream=*/false);
+    co_await client.send_raw_hdr(1, hdrs_bytes, /*end_stream=*/false);
     std::string data_frame(LIMIT - sum, char(1));
-    co_await client.sendData(1, data_frame, /*end_stream=*/true);
-    auto rsp = co_await client.receiveRsp();
-    REQUIRE(rsp.endStream);
+    co_await client.send_data(1, data_frame, /*end_stream=*/true);
+    auto rsp = co_await client.receive_rsp();
+    REQUIRE(rsp.end_stream);
     REQUIRE(std::ranges::equal(rsp.body, data_frame));
     REQUIRE(rsp.headers.size() == 1 && rsp.headers[0] == header{":status", "200"});
 
     // size == LIMIT + 1
 
     hdrs_bytes = client.encode_headers(hdrs);
-    co_await client.sendRawHdr(3, hdrs_bytes, /*end_stream=*/false);
+    co_await client.send_raw_hdr(3, hdrs_bytes, /*end_stream=*/false);
     data_frame.push_back(char(1));
-    co_await client.sendData(3, data_frame, /*end_stream=*/true);
-    co_await client.receiveRstStream(3, errc_e::ENHANCE_YOUR_CALM);
+    co_await client.send_data(3, data_frame, /*end_stream=*/true);
+    co_await client.receive_rst_stream(3, errc_e::ENHANCE_YOUR_CALM);
   }
 
   SECTION("overflow in continuations") {
@@ -62,16 +62,16 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
 
     auto hdrs_bytes = client.encode_headers(hdrs);
 
-    co_await client.sendRawHdr(1, hdrs_bytes, /*end_stream=*/false);
-    co_await client.receiveRstStream(1, errc_e::ENHANCE_YOUR_CALM);
+    co_await client.send_raw_hdr(1, hdrs_bytes, /*end_stream=*/false);
+    co_await client.receive_rst_stream(1, errc_e::ENHANCE_YOUR_CALM);
 
     // checks that dynamic table in correct state after skipping request
     hdrs[3].value = "";
     hdrs_bytes = client.encode_headers(hdrs);
 
-    co_await client.sendRawHdr(3, hdrs_bytes, /*end_stream=*/true);
-    auto rsp = co_await client.receiveRsp();
-    REQUIRE(rsp.endStream);
+    co_await client.send_raw_hdr(3, hdrs_bytes, /*end_stream=*/true);
+    auto rsp = co_await client.receive_rsp();
+    REQUIRE(rsp.end_stream);
     REQUIRE(rsp.body.empty());
     REQUIRE(rsp.headers.size() == 3 && rsp.headers[0] == header{":status", "200"} &&
             rsp.headers[1] == header{"big_header", ""} &&
@@ -86,14 +86,14 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
         {":authority", addr.address().to_string()},
     };
 
-    co_await client.sendReq(1, hdrs, http_body_bytes(10, byte_t(1)), /*endstream=*/false);
+    co_await client.send_req(1, hdrs, http_body_bytes(10, byte_t(1)), /*endstream=*/false);
 
     std::vector<header> trailers{
         {"big_header", std::string(LIMIT, char(1))},
     };
-    co_await client.sendHeaders(1, trailers, /*endstream=*/true);
+    co_await client.send_headers(1, trailers, /*endstream=*/true);
 
-    co_await client.receiveRstStream(1, errc_e::ENHANCE_YOUR_CALM);
+    co_await client.receive_rst_stream(1, errc_e::ENHANCE_YOUR_CALM);
   }
 
   SECTION("try big header spam") {
@@ -115,8 +115,8 @@ SERVER_TEST("server bytes limit", test_ssl_ctx()) {
     for (int i = 0; i < 50; ++i)
       con->encoder.encode_header_fully_indexed(r.header_name_index, std::back_inserter(hdrs_bytes));
 
-    co_await client.sendRawHdr(1, hdrs_bytes);
-    co_await client.receiveRstStream(1, errc_e::ENHANCE_YOUR_CALM);
+    co_await client.send_raw_hdr(1, hdrs_bytes);
+    co_await client.receive_rst_stream(1, errc_e::ENHANCE_YOUR_CALM);
   }
 }
 
@@ -129,7 +129,7 @@ SERVER_TEST("server sessions limit", test_ssl_ctx()) {
     co_return;
   }
   // server must drop connection immediately after connect
-  co_await client.waitConnectionDropped(deadline_after(1s));
+  co_await client.wait_connection_dropped(deadline_after(1s));
 }
 
 SERVER_TEST("server CONTINUATION limit", test_ssl_ctx()) {
@@ -146,36 +146,27 @@ SERVER_TEST("server CONTINUATION limit", test_ssl_ctx()) {
   f.hdr.length = uint32_t(headers.size());
   f.hdr.type = frame_e::HEADERS;
   f.hdr.flags = flags::EMPTY_FLAGS;  // no END_HEADERS
-  f.hdr.streamId = 1;
+  f.hdr.streamid = 1;
   f.hdr.flags |= flags::END_STREAM;
   f.data.assign(headers.begin(), headers.end());
-  co_await client.sendFrame(std::move(f));
+  co_await client.send_frame(std::move(f));
 
   SECTION("overlimit") {
     headers.resize(LIMIT, 'a');
-    co_await client.sendRawContinuation(1, headers, /*end_headers=*/true);
-    co_await client.receiveRstStream(1, errc_e::REFUSED_STREAM);
+    co_await client.send_raw_continuation(1, headers, /*end_headers=*/true);
+    co_await client.receive_rst_stream(1, errc_e::REFUSED_STREAM);
   }
   SECTION("headers.size() == LIMIT") {
     headers.resize(LIMIT - FIRST_CHUNK, 'a');
-    co_await client.sendRawContinuation(1, headers, /*end_headers=*/true);
+    co_await client.send_raw_continuation(1, headers, /*end_headers=*/true);
     // invalid headers block, but request accepted and parsed
-    co_await client.receiveGoAway(1, errc_e::COMPRESSION_ERROR, ping_e::RESPONSE);
+    co_await client.receive_goaway(1, errc_e::COMPRESSION_ERROR, ping_e::RESPONSE);
   }
 }
 
 REGISTER_TEST_LISTENER(moko3::gtest_listener);
 
-void signalHandler(int signum) {
-  std::cerr << "\nCaught signal " << signum << '\n';
-  std::cerr << "Stack trace:\n";
-  std::cerr << boost::stacktrace::stacktrace();
-
-  std::_Exit(EXIT_FAILURE);
-}
-
 int main(int argc, char* argv[]) {
-  std::signal(SIGSEGV, signalHandler);
   auto& box = ::moko3 ::get_testbox();
   box.parse_config(argc, argv);
   return box.run_tests();

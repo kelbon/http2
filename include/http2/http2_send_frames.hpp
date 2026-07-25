@@ -16,7 +16,7 @@ dd::task<void> send_rst_stream(h2connection_ptr con, stream_id_t streamid, errc_
 dd::task<void> send_settings_ack(h2connection_ptr con);
 
 // returns false if ping was not sended
-dd::task<bool> send_ping(h2connection_ptr con, uint64_t data, bool requestPong);
+dd::task<bool> send_ping(h2connection_ptr con, uint64_t data, bool request_pong);
 
 // random value, selected to determine if receiver of ping correctly responds
 constexpr inline uint64_t PING_VALUE = 33333;

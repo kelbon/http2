@@ -9,7 +9,7 @@ stream_id_t request_context::streamid() const noexcept {
 }
 
 bool request_context::canceled() const noexcept {
-  return node->canceledByRstStream || node->connection->isDropped();
+  return node->canceled_by_rststream || node->connection->is_dropped();
 }
 
 http_response request_context::stream_response(int status, http_headers_t hdrs,
@@ -43,7 +43,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   }
   frame_header hdr;
   hdr.length = bytes.size() - FRAME_HEADER_LEN;
-  hdr.streamId = node->streamid;
+  hdr.streamid = node->streamid;
   hdr.type = frame_e::HEADERS;
   hdr.flags = flags::END_HEADERS;
   hdr.form(bytes.data());

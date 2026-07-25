@@ -27,6 +27,6 @@ using h2connection_ptr = boost::intrusive_ptr<h2connection>;
 
 using on_header_fn_ptr = fn_ptr<void(std::string_view name, std::string_view value)>;
 
-using on_data_part_fn_ptr = fn_ptr<void(std::span<byte_t const> bytes, bool lastPart)>;
+using on_data_part_fn_ptr = fn_ptr<void(std::span<byte_t const> bytes, bool last_part)>;
 
 }  // namespace http2

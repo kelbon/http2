@@ -98,11 +98,11 @@ inline const asio::ip::tcp::endpoint addr(asio::ip::address_v6::loopback(), 8080
 inline fuzzing::fuzzer fuz;
 
 static void test_connect_requests() {
-  bistream_test_server server(http2_server_options{.idleTimeout = std::chrono::seconds(50000)});
+  bistream_test_server server(http2_server_options{.idle_timeout = std::chrono::seconds(50000)});
 
   server.listen(server_endpoint{.addr = addr, .reuse_address = true});
   http2_client client(addr,
-                      {.pingInterval = duration_t::max(), .allow_requests_before_server_settings = true});
+                      {.ping_interval = duration_t::max(), .allow_requests_before_server_settings = true});
   run_requests(client, 100, addr).start_and_detach();
 
   fuz.run_until([] { return done.load(); }, server.ioctx(), client.ioctx());

@@ -114,15 +114,15 @@ struct critical_stream_error : stream_error {
 };
 
 struct goaway_exception : std::exception {
-  stream_id_t lastStreamId;
-  errc_e errorCode;
-  std::string debugInfo;
+  stream_id_t last_streamid;
+  errc_e error_code;
+  std::string debug_info;
   std::string msg;
 
-  goaway_exception(stream_id_t lastId, errc_e ec, std::string dbgInfo)
-      : lastStreamId(lastId), errorCode(ec), debugInfo(std::move(dbgInfo)) {
-    msg = std::format("errc: {}, debug info: \"{}\", last stream id: {}", e2str(errorCode), debugInfo,
-                      lastStreamId);
+  goaway_exception(stream_id_t last_id, errc_e ec, std::string dbg_info)
+      : last_streamid(last_id), error_code(ec), debug_info(std::move(dbg_info)) {
+    msg = std::format("errc: {}, debug info: \"{}\", last stream id: {}", e2str(error_code), debug_info,
+                      last_streamid);
   }
 
   char const* what() const noexcept override {

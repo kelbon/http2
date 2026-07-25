@@ -24,32 +24,32 @@ static void server_handle_utility_frame(http2_frame_t frame, server_session& ses
     case DATA:
       unreachable();
     case SETTINGS:
-      session.clientSettingsChanged(frame);
+      session.client_settings_changed(frame);
       return;
     case PING:
       handle_ping(ping_frame::parse(frame.header, frame.data), &con).start_and_detach();
       return;
     case RST_STREAM:
-      if (!session.rstStreamServer(rst_stream::parse(frame.header, frame.data))) {
+      if (!session.rst_stream_server(rst_stream::parse(frame.header, frame.data))) {
         HTTP2_LOG(session.logctx(), INFO, "client finished stream (id: {}) which is not exists",
-                  frame.header.streamId);
+                  frame.header.streamid);
       }
       return;
     case GOAWAY: {
       goaway_frame f = goaway_frame::parse(frame.header, frame.data);
-      if (f.errorCode != errc_e::NO_ERROR) {
-        throw goaway_exception(f.lastStreamId, f.errorCode, std::move(f.debugInfo));
+      if (f.error_code != errc_e::NO_ERROR) {
+        throw goaway_exception(f.last_streamid, f.error_code, std::move(f.debug_info));
       } else {
-        session.clientRequestsGracefulShutdown(f);
+        session.client_requests_graceful_shutdown(f);
         return;
       }
     }
     case WINDOW_UPDATE:
-      con.windowUpdate(window_update_frame::parse(frame.header, frame.data));
+      con.window_update(window_update_frame::parse(frame.header, frame.data));
       return;
     case PUSH_PROMISE:
       // https://datatracker.ietf.org/doc/html/rfc9113#section-6.6-9
-      assert(!con.localSettings.enablePush);  // always setted to 0
+      assert(!con.local_settings.enable_push);  // always setted to 0
       throw protocol_error(errc_e::PROTOCOL_ERROR,
                            "PUSH_PROMISE must not be sent, SETTINGS_ENABLE_PUSH is 0");
     case CONTINUATION:
@@ -58,7 +58,7 @@ static void server_handle_utility_frame(http2_frame_t frame, server_session& ses
           errc_e::PROTOCOL_ERROR,
           "CONTINUATION frame received without a preceding HEADERS without END_HEADERS flag");
     case PRIORITY:
-      con.validatePriorityFrameHeader(frame);
+      con.validate_priority_frame_header(frame);
       [[fallthrough]];
     case PRIORITY_UPDATE:
     default:
@@ -68,7 +68,7 @@ static void server_handle_utility_frame(http2_frame_t frame, server_session& ses
 }
 
 dd::task<int> start_server_reader_for(http2::server_session& session) try {
-  auto guard = session.connectionPartsGate.hold();
+  auto guard = session.connection_parts_gate.hold();
   assert(session.connection);
   using enum frame_e;
   HTTP2_LOG_TRACE(session.logctx(), "reader started");
@@ -81,39 +81,35 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
   http2_frame_t frame;
 
   for (;;) {
-    if (con.isDropped()) {
+    if (con.is_dropped())
       co_return reqerr_e::DONE;
-    }
 
     // read frame header
 
-    frame.data = buffer.getExactly(http2::FRAME_HEADER_LEN);
+    frame.data = buffer.get_exactly(http2::FRAME_HEADER_LEN);
 
     co_await con.read(frame.data, ec);
 
-    if (ec) {
+    if (ec)
       co_return reqerr_e::NETWORK_ERR;
-    }
-    if (con.isDropped()) {
+
+    if (con.is_dropped())
       co_return reqerr_e::DONE;
-    }
 
     // parse frame header
     session.received_frame();
     frame.header = frame_header::parse(frame.data);
-    frame.validateHeader();
+    frame.validate_header();
     con.validate_frame_max_size(frame.header);
 
     // read frame data
 
-    frame.data = buffer.getExactly(frame.header.length);
+    frame.data = buffer.get_exactly(frame.header.length);
     co_await con.read(frame.data, ec);
-    if (ec) {
+    if (ec)
       co_return reqerr_e::NETWORK_ERR;
-    }
-    if (con.isDropped()) {
+    if (con.is_dropped())
       co_return reqerr_e::DONE;
-    }
 
     // handle frame
 
@@ -126,12 +122,10 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
             co_await session.connection->receive_headers_with_continuation(
                 frame, ec, [&] { session.received_frame(); },
                 [&](http2_frame_t frame) { session.receive_headers(frame); });
-            if (ec) {
+            if (ec)
               co_return reqerr_e::NETWORK_ERR;
-            }
-            if (con.isDropped()) {
+            if (con.is_dropped())
               co_return reqerr_e::DONE;
-            }
           }
           break;
         case DATA:
@@ -145,19 +139,18 @@ dd::task<int> start_server_reader_for(http2::server_session& session) try {
       // workaround windows ABI https://github.com/llvm/llvm-project/issues/153949
       auto& e = _e;
       HTTP2_LOG(session.logctx(), ERROR, "stream exception in reader. err: {}", e.what());
-      session.rstStreamAfterError(e);
+      session.rst_stream_after_error(e);
       // do not require connection close
     }
 
     // connection control flow (streamlevel in server_handle_frame)
-    if (con.myWindowSize < http2::MAX_WINDOW_SIZE / 2) {
-      co_await update_window_to_max(con.myWindowSize, 0, &con);
-    }
+    if (con.my_window_size < http2::MAX_WINDOW_SIZE / 2)
+      co_await update_window_to_max(con.my_window_size, 0, &con);
   }
   unreachable();
 } catch (hpack::protocol_error& e) {
   HTTP2_LOG(session.logctx(), ERROR, "hpack error happens in reader, err: {}", e.what());
-  send_goaway(session.connection, session.connection->lastInitiatedStreamId(), errc_e::COMPRESSION_ERROR,
+  send_goaway(session.connection, session.connection->last_initiated_streamid(), errc_e::COMPRESSION_ERROR,
               e.what())
       .start_and_detach();
   co_return reqerr_e::PROTOCOL_ERR;

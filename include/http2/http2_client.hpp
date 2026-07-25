@@ -94,25 +94,25 @@ struct http2_client {
   dd::gate m_connectionGate;
 
   // fills requests from raw http2 frames
-  static dd::job startReaderFor(http2_client*, h2connection_ptr);
+  static dd::job start_reader_for(http2_client*, h2connection_ptr);
 
   // postconditon: returns not null, !returned->dropped && returned->stream_id <= MAX_STREAM_ID
   // && !client.stop_requestedg
-  [[nodiscard]] noexport::waiter_of_connection borrowConnection(deadline_t deadline) noexcept {
+  [[nodiscard]] noexport::waiter_of_connection borrow_connection(deadline_t deadline) noexcept {
     return noexport::waiter_of_connection(this, deadline);
   }
 
-  void notifyConnectionWaiters(h2connection_ptr result) noexcept;
+  void notify_connection_waiters(h2connection_ptr result) noexcept;
 
-  [[nodiscard]] noexport::new_connection_guard lockConnections() noexcept {
+  [[nodiscard]] noexport::new_connection_guard lock_connections() noexcept {
     return noexport::new_connection_guard(m_isConnecting);
   }
 
   // поддерживает инвариант: клиент либо не имеет соединения, либо оно в
   // процессе создания, либо оно создано, но не более одного
-  [[nodiscard("this handle must be resumed")]] static dd::job startConnecting(http2_client*, deadline_t);
+  [[nodiscard("this handle must be resumed")]] static dd::job start_connecting(http2_client*, deadline_t);
 
-  bool stopRequested() const noexcept {
+  bool stop_requested() const noexcept {
     return m_stopRequested > 0;
   }
 
@@ -138,7 +138,7 @@ struct http2_client {
   void set_host(endpoint) noexcept;
 
   void set_connection_timeout(duration_t dur) noexcept {
-    m_options.connectionTimeout = dur;
+    m_options.connection_timeout = dur;
   }
   http2_client_options const& get_options() const noexcept {
     return m_options;
@@ -158,7 +158,7 @@ struct http2_client {
   // returns < 0 if error (reqerr_e), > 0 if 3-digit server response code
   // if client not connected yet, connects automatically
   // precondition: request.method is not CONNECT ( for connect use send_connect_request)
-  dd::task<int> send_request(on_header_fn_ptr onHeader, on_data_part_fn_ptr onDataPart, http_request,
+  dd::task<int> send_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part, http_request,
                              deadline_t deadline);
 
   // throws on errors
@@ -231,7 +231,7 @@ struct http2_client {
 
   // returns true if client connected
   dd::task<bool> try_connect() {
-    return try_connect(deadline_after(m_options.connectionTimeout));
+    return try_connect(deadline_after(m_options.connection_timeout));
   }
 
   // precondition: !connected()

@@ -15,9 +15,9 @@ SERVER_TEST("server continuations") {
   };
   // `server` used indirectly by sending request
   auto bytes = client.encode_headers(hdrs);
-  co_await client.sendRawHdr(1, bytes, /*end_stream=*/true, /*split=*/true);
-  auto rsp = co_await client.receiveRsp();
-  REQUIRE(rsp.endStream);
+  co_await client.send_raw_hdr(1, bytes, /*end_stream=*/true, /*split=*/true);
+  auto rsp = co_await client.receive_rsp();
+  REQUIRE(rsp.end_stream);
   REQUIRE(rsp.body.empty());
   REQUIRE(rsp.headers.size() == 1 && rsp.headers[0] == header{":status", "200"});
 }
@@ -36,14 +36,14 @@ CLIENT_TEST("client continuations") {
   on_scope_exit {
     handle.destroy();
   };
-  hdrs_and_data hd = co_await server.receiveReq();
+  hdrs_and_data hd = co_await server.receive_req();
 
   std::vector<header> hdrs{
       {":status", "200"},
       {"X-customhdr", std::string(MIN_MAX_FRAME_LEN, 'A')},
   };
   auto bytes = server.encode_headers(hdrs);
-  co_await server.sendRawHdr(1, bytes, /*end_stream=*/true, /*split=*/true);
+  co_await server.send_raw_hdr(1, bytes, /*end_stream=*/true, /*split=*/true);
   co_await wait_until([&] { return handle.done(); }, ioctx);
   auto rsp = handle.promise().result_or_rethrow();
   REQUIRE(rsp.status == 200 && rsp.headers.size() == 1 && rsp.headers.front() == hdrs[1]);

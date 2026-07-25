@@ -12,15 +12,15 @@ constexpr inline duration_t SERVER_DEFAULT_IDLE_TIMEOUT = std::chrono::seconds(2
 constexpr inline duration_t SERVER_DEFAULT_CONNECTION_TIMEOUT = std::chrono::seconds(5);
 
 struct http2_server_options {
-  uint32_t hpackDyntabSize = 4096;
+  uint32_t hpack_dyntab_size = 4096;
   // Note: disabling hpack from global config has higher priority
-  bool forceDisableHpack = false;
-  uint32_t maxReceiveFrameSize = FRAME_LEN_MAX;
+  bool force_disable_hpack = false;
+  uint32_t max_receive_frame_size = FRAME_LEN_MAX;
   // how many streams client may run concurrently, default: max possible
-  uint32_t maxConcurrentStreams = uint32_t(-1);
-  duration_t connectionTimeout = SERVER_DEFAULT_CONNECTION_TIMEOUT;
+  uint32_t max_concurrent_streams = uint32_t(-1);
+  duration_t connection_timeout = SERVER_DEFAULT_CONNECTION_TIMEOUT;
   // when drop client if it does not send anything
-  duration_t idleTimeout = SERVER_DEFAULT_IDLE_TIMEOUT;
+  duration_t idle_timeout = SERVER_DEFAULT_IDLE_TIMEOUT;
   // if false, server will not declare websocket support for clients
   bool supports_websocket = false;
   // Как много байт может быть использовано одной клиент-сервер сессией единовременно для сборки и обработки

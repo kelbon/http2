@@ -7,7 +7,7 @@
 #include <kelcoro/executor_interface.hpp>
 #include "http2/utils/any_io_context.hpp"
 #include "kelcoro/common.hpp"
-// TODO rename file (not asio...)
+
 namespace http2 {
 
 // schedules coroutine to be executed on `ctx`
