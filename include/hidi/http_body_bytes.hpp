@@ -111,7 +111,7 @@ struct http_body_bytes : private std::vector<byte_t, detail::allocator_p9<byte_t
   using base_t::begin;
   using base_t::end;
 
-  bool operator==(http_body_bytes const&) const = default;
+  bool operator==(const http_body_bytes&) const = default;
 
  private:
   // noinline to guarantee compiler cannot optimize strict aliasing

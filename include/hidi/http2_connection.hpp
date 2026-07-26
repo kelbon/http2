@@ -189,13 +189,13 @@ struct h2stream {
   void receive_request_data(http2_frame_t frame);
 
   struct equal_by_streamid {
-    bool operator()(stream_id_t const& l, stream_id_t const& r) const noexcept {
+    bool operator()(const stream_id_t& l, const stream_id_t& r) const noexcept {
       return l == r;
     }
   };
   struct key_of_value {
     using type = stream_id_t;
-    type const& operator()(h2stream const& v) const noexcept {
+    const type& operator()(const h2stream& v) const noexcept {
       return v.streamid;
     }
   };
@@ -209,7 +209,7 @@ struct h2stream {
     }
   };
   struct compare_by_deadline {
-    bool operator()(h2stream const& l, h2stream const& r) const noexcept {
+    bool operator()(const h2stream& l, const h2stream& r) const noexcept {
       return l.deadline < r.deadline;  // less means higher priority
     }
   };
@@ -367,7 +367,7 @@ struct h2connection {
     return work_waiter(this);
   }
 
-  write_awaiter write(std::span<byte_t const> bytes, io_error_code& ec) {
+  write_awaiter write(std::span<const byte_t> bytes, io_error_code& ec) {
     return write_awaiter{tcpcon, ec, bytes};
   }
   read_awaiter read(std::span<byte_t> buf, io_error_code& ec) {

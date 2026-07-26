@@ -148,7 +148,7 @@ namespace std {
 
 template <>
 struct formatter<::hidi::http_header_t> : formatter<std::string_view> {
-  auto format(::hidi::http_header_t const& hdr, auto& ctx) const -> decltype(ctx.out()) {
+  auto format(const ::hidi::http_header_t& hdr, auto& ctx) const -> decltype(ctx.out()) {
     return std::format_to(ctx.out(), "{}: {}", hdr.name(), hdr.value());
   }
 };

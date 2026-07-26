@@ -21,17 +21,17 @@ struct network_exception : std::exception {
   explicit network_exception(std::format_string<ARGS...> fmt, ARGS&&... args)
       : data(std::format(fmt, std::forward<ARGS>(args)...)) {
   }
-  explicit network_exception(io_error_code const& ec) : data(std::format("{}", ec.message())) {
+  explicit network_exception(const io_error_code& ec) : data(std::format("{}", ec.message())) {
   }
   explicit network_exception(std::string s) noexcept : data(std::move(s)) {
   }
-  char const* what() const noexcept KELCORO_LIFETIMEBOUND override {
+  const char* what() const noexcept KELCORO_LIFETIMEBOUND override {
     return data.c_str();
   }
 };
 
 struct timeout_exception : std::exception {
-  char const* what() const noexcept override {
+  const char* what() const noexcept override {
     return "timeout";
   }
 };

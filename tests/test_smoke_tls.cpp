@@ -63,7 +63,7 @@ static streaming_body_t handle_connect_request(memory_queue_ptr q, request_conte
 struct test_server : http2_server {
   using http2_server::http2_server;
 
-  bool answer_before_data(http_request const& r) const noexcept override {
+  bool answer_before_data(const http_request& r) const noexcept override {
     return r.method == hidi::http_method_e::CONNECT;
   }
 

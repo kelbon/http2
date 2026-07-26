@@ -256,7 +256,7 @@ void client_settings_visitor::operator()(setting_t s) {
   }
 }
 
-rst_stream rst_stream::parse(frame_header h, std::span<byte_t const> bytes) {
+rst_stream rst_stream::parse(frame_header h, std::span<const byte_t> bytes) {
   validate_rst_stream(h);
   assert(h.length == bytes.size());
 
@@ -266,7 +266,7 @@ rst_stream rst_stream::parse(frame_header h, std::span<byte_t const> bytes) {
   return frame;
 }
 
-ping_frame ping_frame::parse(frame_header h, std::span<byte_t const> bytes) {
+ping_frame ping_frame::parse(frame_header h, std::span<const byte_t> bytes) {
   validate_ping(h);
   assert(h.length == bytes.size());
 
@@ -275,7 +275,7 @@ ping_frame ping_frame::parse(frame_header h, std::span<byte_t const> bytes) {
   return f;
 }
 
-goaway_frame goaway_frame::parse(frame_header header, std::span<byte_t const> bytes) {
+goaway_frame goaway_frame::parse(frame_header header, std::span<const byte_t> bytes) {
   validate_goaway(header);
   assert(header.length == bytes.size());
 
@@ -285,11 +285,11 @@ goaway_frame goaway_frame::parse(frame_header header, std::span<byte_t const> by
   htonli(frame.last_streamid);
   htonli(frame.error_code);
   frame.debug_info =
-      std::string_view((char const*)bytes.data() + 8, (char const*)bytes.data() + bytes.size());
+      std::string_view((const char*)bytes.data() + 8, (const char*)bytes.data() + bytes.size());
   return frame;
 }
 
-window_update_frame window_update_frame::parse(frame_header header, std::span<byte_t const> bytes) {
+window_update_frame window_update_frame::parse(frame_header header, std::span<const byte_t> bytes) {
   assert(header.length == bytes.size());
   validate_window_update(header);
 
@@ -348,9 +348,9 @@ static void validate_header_name(const hpack::header_view& h, stream_id_t stream
   }
 }
 
-void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> bytes) {
-  auto const* in = bytes.data();
-  auto const* e = in + bytes.size();
+void parse_http2_request_headers(h2stream& s, std::span<const hpack::byte_t> bytes) {
+  const auto* in = bytes.data();
+  const auto* e = in + bytes.size();
   hpack::header_view header;
 
   // parse required pseudoheaders

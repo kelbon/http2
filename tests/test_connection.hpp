@@ -37,7 +37,7 @@ struct h2frame {
   http_body_bytes data = {};
 
   // parses frame. First 9 bytes are header, all other - data
-  static h2frame from_bytes(std::span<byte_t const> bytes) {
+  static h2frame from_bytes(std::span<const byte_t> bytes) {
     h2frame f;
     f.hdr = frame_header::parse({bytes.data(), FRAME_HEADER_LEN});
     f.data.assign(bytes.begin() + FRAME_HEADER_LEN, bytes.end());
@@ -97,7 +97,7 @@ struct hdrs_and_data {
 };
 
 inline http_body_bytes body_from_sv(std::string_view view) {
-  byte_t const* b = (byte_t const*)view.data();
+  const byte_t* b = (const byte_t*)view.data();
   return http_body_bytes(b, b + view.size());
 }
 
@@ -247,7 +247,7 @@ struct test_h2connection {
 inline dd::task<test_h2connection> fake_client_connection(
     any_io_context_ref io, endpoint addr, deadline_t deadline = deadline_after(DEFAULT_CONN_TIMEOUT),
     std::source_location = std::source_location::current()) {
-  auto c = co_await io.create_connection_client(addr, deadline);
+  auto c = co_await io.create_connection_client({addr}, deadline);
   co_return test_h2connection(new h2connection(std::move(c), *&io), /*client=*/true);
 }
 

@@ -10,3 +10,4 @@ PointerAlignment: Left
 ReferenceAlignment: Left
 InsertNewlineAtEOF: true
 IndentPPDirectives: BeforeHash
+QualifierAlignment: Left

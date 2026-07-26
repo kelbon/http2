@@ -57,7 +57,7 @@ struct http2_server {
   // invoked when only headers for request received and data will be received
   // if `true` returned, `handle_request_stream` invoked instead of `handle_request`,
   // Note: request.body is empty, but body.content_type may be setted
-  virtual bool answer_before_data(http_request const& r) const noexcept {
+  virtual bool answer_before_data(const http_request& r) const noexcept {
     return false;
   }
 

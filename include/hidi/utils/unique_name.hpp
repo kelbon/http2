@@ -70,7 +70,7 @@ namespace std {
 
 template <>
 struct formatter<::hidi::unique_name> : formatter<string_view> {
-  auto format(::hidi::unique_name const& n, auto& ctx) const -> decltype(ctx.out()) {
+  auto format(const ::hidi::unique_name& n, auto& ctx) const -> decltype(ctx.out()) {
     return formatter<string_view>::format(n.str(), ctx);
   }
 };

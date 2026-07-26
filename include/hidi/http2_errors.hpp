@@ -86,7 +86,7 @@ struct protocol_error : std::exception {
         dbginfo(std::format("HTTP/2 protocol error: errc: {}, dbginfo: \"{}\"", e2str(errc), mdbginfo)) {
   }
 
-  char const* what() const noexcept override {
+  const char* what() const noexcept override {
     return dbginfo.c_str();
   }
 };
@@ -125,7 +125,7 @@ struct goaway_exception : std::exception {
                       last_streamid);
   }
 
-  char const* what() const noexcept override {
+  const char* what() const noexcept override {
     return msg.c_str();
   }
 };

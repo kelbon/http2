@@ -110,7 +110,7 @@ struct frame_header {
 
   // precondition: raw_header.size() == FRAME_HEADER_LEN
   // not staticaly typed because of std::span ideal interface
-  [[nodiscard]] static frame_header parse(std::span<hpack::byte_t const> rawheader) {
+  [[nodiscard]] static frame_header parse(std::span<const hpack::byte_t> rawheader) {
     assert(rawheader.size() == FRAME_HEADER_LEN);
     frame_header h;
     h.length = uint32_t(rawheader[0] << 16) | uint32_t(rawheader[1] << 8) | uint32_t(rawheader[2]);
@@ -124,7 +124,7 @@ struct frame_header {
     return h;
   }
 
-  bool operator==(frame_header const&) const = default;
+  bool operator==(const frame_header&) const = default;
 };
 
 }  // namespace hidi
@@ -233,7 +233,7 @@ struct rst_stream {
     return noexport::copy_n(as_bytes(ec).data(), 4, out);
   }
 
-  [[nodiscard]] static rst_stream parse(frame_header h, std::span<byte_t const> bytes);
+  [[nodiscard]] static rst_stream parse(frame_header h, std::span<const byte_t> bytes);
 };
 
 enum settings_identifier_e : uint16_t {
@@ -277,7 +277,7 @@ struct [[gnu::packed]] setting_t {
     return noexport::copy_n(as_bytes(s).data(), sizeof(s), out);
   }
 
-  [[nodiscard]] static setting_t parse(std::span<byte_t const, 6> bytes) noexcept {
+  [[nodiscard]] static setting_t parse(std::span<const byte_t, 6> bytes) noexcept {
     setting_t s;
     memcpy(&s, bytes.data(), sizeof(s));
     s.identifier = htonl_value(s.identifier);
@@ -342,7 +342,7 @@ struct settings_frame {
   */
 
   template <std::output_iterator<hpack::byte_t> O>
-  static O form(settings_t const& settings, O out) noexcept {
+  static O form(const settings_t& settings, O out) noexcept {
     static constexpr settings_t default_;
 
     // calculate len
@@ -389,7 +389,7 @@ struct settings_frame {
   }
 
   // ordering matters, must be handled in order they received
-  static void parse(frame_header header, std::span<byte_t const> bytes, auto&& setting_visitor) {
+  static void parse(frame_header header, std::span<const byte_t> bytes, auto&& setting_visitor) {
     assert(header.type == frame_e::SETTINGS);
     if (header.flags & flags::ACK) {
       validate_settings_ack_frame(header);
@@ -399,7 +399,7 @@ struct settings_frame {
     assert(header.length == bytes.size());
     setting_t s;
     for (auto b = bytes.begin(); b != bytes.end(); b += 6) {
-      s = setting_t::parse(std::span<byte_t const, 6>{b, b + 6});
+      s = setting_t::parse(std::span<const byte_t, 6>{b, b + 6});
       setting_visitor(s);
     }
   }
@@ -438,7 +438,7 @@ struct ping_frame {
     return noexport::copy_n((byte_t*)&data, 8, out);
   }
 
-  [[nodiscard]] static ping_frame parse(frame_header h, std::span<byte_t const> bytes);
+  [[nodiscard]] static ping_frame parse(frame_header h, std::span<const byte_t> bytes);
 };
 
 // initiates shutdown on connection.
@@ -455,7 +455,7 @@ struct goaway_frame {
     Additional Debug Data (..),
   */
 
-  static goaway_frame parse(frame_header header, std::span<byte_t const> bytes);
+  static goaway_frame parse(frame_header header, std::span<const byte_t> bytes);
 
   template <std::output_iterator<byte_t> O>
   static O form(stream_id_t last_streamid, errc_e error_code, std::string debug_info, O out) {
@@ -502,7 +502,7 @@ struct window_update_frame {
     return noexport::copy_n(as_bytes(increment).data(), sizeof(increment), out);
   }
 
-  [[nodiscard]] static window_update_frame parse(frame_header header, std::span<byte_t const> bytes);
+  [[nodiscard]] static window_update_frame parse(frame_header header, std::span<const byte_t> bytes);
 };
 
 struct continuation_frame {};
@@ -572,6 +572,6 @@ struct h2stream;
 
 // разбирает все пришедшие хедера, обрабатывая некорретные значения :path,
 // дублированные или пропущенные псевдохедеры
-void parse_http2_request_headers(h2stream& s, std::span<hpack::byte_t const> bytes);
+void parse_http2_request_headers(h2stream& s, std::span<const hpack::byte_t> bytes);
 
 }  // namespace hidi

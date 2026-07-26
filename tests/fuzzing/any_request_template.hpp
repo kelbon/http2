@@ -40,7 +40,7 @@ struct weighted_reqtems {
   }
 
   // not safe to invoke in multi thread
-  any_reqtem const& select_reqtem(fuzzer& fuz) const {
+  const any_reqtem& select_reqtem(fuzzer& fuz) const {
     return reqtems[dist(fuz.g)].reqtem;
   }
 

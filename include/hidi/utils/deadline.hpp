@@ -33,7 +33,7 @@ struct deadline_t {
   static constexpr deadline_t yesterday() noexcept {
     return deadline_t{time_point_t::min()};
   }
-  std::strong_ordering operator<=>(deadline_t const&) const = default;
+  std::strong_ordering operator<=>(const deadline_t&) const = default;
 };
 
 inline deadline_t deadline_after(duration_t duration) noexcept {
