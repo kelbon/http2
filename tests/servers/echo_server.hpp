@@ -10,6 +10,9 @@ namespace hidi {
 constexpr inline std::string_view ANSWER_AFTER_MS_SPECIAL_HDR = "x-x-answer-after-ms";
 // если echo_server видит этот хедер он обрывает сессию с клиентом. Значение неважно
 constexpr inline std::string_view TERMINATE_THIS_SESSION_HDR = "x-x-terminate-this-session";
+// если echo_server видит этот хедер он сверяет хеш боди с тем что в значении.
+// Хеш считается как std::hash<std::string_view>(body)
+constexpr inline std::string_view EXPECTED_BODY_HASH_HDR = "x-x-expected-body-hash";
 
 // TODO также проверять в тестах expected SERVER settings
 // и на стороне сервера проверять что expected CLIENT settings
@@ -43,6 +46,20 @@ struct echo_server : h2server {
         co_await net.sleep(*&ioctx(), std::chrono::milliseconds(count));
       } else if (n == TERMINATE_THIS_SESSION_HDR) {
         throw critical_stream_error(errc_e::NO_ERROR, streamid, "terminated due request");
+      } else if (n == EXPECTED_BODY_HASH_HDR) {
+        size_t expected = 0;
+        auto [p, ec] = std::from_chars(v.data(), v.data() + v.size(), expected);
+        if (p != v.data() + v.size() || ec != std::errc{}) {
+          throw critical_stream_error(
+              errc_e::PROTOCOL_ERROR, streamid,
+              std::format("bad value of special header `{}`, value: `{}`", EXPECTED_BODY_HASH_HDR, v));
+        }
+        size_t real = std::hash<std::string_view>{}(req.body.strview());
+        if (expected != real) {
+          throw critical_stream_error(
+              errc_e::PROTOCOL_ERROR, streamid,
+              std::format("expected body hash ({}) do not equal to real ({})", expected, real));
+        }
       }
     }
   }
