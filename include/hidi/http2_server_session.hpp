@@ -71,7 +71,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // returns false if no such stream
   bool rst_stream_server(rst_stream, bool skip_validation = false);
 
-  void rst_stream_after_error(stream_error const&);
+  void rst_stream_after_error(const stream_error&);
 
   // invoked when session completely done
   void on_session_done() noexcept;

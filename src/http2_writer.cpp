@@ -28,7 +28,7 @@ namespace hidi {
 constexpr inline auto H2FHL = FRAME_HEADER_LEN;
 
 // client-side
-static void generate_http2_connect_headers(h2stream const& node, hpack::encoder& encoder, bytes_t& bytes) {
+static void generate_http2_connect_headers(const h2stream& node, hpack::encoder& encoder, bytes_t& bytes) {
   assert(node.req.method == http_method_e::CONNECT);
 
   auto& req = node.req;
@@ -62,9 +62,9 @@ static void generate_http2_connect_headers(h2stream const& node, hpack::encoder&
 }
 
 template <bool IS_CLIENT>
-static void generate_http2_headers_to(h2stream const& node, hpack::encoder& encoder, bytes_t& headers) {
+static void generate_http2_headers_to(const h2stream& node, hpack::encoder& encoder, bytes_t& headers) {
   using hdrs = hpack::static_table_t::values;
-  auto const& request = node.req;
+  const auto& request = node.req;
 
   assert(!IS_CLIENT || !request.path.empty() || node.is_connect_request());
 
@@ -122,7 +122,7 @@ static void generate_http2_headers_to(h2stream const& node, hpack::encoder& enco
 // or 0 if cannot send because of control flow
 // precondition: 'out' contains atleast 9 valid bytes
 template <bool Streaming>
-[[nodiscard]] static cfint_t fill_data_header(h2stream const& node, h2connection const& con,
+[[nodiscard]] static cfint_t fill_data_header(const h2stream& node, const h2connection& con,
                                               size_t unhandled_bytes, byte_t* out) noexcept {
   using enum frame_e;
   using namespace flags;
@@ -186,7 +186,7 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
                     "rs max frame max: {}, max_frame_size: {}, DATA: {}",
                     work->streamid, framelen, std::distance(in, data_end), con->receiver_window_size,
                     work->lr_streamlevel_windowsize, con->remote_settings.max_frame_size,
-                    std::string_view((char const*)in, framelen));
+                    std::string_view((const char*)in, framelen));
     // send frame
     HTTP2_WAIT_WRITE(*con);
     co_await con->write(std::span(in - H2FHL, framelen + H2FHL), ec);

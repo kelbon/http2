@@ -191,7 +191,7 @@ bool server_session::rst_stream_server(rst_stream rstframe, bool skip_validation
   return true;
 }
 
-void server_session::rst_stream_after_error(stream_error const& e) {
+void server_session::rst_stream_after_error(const stream_error& e) {
   rst_stream rst;
   rst.header = rst.make_header(e.streamid);
   rst.error_code = e.errc;

@@ -17,11 +17,11 @@ namespace hidi {
 
 struct writer_node : bi::slist_base_hook<> {
   std::coroutine_handle<> callback;
-  std::span<byte_t const> data;
+  std::span<const byte_t> data;
   io_error_code& ec;
   ZAL_PIN;
 
-  writer_node(std::span<byte_t const> data1, io_error_code& ec1) noexcept : data(data1), ec(ec1) {
+  writer_node(std::span<const byte_t> data1, io_error_code& ec1) noexcept : data(data1), ec(ec1) {
   }
 };
 
@@ -72,7 +72,7 @@ struct read_awaiter {
 struct write_awaiter : writer_node {
   any_connection_t& con;
 
-  write_awaiter(any_connection_t& con2, io_error_code& ec, std::span<byte_t const> buf)
+  write_awaiter(any_connection_t& con2, io_error_code& ec, std::span<const byte_t> buf)
       : writer_node(buf, ec), con(con2) {
   }
 

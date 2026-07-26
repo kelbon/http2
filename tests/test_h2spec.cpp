@@ -24,7 +24,7 @@ static void run_h2spec() try {
   if (output.find("4.2. Maximum Table Size") == output.npos)
     std::exit(EXIT_FAILURE);
   g_test_done.store(true, std::memory_order::release);
-} catch (bp::process_error const& e) {
+} catch (const bp::process_error& e) {
   std::exit(EXIT_FAILURE);
 }
 

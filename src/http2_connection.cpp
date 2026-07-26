@@ -12,7 +12,7 @@
 
 namespace hidi {
 
-void trace_request_headers(h2stream const& node, bool fromclient, const log_context& logctx) {
+void trace_request_headers(const h2stream& node, bool fromclient, const log_context& logctx) {
   auto& req = node.req;
   std::string s;
   if (fromclient) {
@@ -135,8 +135,8 @@ void h2stream::receive_response_headers(hpack::decoder& decoder, http2_frame_t f
   on_scope_exit {
     end_stream_received = frame.header.flags & flags::END_STREAM;
   };
-  byte_t const* in = frame.data.data();
-  byte_t const* e = in + frame.data.size();
+  const byte_t* in = frame.data.data();
+  const byte_t* e = in + frame.data.size();
   status = decoder.decode_response_status(in, e);
   // headers must be decoded to maintain HPACK dynamic table in correct state
   hpack::decode_headers_block(decoder, std::span(in, e), [&](std::string_view name, std::string_view value) {
@@ -160,7 +160,7 @@ void h2stream::receive_response_data(http2_frame_t frame) {
     (*on_data_part_fn)(frame.data, (frame.header.flags & flags::END_STREAM));
 
   HTTP2_LOG_TRACE(logctx(), "received DATA: stream: {}, len: {}, DATA: {}", frame.header.streamid,
-                  frame.header.length, std::string_view((char const*)frame.data.data(), frame.data.size()));
+                  frame.header.length, std::string_view((const char*)frame.data.data(), frame.data.size()));
 }
 
 void h2stream::receive_request_headers(http2_frame_t frame) {
@@ -192,7 +192,7 @@ void h2stream::receive_request_data(http2_frame_t frame) {
   };
 
   HTTP2_LOG_TRACE(logctx(), "received DATA: stream: {}, len: {}, DATA: {}", streamid, frame.header.length,
-                  std::string_view((char const*)frame.data.data(), frame.data.size()));
+                  std::string_view((const char*)frame.data.data(), frame.data.size()));
 
   decrease_window_size(rl_streamlevel_windowsize, int32_t(frame.header.length), logctx());
   if (rl_streamlevel_windowsize < MAX_WINDOW_SIZE / 2 && !(frame.header.flags & flags::END_STREAM))
@@ -595,7 +595,7 @@ void h2connection::adjust_window_for_all_streams(cfint_t old_window_size, cfint_
       return;
     try {
       increment_window_size(x.lr_streamlevel_windowsize, increment, x.streamid);
-    } catch (stream_error const& e) {
+    } catch (const stream_error& e) {
       // https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9.2-7
       // "An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that causes any flow-control window
       // to exceed the maximum size as a connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR"

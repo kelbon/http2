@@ -8,7 +8,7 @@ namespace hidi {
 
 inline dd::channel<std::span<const byte_t>> streambody() {
   std::string_view answer = "hello world";
-  for (char const& c : answer)
+  for (const char& c : answer)
     co_yield {(const byte_t*)&c, 1};
 }
 

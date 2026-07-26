@@ -23,7 +23,7 @@ using namespace std::string_view_literals;
 struct bistream_test_server : http2_server {
   using http2_server::http2_server;
 
-  bool answer_before_data(http_request const&) const noexcept override {
+  bool answer_before_data(const http_request&) const noexcept override {
     return true;
   }
 

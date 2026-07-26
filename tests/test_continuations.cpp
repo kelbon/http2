@@ -30,7 +30,7 @@ CLIENT_TEST("client continuations") {
   req.method = http_method_e::GET;
   req.path = "/abc";
   req.scheme = scheme_e::HTTP;
-  req.authority = client.get_host().to_string();
+  req.authority = client.get_remote().to_string();
   std::coroutine_handle handle =
       client.send_request(std::move(req), deadline_after(5s)).start_and_detach(/*stop_at_end=*/true);
   on_scope_exit {

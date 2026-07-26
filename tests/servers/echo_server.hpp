@@ -33,7 +33,7 @@ struct echo_server : http2_server {
   }
 
  private:
-  dd::task<void> handle_special_headers(http_request const& req, stream_id_t streamid) {
+  dd::task<void> handle_special_headers(const http_request& req, stream_id_t streamid) {
     for (auto& [n, v] : req.headers) {
       if (n == ANSWER_AFTER_MS_SPECIAL_HDR) {
         size_t count;
