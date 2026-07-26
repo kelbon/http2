@@ -148,7 +148,7 @@ struct asio_io : asio_io_base {
 
   explicit asio_io(tcp_connection_options = {}, starter_t = {});
 
-  dd::task<any_connection_t> create_connection_client(local_and_remote_endpoints, deadline_t);
+  dd::task<any_connection_t> create_connection_client(remote_and_local_endpoints, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
   static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
@@ -160,7 +160,7 @@ struct asio_ref_io : asio_io_ref_base {
 
   explicit asio_ref_io(asio::io_context&, tcp_connection_options = {}, starter_t = {});
 
-  dd::task<any_connection_t> create_connection_client(local_and_remote_endpoints, deadline_t);
+  dd::task<any_connection_t> create_connection_client(remote_and_local_endpoints, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
   static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
@@ -198,7 +198,7 @@ struct asio_tls_io : asio_io_base {
   // pre: ctx != nullptr
   asio_tls_io(server_ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
 
-  dd::task<any_connection_t> create_connection_client(local_and_remote_endpoints, deadline_t);
+  dd::task<any_connection_t> create_connection_client(remote_and_local_endpoints, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
   static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };
@@ -218,7 +218,7 @@ struct asio_tls_ref_io : asio_io_ref_base {
   // pre: ctx != nullptr
   asio_tls_ref_io(asio::io_context&, server_ssl_context_ptr ctx, tcp_connection_options = {}, starter_t = {});
 
-  dd::task<any_connection_t> create_connection_client(local_and_remote_endpoints, deadline_t);
+  dd::task<any_connection_t> create_connection_client(remote_and_local_endpoints, deadline_t);
   any_acceptor create_acceptor(internet_address, bool reuse_address);
   static void rebind_context(any_connection_t& con, any_io_context_ref other);
 };

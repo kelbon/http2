@@ -173,7 +173,7 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
                       work->lr_streamlevel_windowsize, con->receiver_window_size);
       co_await cbs->sleepcb(std::chrono::nanoseconds(500), ec);
       if (ec) {
-        HTTP2_LOG(con->logctx, ERROR, "something went wrong while sleeping, err: {}", ec.what());
+        HTTP2_LOG(con->logctx, ERROR, "something went wrong while sleeping, err: {}", ec.message());
         if (ec == boost::asio::error::operation_aborted)
           co_return;
         // continue, ignore sleep errors

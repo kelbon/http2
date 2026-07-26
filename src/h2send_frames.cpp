@@ -25,7 +25,7 @@ dd::task<bool> send_goaway(h2connection_ptr con, stream_id_t laststreamid, errc_
   if (ec) {
     if (!con->is_dropped()) {
       // ignore error if we dropped connection anyway
-      HTTP2_LOG_TRACE(con->logctx, "err while sending GOAWAY: err: {}", ec.what());
+      HTTP2_LOG_TRACE(con->logctx, "err while sending GOAWAY: err: {}", ec.message());
     }
     co_return false;
   }
@@ -45,7 +45,7 @@ dd::task<void> send_rst_stream(h2connection_ptr con, stream_id_t streamid, errc_
   if (ec) {
     if (!con->is_dropped()) {
       // ignore error if we dropped connection anyway
-      HTTP2_LOG(con->logctx, ERROR, "cannot rst stream: ec: {}", ec.what());
+      HTTP2_LOG(con->logctx, ERROR, "cannot rst stream: ec: {}", ec.message());
     }
   }
 }
@@ -61,7 +61,7 @@ dd::task<void> send_settings_ack(h2connection_ptr con) {
   io_error_code ec;
   co_await con->write(bytes, ec);
   if (ec)
-    HTTP2_LOG(con->logctx, ERROR, "cannot send settings ACK: err: {}", ec.what());
+    HTTP2_LOG(con->logctx, ERROR, "cannot send settings ACK: err: {}", ec.message());
 }
 
 dd::task<bool> send_ping(h2connection_ptr con, uint64_t data, bool request_pong) {

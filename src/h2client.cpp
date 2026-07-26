@@ -388,7 +388,7 @@ protocol_error:
 network_error:
   reason = ec == boost::asio::error::operation_aborted ? reqerr_e::CANCELLED : reqerr_e::NETWORK_ERR;
   if (reason == reqerr_e::NETWORK_ERR)
-    HTTP2_LOG_TRACE(c->logctx, "reader drops connection after network err: {}", ec.what());
+    HTTP2_LOG_TRACE(c->logctx, "reader drops connection after network err: {}", ec.message());
 drop_my_connection:
   self->drop_connection(reason);
 connection_dropped:

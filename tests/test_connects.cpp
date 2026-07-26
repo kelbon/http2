@@ -18,7 +18,7 @@ CLIENT_TEST("connects") {
   any_acceptor a = ioctx.create_acceptor(localhost(), /*reuse_address=*/true);
   a.listen();
   // просто для теста фичи устанавливаем локальный адрес
-  client.set_local(hidi::internet_address(boost::asio::ip::address_v6::loopback(), 0));
+  client.set_local(hidi::internet_address(boost::asio::ip::address_v4::loopback(), 0));
   client.try_connect(a.get_local_endpoint(), deadline_t::never()).start_and_detach();
 
   REQUIRE(!client.connected() && client.connecting());
