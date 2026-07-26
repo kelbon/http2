@@ -7,10 +7,10 @@ option(HIDI_USE_CPM "Set to ON to enable use CPM for get dependencies" ON)
 option(HIDI_ENABLE_SANITIZERS "build with sanitizers" OFF)
 
 # file for storing SSL keys, useful for debugging SSL connection via Wireshark. Disabled by default
-set(KELHTTP2_DEBUG_SSL_KEYS_FILE "" CACHE FILEPATH "")
+set(HIDI_DEBUG_SSL_KEYS_FILE "" CACHE FILEPATH "")
 
-if (KELHTTP2_DEBUG_SSL_KEYS_FILE)
-  message(STATUS "Debug SSL keys storing enabled, KELHTTP2_DEBUG_SSL_KEYS_FILE = ${KELHTTP2_DEBUG_SSL_KEYS_FILE}")
+if (HIDI_DEBUG_SSL_KEYS_FILE)
+  message(STATUS "Debug SSL keys storing enabled, HIDI_DEBUG_SSL_KEYS_FILE = ${HIDI_DEBUG_SSL_KEYS_FILE}")
 endif()
 
 if (HIDI_ENABLE_SANITIZERS)
@@ -62,8 +62,8 @@ target_link_libraries(hidilib PUBLIC
 )
 target_compile_definitions(hidilib PUBLIC -DOPENSSL_API_COMPAT=0x30000000L)
 
-if (KELHTTP2_DEBUG_SSL_KEYS_FILE)
-   target_compile_definitions(hidilib PRIVATE "KELHTTP2_DEBUG_SSL_KEYS_FILE=${KELHTTP2_DEBUG_SSL_KEYS_FILE}")
+if (HIDI_DEBUG_SSL_KEYS_FILE)
+   target_compile_definitions(hidilib PRIVATE "HIDI_DEBUG_SSL_KEYS_FILE=${HIDI_DEBUG_SSL_KEYS_FILE}")
 endif()
 
 set_target_properties(hidilib PROPERTIES
@@ -73,10 +73,10 @@ set_target_properties(hidilib PROPERTIES
 	CXX_STANDARD 20)
 
 if (WIN32)
-    if (NOT DEFINED HTTP2_WINDOWS_VERSION) 
-        set(HTTP2_WINDOWS_VERSION 0x0A00 CACHE STRING "windows version for boost asio")
+    if (NOT DEFINED HIDI_WINDOWS_VERSION) 
+        set(HIDI_WINDOWS_VERSION 0x0A00 CACHE STRING "windows version for boost asio")
     endif()
-    target_compile_definitions(hidilib PUBLIC _WIN32_WINNT=${HTTP2_WINDOWS_VERSION})
+    target_compile_definitions(hidilib PUBLIC _WIN32_WINNT=${HIDI_WINDOWS_VERSION})
 endif()
 
 if (HIDI_ENABLE_TESTING)

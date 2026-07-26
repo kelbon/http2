@@ -298,7 +298,7 @@ struct h2connection {
   ~h2connection();
 
   // not coroutine, for perf. waits until its possible to write (not sending CONTINUATION)
-#define HTTP2_WAIT_WRITE(CON)                                \
+#define HIDI_WAIT_WRITE(CON)                                 \
   {                                                          \
     while (!co_await (CON).continuation_gateway.wait_open()) \
       [[unlikely]];                                          \

@@ -46,7 +46,7 @@ dd::task<void> request_context::send_interim_response(int status, http_headers_t
   hdr.type = frame_e::HEADERS;
   hdr.flags = flags::END_HEADERS;
   hdr.form(bytes.data());
-  HTTP2_WAIT_WRITE(*node->connection);
+  HIDI_WAIT_WRITE(*node->connection);
   io_error_code ec;
   co_await node->connection->write(bytes, ec);
   if (ec) {

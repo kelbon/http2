@@ -4,10 +4,10 @@
 #include <format>
 
 // validates FMT_STR to not be empty token, forbids LOG(, arg)
-#define HTTP2_TOKEN_IS_EMPTY_ invalid_empty_token
-#define HTTP2_TOKEN_IS_EMPTY_NO
-#define HTTP2_CHECK_NOT_EMPTY_IMPL(TOKEN) HTTP2_TOKEN_IS_EMPTY_##TOKEN
-#define HTTP2_CHECK_NOT_EMPTY(...) HTTP2_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
+#define HIDI_TOKEN_IS_EMPTY_ invalid_empty_token
+#define HIDI_TOKEN_IS_EMPTY_NO
+#define HIDI_CHECK_NOT_EMPTY_IMPL(TOKEN) HIDI_TOKEN_IS_EMPTY_##TOKEN
+#define HIDI_CHECK_NOT_EMPTY(...) HIDI_CHECK_NOT_EMPTY_IMPL(__VA_OPT__(NO))
 
 namespace hidi {
 // avoids compiler error with rvalue args in std::make_format_args (`args` will never outlive expression)
@@ -27,8 +27,8 @@ constexpr auto make_temp_fmt_args(std::format_string<Args...>, Args&&... args) {
   } while (false)
 
 #define HTTP2_LOG(LOGCTX, TYPE, FMT_STR, ...) \
-  HTTP2_CHECK_NOT_EMPTY(LOGCTX)               \
-  HTTP2_CHECK_NOT_EMPTY(FMT_STR)              \
+  HIDI_CHECK_NOT_EMPTY(LOGCTX)                \
+  HIDI_CHECK_NOT_EMPTY(FMT_STR)               \
   HTTP2_DO_LOG(LOGCTX, TYPE, FMT_STR " {}" __VA_OPT__(, ) __VA_ARGS__, LOGCTX.name)
 
 #ifdef HTTP2_ENABLE_TRACE

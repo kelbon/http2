@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-#ifdef KELHTTP2_DEBUG_SSL_KEYS_FILE
+#ifdef HIDI_DEBUG_SSL_KEYS_FILE
   #include <fstream>
   #include <iostream>
 #endif
@@ -14,10 +14,10 @@ namespace hidi {
 ssl_context::ssl_context(asio::ssl::context_base::method m) : ctx(m) {
 }
 
-#ifdef KELHTTP2_DEBUG_SSL_KEYS_FILE
+#ifdef HIDI_DEBUG_SSL_KEYS_FILE
 
 static void keylog_callback(const SSL*, const char* line) {
-  std::filesystem::path keylog_file_path = KELHTTP2_DEBUG_SSL_KEYS_FILE;
+  std::filesystem::path keylog_file_path = HIDI_DEBUG_SSL_KEYS_FILE;
   std::ofstream keylog_file(keylog_file_path, std::ios_base::app | std::ios_base::out);
   if (keylog_file)
     keylog_file << std::string_view(line) << std::endl;
@@ -33,15 +33,15 @@ static ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesyst
                                                    const log_context& logctx) {
   namespace ssl = asio::ssl;
   asio::ssl::context_base::method method =
-#ifndef KELHTTP2_DEBUG_SSL_KEYS_FILE
+#ifndef HIDI_DEBUG_SSL_KEYS_FILE
       ssl::context::tlsv13_client;
 #else
       ssl::context::tlsv12_client;
 #endif
 
   ssl_context_ptr sslctx = new ssl_context(method);
-#ifdef KELHTTP2_DEBUG_SSL_KEYS_FILE
-  HTTP2_LOG(logctx, WARN, "SSL debug keys store enabled, file path: {}", KELHTTP2_DEBUG_SSL_KEYS_FILE);
+#ifdef HIDI_DEBUG_SSL_KEYS_FILE
+  HTTP2_LOG(logctx, WARN, "SSL debug keys store enabled, file path: {}", HIDI_DEBUG_SSL_KEYS_FILE);
   SSL_CTX_set_keylog_callback(sslctx->ctx.native_handle(), &keylog_callback);
 #endif
   sslctx->ctx.set_default_verify_paths();
