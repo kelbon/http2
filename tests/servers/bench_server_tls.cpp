@@ -18,10 +18,9 @@ void on_ctrl_c(int) {
 int main() try {
   std::signal(SIGINT, &on_ctrl_c);
   asio::ip::tcp::endpoint addr(asio::ip::address_v4::loopback(), 2999);
-  while (true) {
-    server.listen({addr});
-    server.run();
-  }
+
+  server.listen({addr});
+  server.run();
 } catch (std::exception& e) {
   std::cout << e.what() << std::endl;
 }
