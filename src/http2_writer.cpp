@@ -188,7 +188,7 @@ static dd::task<void> write_data(stream_ptr work, h2connection_ptr con, writer_c
                     work->lr_streamlevel_windowsize, con->remote_settings.max_frame_size,
                     std::string_view((const char*)in, framelen));
     // send frame
-    HTTP2_WAIT_WRITE(*con);
+    HIDI_WAIT_WRITE(*con);
     co_await con->write(std::span(in - H2FHL, framelen + H2FHL), ec);
 
     if (ec)
@@ -215,7 +215,7 @@ static dd::task<void> write_continuations(h2connection_ptr con, stream_id_t stre
   assert(handled >= H2FHL);
   byte_t* b = hdrs.data() + handled;
   byte_t* e = hdrs.data() + hdrs.size();
-  HTTP2_WAIT_WRITE(*con);
+  HIDI_WAIT_WRITE(*con);
   con->continuation_gateway.close();
   on_scope_exit {
     dd::any_executor_ref exe{con->ioctx};
@@ -260,7 +260,7 @@ static dd::task<void> write_trailers(h2connection& con, stream_id_t streamid, ht
   else
     fhdr.flags = flags::END_STREAM;
   fhdr.form(bytes.data());
-  HTTP2_WAIT_WRITE(con);
+  HIDI_WAIT_WRITE(con);
   co_await con.write(std::span(bytes.data(), fhdr.length + H2FHL), ec);
   if (!one_frame) [[unlikely]]
     co_await write_continuations(&con, streamid, fhdr.length + H2FHL, std::move(bytes), ec);
@@ -327,7 +327,7 @@ dd::job write_stream_data(stream_ptr node, h2connection_ptr con, writer_callback
     // write empty DATA with END_STREAM
     byte_t bytes[H2FHL];
     data_frame::end_stream_marker(node->streamid).form(+bytes);
-    HTTP2_WAIT_WRITE(*con);
+    HIDI_WAIT_WRITE(*con);
     co_await con->write(bytes, ec);
 
     if (snode.finished() || con->is_dropped())
@@ -425,7 +425,7 @@ dd::job start_writer_for(h2connection_ptr con, writer_sleepcb_t sleepcb, writer_
       if (con->logctx.should_log(log_level_e::TRACE)) [[unlikely]]
         trace_request_headers(*node, IS_CLIENT, con->logctx);
 #endif
-      HTTP2_WAIT_WRITE(*con);
+      HIDI_WAIT_WRITE(*con);
       co_await con->write(std::span(headers.data(), fhdr.length + H2FHL), ec);
 
       if (ec || con->is_dropped()) {

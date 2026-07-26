@@ -95,7 +95,7 @@ using http_headers_t = std::vector<http_header_t>;
 
 // client knows authority and scheme and sets it
 struct http_request {
-  // Host for HTTP1/1, :authority for HTTP2
+  // :authority for HTTP/2
   // empty authority will not be sent.
   // Note: its interpretation of this:
   // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.3.1-2.3.2
@@ -108,7 +108,7 @@ struct http_request {
   // 'scheme' is for server, clients will ignore it and use their scheme instead
   scheme_e scheme = scheme_e::HTTP;
   http_body body = {};
-  // additional headers, all must be lowercase for HTTP2
+  // additional headers, all must be lowercase for HTTP/2
   http_headers_t headers;
 };
 
