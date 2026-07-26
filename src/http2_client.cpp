@@ -14,7 +14,6 @@
 #include "hidi/logger.hpp"
 #include "hidi/utils/macro.hpp"
 #include "hidi/utils/reusable_buffer.hpp"
-#include "hidi/utils/timer.hpp"
 #include "hidi/asio/awaiters.hpp"
 
 #include <hpack/hpack.hpp>
@@ -141,7 +140,8 @@ dd::job http2_client::start_connecting(http2_client* self, deadline_t deadline) 
         self->m_connection = new_connection;
         self->notify_connection_waiters(new_connection);
       };
-      any_connection_t tcpcon = co_await self->m_ioctx.create_connection_client(self->get_host(), deadline);
+      any_connection_t tcpcon =
+          co_await self->m_ioctx.create_connection_client({self->m_remote, self->m_local}, deadline);
       h2connection_ptr con = new h2connection(std::move(tcpcon), *&self->ioctx());
 
       con->logctx.lvl = self->m_options.logctx.lvl;
@@ -409,8 +409,8 @@ http2_client::~http2_client() {
   assert(m_requestsInProgress == 0);
 }
 
-http2_client::http2_client(endpoint host, http2_client_options opts, any_io_context io)
-    : m_host(std::move(host)), m_options(opts), m_ioctx(std::move(io)) {
+http2_client::http2_client(endpoint remote, http2_client_options opts, any_io_context io)
+    : m_remote(std::move(remote)), m_options(opts), m_ioctx(std::move(io)) {
   assert(m_ioctx);
   m_options.logctx.name.set_prefix(CLIENT_PREFIX);
   m_options.max_receive_frame_size = std::min(FRAME_LEN_MAX, m_options.max_receive_frame_size);
@@ -548,7 +548,7 @@ dd::task<http_response> http2_client::send_request(http_request request, deadlin
   auto on_header = [&](std::string_view name, std::string_view value) {
     rsp.headers.emplace_back(std::string(name), std::string(value));
   };
-  auto on_data_part = [&](std::span<byte_t const> bytes, bool /*last_part*/) {
+  auto on_data_part = [&](std::span<const byte_t> bytes, bool /*last_part*/) {
     rsp.body.insert(rsp.body.end(), bytes.begin(), bytes.end());
   };
   rsp.status = co_await send_request(&on_header, &on_data_part, std::move(request), deadline);
@@ -566,7 +566,7 @@ dd::task<http_response> http2_client::send_streaming_request(http_request reques
   auto on_header = [&](std::string_view name, std::string_view value) {
     rsp.headers.emplace_back(std::string(name), std::string(value));
   };
-  auto on_data_part = [&](std::span<byte_t const> bytes, bool /*last_part*/) {
+  auto on_data_part = [&](std::span<const byte_t> bytes, bool /*last_part*/) {
     rsp.body.insert(rsp.body.end(), bytes.begin(), bytes.end());
   };
   rsp.status = co_await send_streaming_request(&on_header, &on_data_part, std::move(request),
@@ -705,9 +705,12 @@ bool http2_client::is_https() const noexcept {
   return m_connection.get()->tcpcon->is_https();
 }
 
-void http2_client::set_host(endpoint s) noexcept {
-  assert(!connected());
-  m_host = std::move(s);
+void http2_client::set_remote(endpoint s) noexcept {
+  m_remote = std::move(s);
+}
+
+void http2_client::set_local(std::optional<internet_address> a) noexcept {
+  m_local = a;
 }
 
 dd::task<bool> http2_client::try_connect(deadline_t deadline) {

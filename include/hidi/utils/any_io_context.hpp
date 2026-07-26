@@ -41,12 +41,20 @@ anyany_method2_n(create_timer_m, create_timer, (&self) requires(self.create_time
 // 'attach' for compatibility with dd::any_executor_ref
 anyany_method2_n(attach_task_m, attach, (&self, dd::task_node* n) requires(self.attach(n))->void);
 
+struct local_and_remote_endpoints {
+  // required, may be resolved
+  endpoint remote;
+  // optional, already resolved
+  std::optional<internet_address> local = std::nullopt;
+};
+
 // creates TCP-like connection (client-side)
 // Note: при реализации нужно учитывать что есть клиентский и серверный ssl context
 // поэтому create_connection_client и create_acceptor должны использовать разные контексты
 // (реализация не вызывает на одном и том же контексте обе эти функции никогда, кроме тестов)
 anyany_method2_n(create_connection_client_m, create_connection_client,
-                 (&self, endpoint e, deadline_t d) requires(self.create_connection_client(e, d))
+                 (&self, local_and_remote_endpoints e,
+                  deadline_t d) requires(self.create_connection_client(e, d))
                      ->dd::task<any_connection_t>);
 
 // creates TCP-like acceptor, which creates server-side connections in 'accept'

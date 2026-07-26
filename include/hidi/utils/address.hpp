@@ -8,19 +8,21 @@ namespace hidi {
 
 namespace asio = boost::asio;
 
+// only address without port
+using ip_addr = asio::ip::address;
 // ip + port
 using internet_address = asio::ip::tcp::endpoint;
 
 // [ip or fqdn] and port
 // fqdn - Fully Qualified Domain Name
 struct endpoint {
-  std::variant<std::string, asio::ip::address> addr;
+  std::variant<std::string, ip_addr> addr;
   asio::ip::port_type port = 0;
 
   endpoint() = default;
 
   // if port setted to 0, binds correct port
-  endpoint(asio::ip::address a, asio::ip::port_type port = 0) : addr(std::move(a)), port(port) {
+  endpoint(ip_addr a, asio::ip::port_type port = 0) : addr(std::move(a)), port(port) {
   }
   // Note: ignores if `fqdn` contains port already
   explicit endpoint(std::string fqdn, asio::ip::port_type port = 0) : addr(std::move(fqdn)), port(port) {
@@ -41,7 +43,7 @@ struct endpoint {
       return std::nullopt;
   }
 
-  void set_addr(asio::ip::address a) noexcept {
+  void set_addr(ip_addr a) noexcept {
     addr = std::move(a);
   }
   void set_fqdn(std::string s) noexcept {
@@ -61,11 +63,11 @@ struct endpoint {
     return std::get_if<std::string>(&addr);
   }
 
-  asio::ip::address* ipaddr() noexcept {
-    return std::get_if<asio::ip::address>(&addr);
+  ip_addr* ipaddr() noexcept {
+    return std::get_if<ip_addr>(&addr);
   }
-  const asio::ip::address* ipaddr() const noexcept {
-    return std::get_if<asio::ip::address>(&addr);
+  const ip_addr* ipaddr() const noexcept {
+    return std::get_if<ip_addr>(&addr);
   }
 
   std::string fqdn_str() const noexcept {
