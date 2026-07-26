@@ -10,8 +10,6 @@
 
 namespace hidi {
 
-namespace asio = boost::asio;
-
 struct ssl_context;
 // must be used only in one thread, multithread using of ssl_context is not safe bcs of open ssl
 using ssl_context_ptr = boost::intrusive_ptr<ssl_context>;

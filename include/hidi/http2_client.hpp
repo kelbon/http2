@@ -5,7 +5,7 @@
 #include "hidi/http2_connection_fwd.hpp"
 #include "hidi/http_base.hpp"
 #include "hidi/request_context.hpp"
-#include "hidi/transport_factory.hpp"
+#include "hidi/asio/io.hpp"
 #include "hidi/utils/boost_intrusive.hpp"
 #include "hidi/utils/deadline.hpp"
 #include "hidi/utils/unique_name.hpp"

@@ -3,7 +3,7 @@
 #include <span>
 #include <type_traits>
 
-#include "hidi/transport_factory.hpp"
+#include "hidi/asio/io.hpp"
 #include "hidi/utils/memory.hpp"
 #include "hidi/asio/aio_context.hpp"
 #include "hidi/utils/timer.hpp"
@@ -25,8 +25,6 @@ and many problems with asio::buffer (it has ~50 constructor overloads)
 namespace hidi {
 
 using io_error_code = boost::system::error_code;
-
-namespace asio = boost::asio;
 
 template <typename T, typename CallbackUser>
 struct asio_awaiter {

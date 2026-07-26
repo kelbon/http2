@@ -1,7 +1,10 @@
 #pragma once
 
+#include "hidi/any_connection.hpp"
 #include "hidi/asio/ssl_context.hpp"
-#include "hidi/transport_factory.hpp"
+#include "hidi/tcp_connection_options.hpp"
+#include "hidi/utils/any_io_context.hpp"
+
 #include "hidi/utils/timer.hpp"
 
 #include <boost/intrusive/slist.hpp>

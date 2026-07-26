@@ -2,6 +2,7 @@
 #include "hidi/http2_server.hpp"
 
 #include "hidi/asio/asio_executor.hpp"
+#include "hidi/asio/io.hpp"
 #include "hidi/http2_send_frames.hpp"
 #include "hidi/http2_server_session.hpp"
 #include "hidi/http2_connection.hpp"
@@ -297,6 +298,10 @@ struct http2_server::impl {
     assert(listeners.empty());
   }
 };
+
+http2_server::http2_server(http2_server_options options)
+    : http2_server(std::move(options), make_asio_io_context()) {
+}
 
 http2_server::http2_server(http2_server_options options, any_io_context io)
     : m_impl(std::make_unique<http2_server::impl>(std::move(io), std::move(options), *this)) {
