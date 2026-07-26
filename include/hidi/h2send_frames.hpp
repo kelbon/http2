@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include "hidi/http2_connection_fwd.hpp"
-#include "hidi/http2_protocol.hpp"
+#include "hidi/h2connection_fwd.hpp"
+#include "hidi/h2protocol.hpp"
 
 #include <kelcoro/task.hpp>
 

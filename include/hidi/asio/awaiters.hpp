@@ -6,7 +6,7 @@
 #include "hidi/asio/io.hpp"
 #include "hidi/utils/memory.hpp"
 #include "hidi/asio/aio_context.hpp"
-#include "hidi/utils/timer.hpp"
+#include "hidi/asio/timer.hpp"
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/read.hpp>

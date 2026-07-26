@@ -5,7 +5,7 @@
 
 #include <boost/intrusive_ptr.hpp>
 
-#include "hidi/http2_connection_fwd.hpp"
+#include "hidi/h2connection_fwd.hpp"
 #include "hidi/utils/macro.hpp"
 #include "hidi/http_body.hpp"
 

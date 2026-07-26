@@ -1,8 +1,8 @@
 
-#include "hidi/http2_server.hpp"
+#include "hidi/h2server.hpp"
 #include "fuzzer.hpp"
 #include "hidi/asio/asio_executor.hpp"
-#include "hidi/http2_client.hpp"
+#include "hidi/h2client.hpp"
 
 #include <boost/stacktrace.hpp>
 #include <csignal>
@@ -20,8 +20,8 @@ using namespace std::string_view_literals;
     std::exit(__LINE__);                       \
   }
 
-struct bistream_test_server : http2_server {
-  using http2_server::http2_server;
+struct bistream_test_server : h2server {
+  using h2server::h2server;
 
   bool answer_before_data(const http_request&) const noexcept override {
     return true;
@@ -69,7 +69,7 @@ static streaming_body_t do_request(http_response rsp, memory_queue_ptr q, reques
 
 std::atomic<bool> done = false;
 
-dd::task<void> run_one_request(http2_client& c) {
+dd::task<void> run_one_request(h2client& c) {
   http_request req;
   req.authority = "abcd";
   req.method = hidi::http_method_e::CONNECT;
@@ -79,7 +79,7 @@ dd::task<void> run_one_request(http2_client& c) {
   ++requests_done;
 }
 
-dd::task<void> run_requests(http2_client& client, size_t count, asio::ip::tcp::endpoint endpoint) {
+dd::task<void> run_requests(h2client& client, size_t count, asio::ip::tcp::endpoint endpoint) {
   on_scope_exit {
     done = true;
   };
@@ -97,18 +97,17 @@ inline const asio::ip::tcp::endpoint addr(asio::ip::address_v6::loopback(), 8080
 inline fuzzing::fuzzer fuz;
 
 static void test_connect_requests() {
-  bistream_test_server server(http2_server_options{.idle_timeout = std::chrono::seconds(50000)});
+  bistream_test_server server(h2server_options{.idle_timeout = std::chrono::seconds(50000)});
 
   server.listen(server_endpoint{.addr = addr, .reuse_address = true});
-  http2_client client(addr,
-                      {.ping_interval = duration_t::max(), .allow_requests_before_server_settings = true});
+  h2client client(addr, {.ping_interval = duration_t::max(), .allow_requests_before_server_settings = true});
   run_requests(client, 100, addr).start_and_detach();
 
   fuz.run_until([] { return done.load(); }, server.ioctx(), client.ioctx());
 }
 
-struct wait_rst_server : http2_server {
-  using http2_server::http2_server;
+struct wait_rst_server : h2server {
+  using h2server::h2server;
 
   dd::task<http_response> handle_request(http_request req, request_context ctx) override {
     while (!ctx.canceled())
@@ -130,7 +129,7 @@ static streaming_body_t body3() {
   co_yield dd::elements_of(body1());
 }
 
-static dd::generator<dd::task<http_response>> different_requests(http2_client& client,
+static dd::generator<dd::task<http_response>> different_requests(h2client& client,
                                                                  std::chrono::milliseconds timeout) {
   http_request r;
   r.path = "/abc";
@@ -176,7 +175,7 @@ static dd::task<void> executetask(dd::task<T> t, bool& done, T& result, std::str
   done = true;
 }
 
-static void test_rst_stream(std::shared_ptr<http2_server> server, http2_client& client) {
+static void test_rst_stream(std::shared_ptr<h2server> server, h2client& client) {
   for (dd::task x : different_requests(client, 10ms)) {
     bool done = false;
     std::string errmsg;
@@ -197,14 +196,14 @@ static void test_rst_stream() {
   {
     std::shared_ptr server = std::make_shared<wait_rst_server>();
     server->listen({addr});
-    http2_client client(addr, {.allow_requests_before_server_settings = false});
+    h2client client(addr, {.allow_requests_before_server_settings = false});
 
     test_rst_stream(std::move(server), client);
   }
   {
     std::shared_ptr server = std::make_shared<wait_rst_server>();
     server->listen({addr});
-    http2_client client(addr, {.allow_requests_before_server_settings = true});
+    h2client client(addr, {.allow_requests_before_server_settings = true});
     test_rst_stream(std::move(server), client);
   }
   // with connection before
@@ -212,7 +211,7 @@ static void test_rst_stream() {
     std::shared_ptr server = std::make_shared<wait_rst_server>();
     server->listen({addr});
 
-    http2_client client(addr, {.allow_requests_before_server_settings = false});
+    h2client client(addr, {.allow_requests_before_server_settings = false});
     auto h = client.try_connect().start_and_detach(/*stop_at_end=*/true);
     while (!h.done()) {
       client.ioctx().poll_one();
@@ -227,7 +226,7 @@ static void test_rst_stream() {
     std::shared_ptr server = std::make_shared<wait_rst_server>();
     server->listen({addr});
 
-    http2_client client(addr, {.allow_requests_before_server_settings = true});
+    h2client client(addr, {.allow_requests_before_server_settings = true});
     auto h = client.try_connect().start_and_detach(/*stop_at_end=*/true);
     while (!h.done()) {
       client.ioctx().poll_one();

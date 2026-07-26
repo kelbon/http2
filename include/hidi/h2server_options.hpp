@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hidi/http2_protocol.hpp"
+#include "hidi/h2protocol.hpp"
 #include "hidi/utils/deadline.hpp"
 #include "hidi/utils/unique_name.hpp"
 
@@ -11,7 +11,7 @@ constexpr inline duration_t SERVER_DEFAULT_IDLE_TIMEOUT = std::chrono::seconds(2
 // timeout for sending client preface
 constexpr inline duration_t SERVER_DEFAULT_CONNECTION_TIMEOUT = std::chrono::seconds(5);
 
-struct http2_server_options {
+struct h2server_options {
   uint32_t hpack_dyntab_size = 4096;
   // Note: disabling hpack from global config has higher priority
   bool force_disable_hpack = false;

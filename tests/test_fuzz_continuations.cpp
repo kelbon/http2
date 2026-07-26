@@ -1,6 +1,6 @@
 #include <thread>
 
-#include "hidi/http2_client.hpp"
+#include "hidi/h2client.hpp"
 #include "servers/echo_server.hpp"
 #include "any_request_template.hpp"
 #include "emulated_client.hpp"
@@ -22,7 +22,7 @@ int main() try {
   }).detach();
 
   fuzzer fuz;
-  hidi::http2_server_options opts;
+  hidi::h2server_options opts;
   opts.max_concurrent_streams = 10;
   // make CONTINUATIONS possible
   opts.max_receive_frame_size = hidi::MIN_MAX_FRAME_LEN;
@@ -31,9 +31,9 @@ int main() try {
   asio::ip::tcp::endpoint ipv6_endpoint(asio::ip::address_v6::loopback(), 8080);
   server.listen(hidi::server_endpoint{.addr = ipv6_endpoint, .reuse_address = true});
 
-  hidi::http2_client client1(
-      ipv6_endpoint, {// avoid sending too many requests because server sets max concurrent streams == 10
-                      .allow_requests_before_server_settings = false});
+  hidi::h2client client1(ipv6_endpoint,
+                         {// avoid sending too many requests because server sets max concurrent streams == 10
+                          .allow_requests_before_server_settings = false});
 
   clone_reqtem tem;
   auto& r = tem.req;

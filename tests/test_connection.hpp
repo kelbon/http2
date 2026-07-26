@@ -9,14 +9,14 @@
 #include <map>
 #include <set>
 
-#include "hidi/http2_protocol.hpp"
+#include "hidi/h2protocol.hpp"
 #include "hidi/utils/deadline.hpp"
 #include "hidi/http_body_bytes.hpp"
 #include "hidi/asio/ssl_context.hpp"
 #include "hidi/asio/awaiters.hpp"
-#include "hidi/http2_client.hpp"
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_server.hpp"
+#include "hidi/h2client.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2server.hpp"
 #include "hidi/asio/asio_executor.hpp"
 #include "fuzzer.hpp"
 
@@ -30,13 +30,13 @@ namespace hidi {
 
 inline constexpr auto DEFAULT_CONN_TIMEOUT = std::chrono::seconds(10);
 
-struct h2frame {
+struct h2test_frame {
   frame_header hdr = {};
   http_body_bytes data = {};
 
   // parses frame. First 9 bytes are header, all other - data
-  static h2frame from_bytes(std::span<const byte_t> bytes) {
-    h2frame f;
+  static h2test_frame from_bytes(std::span<const byte_t> bytes) {
+    h2test_frame f;
     f.hdr = frame_header::parse({bytes.data(), FRAME_HEADER_LEN});
     f.data.assign(bytes.begin() + FRAME_HEADER_LEN, bytes.end());
     return f;
@@ -139,13 +139,13 @@ struct test_h2connection {
   dd::task<void> send_client_magic();
 
   // ignores frame correctness, allowing to send incorrect frames for tests
-  dd::task<void> send_frame(h2frame);
+  dd::task<void> send_frame(h2test_frame);
   dd::task<void> send_raw_frame(std::vector<byte_t>);
   // ignores any logic like control flow, window update, ping answer etc
-  dd::task<h2frame> receive_frame(deadline_t, std::source_location = std::source_location::current());
+  dd::task<h2test_frame> receive_frame(deadline_t, std::source_location = std::source_location::current());
 
-  dd::task<h2frame> next_frame(deadline_t, ping_e, window_e = window_e::RETURN,
-                               std::source_location = std::source_location::current());
+  dd::task<h2test_frame> next_frame(deadline_t, ping_e, window_e = window_e::RETURN,
+                                    std::source_location = std::source_location::current());
 
   // handles SETTINGS_HEADER_TABLE_SIZE, sets m_encoder and m_decoder into correct state
   dd::task<void> receive_and_check_settings(std::map<setting_id_e, uint32_t> expected,
@@ -155,8 +155,8 @@ struct test_h2connection {
 
   // gets and validates settings frame, returns them.
   // handles only SETTINGS_HEADER_TABLE_SIZE, sets m_encoder and m_decoder into correct state
-  dd::task<h2frame> receive_settings(deadline_t = deadline_after(5s),
-                                     std::source_location = std::source_location::current());
+  dd::task<h2test_frame> receive_settings(deadline_t = deadline_after(5s),
+                                          std::source_location = std::source_location::current());
   dd::task<void> receive_settings_ack(deadline_t = deadline_after(5s),
                                       std::source_location = std::source_location::current());
   dd::task<void> send_settings_ack();
@@ -213,7 +213,7 @@ struct test_h2connection {
   // receives data, handles DATA padding etc.
   // Note: hdr.length may be not equal to data.size(). data.size() - actual data, hdr.length includes padding
   // for control flow
-  dd::task<h2frame> receive_data(stream_id_t streamid, deadline_t deadline = deadline_after(5s));
+  dd::task<h2test_frame> receive_data(stream_id_t streamid, deadline_t deadline = deadline_after(5s));
 
   dd::task<void> send_window_size_increment(stream_id_t streamid, uint32_t wind_incr);
 
@@ -258,7 +258,7 @@ inline internet_address localhost() noexcept {
 // connects `client` into fake server and returns BEFORE http2 connection establishment
 // and AFTER tls handshake
 inline dd::task<test_h2connection> fake_server_session(any_io_context_ref io, server_endpoint addr,
-                                                       http2_client& client,
+                                                       h2client& client,
                                                        deadline_t deadline = deadline_after(10s)) {
   any_timer timer = io.create_timer();
   timer.set_callback([](bool canceled) {
@@ -344,7 +344,7 @@ inline dd::job run_test(std::string_view testname, dd::task<void> test, bool& en
 
 template <auto* Foo>
 void server_test_impl(std::string_view name, moko3::section_info* section, server_ssl_context_ptr ssl) {
-  echo_server server(http2_server_options{}, make_asio_tls_io_context(ssl));
+  echo_server server(h2server_options{}, make_asio_tls_io_context(ssl));
   internet_address addr(asio::ip::address_v4::loopback(), /*port_num=*/0);
   addr = server.listen({.addr = addr, .reuse_address = true});
   bool test_ended = false;
@@ -360,8 +360,8 @@ void server_test_impl(std::string_view name, moko3::section_info* section, serve
 // TODO tls?
 template <auto* Foo>
 void client_test_impl(std::string_view name, moko3::section_info* toplvl_section) {
-  hidi::http2_client client(endpoint(asio::ip::address_v4::loopback()), http2_client_options{},
-                            make_asio_io_context());
+  hidi::h2client client(endpoint(asio::ip::address_v4::loopback()), h2client_options{},
+                        make_asio_io_context());
   bool test_ended = false;
   std::exception_ptr ex;
   (void)run_test(name, Foo(client, *&client.ioctx(), toplvl_section), test_ended, ex);
@@ -395,13 +395,13 @@ void client_test_impl(std::string_view name, moko3::section_info* toplvl_section
 
 // after this macro expected function scope, which will use `client`, `ioctx`
 // and return dd::task<void>
-#define CLIENT_TEST(NAME)                                                                           \
-  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::http2_client& client, ::hidi::any_io_context_ref ioctx, \
-                                    ::moko3::section_info* _section);                               \
-  TEST(NAME) {                                                                                      \
-    ::hidi::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                    \
-  }                                                                                                 \
-  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::http2_client& client, ::hidi::any_io_context_ref ioctx, \
+#define CLIENT_TEST(NAME)                                                                       \
+  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::h2client& client, ::hidi::any_io_context_ref ioctx, \
+                                    ::moko3::section_info* _section);                           \
+  TEST(NAME) {                                                                                  \
+    ::hidi::client_test_impl<&UNIQUE_TEST_NAME>(NAME, _section);                                \
+  }                                                                                             \
+  ::dd::task<void> UNIQUE_TEST_NAME(::hidi::h2client& client, ::hidi::any_io_context_ref ioctx, \
                                     ::moko3::section_info* _section)
 
 }  // namespace hidi

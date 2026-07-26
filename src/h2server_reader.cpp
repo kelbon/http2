@@ -1,11 +1,11 @@
 
 
-#include "hidi/http2_server_reader.hpp"
+#include "hidi/h2server_reader.hpp"
 
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_protocol.hpp"
-#include "hidi/http2_send_frames.hpp"
-#include "hidi/http2_server_session.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2protocol.hpp"
+#include "hidi/h2send_frames.hpp"
+#include "hidi/h2server_session.hpp"
 #include "hidi/logger.hpp"
 #include "hidi/utils/reusable_buffer.hpp"
 
@@ -14,7 +14,7 @@
 namespace hidi {
 
 // handles only utility frames (not DATA / HEADERS)
-static void server_handle_utility_frame(http2_frame_t frame, server_session& session) {
+static void server_handle_utility_frame(h2frame frame, h2server_session& session) {
   using enum frame_e;
 
   h2connection& con = *session.connection;
@@ -67,7 +67,7 @@ static void server_handle_utility_frame(http2_frame_t frame, server_session& ses
   }
 }
 
-dd::task<int> start_server_reader_for(server_session& session) try {
+dd::task<int> start_server_reader_for(h2server_session& session) try {
   auto guard = session.connection_parts_gate.hold();
   assert(session.connection);
   using enum frame_e;
@@ -78,7 +78,7 @@ dd::task<int> start_server_reader_for(server_session& session) try {
   h2connection& con = *session.connection;
   io_error_code ec;
   reusable_buffer buffer;
-  http2_frame_t frame;
+  h2frame frame;
 
   for (;;) {
     if (con.is_dropped())
@@ -121,7 +121,7 @@ dd::task<int> start_server_reader_for(server_session& session) try {
           } else {
             co_await session.connection->receive_headers_with_continuation(
                 frame, ec, [&] { session.received_frame(); },
-                [&](http2_frame_t frame) { session.receive_headers(frame); });
+                [&](h2frame frame) { session.receive_headers(frame); });
             if (ec)
               co_return reqerr_e::NETWORK_ERR;
             if (con.is_dropped())

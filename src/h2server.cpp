@@ -1,14 +1,14 @@
 
-#include "hidi/http2_server.hpp"
+#include "hidi/h2server.hpp"
 
 #include "hidi/asio/asio_executor.hpp"
 #include "hidi/asio/io.hpp"
-#include "hidi/http2_send_frames.hpp"
-#include "hidi/http2_server_session.hpp"
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_connection_establishment.hpp"
-#include "hidi/http2_server_reader.hpp"
-#include "hidi/http2_writer.hpp"
+#include "hidi/h2send_frames.hpp"
+#include "hidi/h2server_session.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2connection_establishment.hpp"
+#include "hidi/h2server_reader.hpp"
+#include "hidi/h2writer.hpp"
 #include "hidi/logger.hpp"
 #include "hidi/asio/awaiters.hpp"
 
@@ -26,7 +26,7 @@
 /*
 
 Предназначение сервера это управление соединениями. Вся логика по обработке соединений с клиентами внутри
-server_session
+h2server_session
 
 listen добавляет server_address в прослушиваемые и создаёт корутину accept_connections слушающую этот адрес
     Note: эти корутины останавливаются после `stop_listeners`, но адреса продолжают висеть вплоть до удаления
@@ -36,10 +36,10 @@ accept_connections вечно создаёт сокеты прослушивая
 слушания При получении сокета создаёт корутину session_lifecycle
 
 session_lifecycle устанавливает соединение уровнем выше TCP (tls/http2), задаёт нужные настройки и далее
-служит жизненным пространством для server_session, которая в свою очередь обёртка над h2connection
-server_session завершается когда читатель отдаёт управление, например при получении GOAWAY фрейма
+служит жизненным пространством для h2server_session, которая в свою очередь обёртка над h2connection
+h2server_session завершается когда читатель отдаёт управление, например при получении GOAWAY фрейма
 
-Другой путь завершения server_session это методы сервера shutdown/terminate
+Другой путь завершения h2server_session это методы сервера shutdown/terminate
 
 shutdown отсылает goaway клиенту на всех соединениях и ждёт завершения всех соединений
 
@@ -49,15 +49,15 @@ terminate отсылает goaway и отменяет все запросы на
 
 namespace hidi {
 
-struct http2_server::impl {
+struct h2server::impl {
   // on top bcs of destroy order
   any_io_context io;
-  bi::list<server_session> sessions;
+  bi::list<h2server_session> sessions;
   std::list<any_acceptor> listeners;
   // gate for opened sessions / acceptors
   dd::gate sessionsgate;
-  http2_server_options options;
-  http2_server* creator = nullptr;
+  h2server_options options;
+  h2server* creator = nullptr;
   move_only_fn<void(any_connection_t)> acceptcb;
 #ifndef NDEBUG
   std::thread::id tid = std::this_thread::get_id();
@@ -72,9 +72,9 @@ struct http2_server::impl {
     return options.logctx;
   }
 
-  explicit impl(any_io_context io, http2_server_options opts, http2_server& owner)
+  explicit impl(any_io_context io, h2server_options opts, h2server& owner)
       : io(std::move(io)), options(std::move(opts)), creator(&owner) {
-    options.logctx.name = unique_name{};  // generate new (for different names for each server in mt_server)
+    options.logctx.name = unique_name{};  // generate new (for different names for each server in h2server_mt)
     options.logctx.name.set_prefix(SERVER_PREFIX);
   }
 
@@ -157,8 +157,8 @@ struct http2_server::impl {
     int reader_ec = 0;
 
     // firstly insert session into list, so server will drop it if stops during session establishing
-    server_session_ptr session_ptr = new server_session(std::move(http2con), options, *creator);
-    server_session& session = *session_ptr;
+    server_session_ptr session_ptr = new h2server_session(std::move(http2con), options, *creator);
+    h2server_session& session = *session_ptr;
     session.connection->logctx.name.set_prefix(SERVER_SESSION_PREFIX);
 
     session.connection->logctx.lvl = logctx().lvl;
@@ -299,26 +299,24 @@ struct http2_server::impl {
   }
 };
 
-http2_server::http2_server(http2_server_options options)
-    : http2_server(std::move(options), make_asio_io_context()) {
+h2server::h2server(h2server_options options) : h2server(std::move(options), make_asio_io_context()) {
 }
 
-http2_server::http2_server(http2_server_options options, any_io_context io)
-    : m_impl(std::make_unique<http2_server::impl>(std::move(io), std::move(options), *this)) {
+h2server::h2server(h2server_options options, any_io_context io)
+    : m_impl(std::make_unique<h2server::impl>(std::move(io), std::move(options), *this)) {
 }
 
-http2_server::http2_server(server_ssl_context_ptr ctx, http2_server_options options,
-                           tcp_connection_options tcpopts)
-    : http2_server(std::move(options), make_asio_tls_io_context(std::move(ctx), std::move(tcpopts))) {
+h2server::h2server(server_ssl_context_ptr ctx, h2server_options options, tcp_connection_options tcpopts)
+    : h2server(std::move(options), make_asio_tls_io_context(std::move(ctx), std::move(tcpopts))) {
 }
 
-http2_server::~http2_server() {
+h2server::~h2server() {
   stop();
 }
 
-void http2_server::stop() {
+void h2server::stop() {
   assert(m_impl);
-  HTTP2_LOG_TRACE(m_impl->logctx(), "~http2_server");
+  HTTP2_LOG_TRACE(m_impl->logctx(), "~h2server");
   m_impl->creator = nullptr;
 #ifndef NDEBUG
   m_impl->tid = std::this_thread::get_id();  // change working thread
@@ -336,39 +334,39 @@ void http2_server::stop() {
       ioctx().poll();
     ioctx().poll();
   } catch (std::exception& e) {
-    HTTP2_LOG(m_impl->logctx(), ERROR, "error while ~http2_server: {}", e.what());
+    HTTP2_LOG(m_impl->logctx(), ERROR, "error while ~h2server: {}", e.what());
   }
 }
 
-void http2_server::set_accept_callback(move_only_fn<void(any_connection_t)> cb) {
+void h2server::set_accept_callback(move_only_fn<void(any_connection_t)> cb) {
   m_impl->acceptcb = std::move(cb);
 }
 
-size_t http2_server::sessions_count() const noexcept {
+size_t h2server::sessions_count() const noexcept {
   return m_impl->sessions.size();
 }
 
-internet_address http2_server::listen(server_endpoint a) {
+internet_address h2server::listen(server_endpoint a) {
   return m_impl->listen(std::move(a));
 }
 
-dd::task<void> http2_server::shutdown() {
+dd::task<void> h2server::shutdown() {
   return m_impl->shutdown();
 }
 
-dd::task<void> http2_server::terminate() {
+dd::task<void> h2server::terminate() {
   return m_impl->terminate();
 }
 
-any_io_context& http2_server::ioctx() {
+any_io_context& h2server::ioctx() {
   return m_impl->ioctx();
 }
 
-void http2_server::request_stop() {
+void h2server::request_stop() {
   shutdown().start_and_detach();
 }
 
-void http2_server::run() {
+void h2server::run() {
 #ifndef NDEBUG
   m_impl->tid = std::this_thread::get_id();
 #endif
@@ -377,17 +375,17 @@ void http2_server::run() {
   ioctx().run();
 }
 
-http2_server_options& http2_server::get_options() noexcept {
+h2server_options& h2server::get_options() noexcept {
   return m_impl->options;
 }
 
-const http2_server_options& http2_server::get_options() const noexcept {
+const h2server_options& h2server::get_options() const noexcept {
   return m_impl->options;
 }
 
 // multi threaded server
 
-void mt_server::initialize() {
+void h2server_mt::initialize() {
   auto cb = [this](any_connection_t sock) {
     auto& server = next_server().server;
 
@@ -398,7 +396,7 @@ void mt_server::initialize() {
       return;
     }
     // переезжаем на обрабатывающий поток
-    [](std::unique_ptr<http2_server>& server, any_connection_t sock) -> dd::job {
+    [](std::unique_ptr<h2server>& server, any_connection_t sock) -> dd::job {
       dd::schedule_status e = co_await dd::jump_on(server->ioctx());
       assert(!!e);
       if (server->m_impl->sessionsgate.is_closed()) [[unlikely]]
@@ -411,12 +409,12 @@ void mt_server::initialize() {
   listen_server().server->set_accept_callback(cb);
 }
 
-internet_address mt_server::listen(server_endpoint e) {
+internet_address h2server_mt::listen(server_endpoint e) {
   // listen always on main thread, so `listen` effects will be observable after `server::listen` return
   return listen_server().server->listen(e);
 }
 
-void mt_server::run() {
+void h2server_mt::run() {
   assert(servers.size() == 1 || servers.size() == pool->queues_range().size() + 1);
   if (running)
     throw std::runtime_error("`run` already called");
@@ -425,7 +423,7 @@ void mt_server::run() {
     running = false;
   };
   if (listen_server().server->m_impl->listeners.empty())
-    throw std::runtime_error("mt_server `run` called, but no one address listen!");
+    throw std::runtime_error("h2server_mt `run` called, but no one address listen!");
   std::latch all_done(servers.size());
   if (pool) {
     std::span qs = pool->queues_range();
@@ -458,8 +456,8 @@ void mt_server::run() {
   all_done.arrive_and_wait();
 }
 
-void mt_server::request_stop() {
-  auto do_request_stop = [](mt_server* self) mutable -> dd::task<void> {
+void h2server_mt::request_stop() {
+  auto do_request_stop = [](h2server_mt* self) mutable -> dd::task<void> {
     // run to listen thread to access to `running` only from one thread
     (void)co_await dd::jump_on(self->listen_server().server->ioctx());
     if (!self->running)

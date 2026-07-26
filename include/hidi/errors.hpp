@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "hidi/http2_errors.hpp"
+#include "hidi/h2errors.hpp"
 #include "hidi/utils/macro.hpp"
 
 #include <exception>

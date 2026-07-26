@@ -1,13 +1,13 @@
 
 
-#include "hidi/http2_server_session.hpp"
+#include "hidi/h2server_session.hpp"
 
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_protocol.hpp"
-#include "hidi/http2_send_frames.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2protocol.hpp"
+#include "hidi/h2send_frames.hpp"
 #include "hidi/logger.hpp"
 #include "hidi/asio/asio_executor.hpp"
-#include "hidi/http2_server.hpp"
+#include "hidi/h2server.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -64,7 +64,7 @@ struct response_bro {
   }
 };
 
-server_session::server_session(h2connection_ptr con, http2_server_options opts, http2_server& s)
+h2server_session::h2server_session(h2connection_ptr con, h2server_options opts, h2server& s)
     : connection(std::move(con)), options(opts), server(&s) {
   assert(connection);
   connection->used_bytes_limit = options.limit_requests_memory_usage_bytes;
@@ -73,13 +73,13 @@ server_session::server_session(h2connection_ptr con, http2_server_options opts, 
   connection->max_continuation_len = options.max_continuation_len_bytes;
 }
 
-server_session::~server_session() {
+h2server_session::~h2server_session() {
   assert(connection->is_dropped() && connection->requests.empty() && connection->responses.empty() &&
          "server session was not closed before destroy");
   HTTP2_LOG_TRACE(logctx(), "session ended");
 }
 
-static dd::task<int> send_response(stream_ptr node, server_session& session) {
+static dd::task<int> send_response(stream_ptr node, h2server_session& session) {
   assert(node);
   assert(node->status == reqerr_e::RESPONSE_IN_PROGRESS);
   HTTP2_LOG_TRACE(session.logctx(), "sending response for stream {}", node->streamid);
@@ -146,7 +146,7 @@ static dd::task<int> send_response(stream_ptr node, server_session& session) {
   co_return 0;
 }
 
-void server_session::on_request_ready(h2stream& n) noexcept {
+void h2server_session::on_request_ready(h2stream& n) noexcept {
   if (n.responded) [[unlikely]]
     return;
   else
@@ -173,7 +173,7 @@ void server_session::on_request_ready(h2stream& n) noexcept {
   }
 }
 
-bool server_session::rst_stream_server(rst_stream rstframe, bool skip_validation) {
+bool h2server_session::rst_stream_server(rst_stream rstframe, bool skip_validation) {
   if (!skip_validation)
     connection->validate_rst_frame(rstframe);
   h2stream* n = connection->find_response_by_streamid(rstframe.header.streamid);
@@ -191,7 +191,7 @@ bool server_session::rst_stream_server(rst_stream rstframe, bool skip_validation
   return true;
 }
 
-void server_session::rst_stream_after_error(const stream_error& e) {
+void h2server_session::rst_stream_after_error(const stream_error& e) {
   rst_stream rst;
   rst.header = rst.make_header(e.streamid);
   rst.error_code = e.errc;
@@ -200,7 +200,7 @@ void server_session::rst_stream_after_error(const stream_error& e) {
   send_rst_stream(connection, e.streamid, e.errc).start_and_detach();
 }
 
-size_t server_session::requests_left_exactly() const noexcept {
+size_t h2server_session::requests_left_exactly() const noexcept {
   size_t count = 0;
   // some streams may be in .requests AND in .responses
   for (h2stream& n : connection->requests) {
@@ -210,7 +210,7 @@ size_t server_session::requests_left_exactly() const noexcept {
   return count + connection->responses.size();
 }
 
-void server_session::request_shutdown() noexcept {
+void h2server_session::request_shutdown() noexcept {
   if (!new_requests_forbiden) {
     new_requests_forbiden = true;
     if (established) {
@@ -223,7 +223,7 @@ void server_session::request_shutdown() noexcept {
     on_session_done();
 }
 
-void server_session::request_terminate() noexcept {
+void h2server_session::request_terminate() noexcept {
   if (terminated) {
     if (!has_unfinished_requests())
       on_session_done();
@@ -248,12 +248,12 @@ void server_session::request_terminate() noexcept {
     on_session_done();
 }
 
-void server_session::on_response_done() noexcept {
+void h2server_session::on_response_done() noexcept {
   if (new_requests_forbiden && !has_unfinished_requests())
     on_session_done();
 }
 
-void server_session::on_session_done() noexcept {
+void h2server_session::on_session_done() noexcept {
   assert(new_requests_forbiden && !has_unfinished_requests());
   if (done)
     return;
@@ -261,14 +261,14 @@ void server_session::on_session_done() noexcept {
   connection->shutdown(reqerr_e::CANCELLED);
 }
 
-stream_ptr server_session::new_empty_stream_node(stream_id_t id) {
+stream_ptr h2server_session::new_empty_stream_node(stream_id_t id) {
   assert((id % 2) == 1);
   assert(id <= MAX_STREAM_ID);
   // server reader do not uses 'on_header' / 'on_data_part'
   return connection->new_stream_node({}, deadline_t::never(), nullptr, nullptr, id);
 }
 
-void server_session::start_request_assemble(const http2_frame_t& frame) {
+void h2server_session::start_request_assemble(const h2frame& frame) {
   assert(frame.header.type == frame_e::HEADERS);
 
   // if stream already exist, its trailers or error
@@ -330,11 +330,11 @@ void server_session::start_request_assemble(const http2_frame_t& frame) {
   }
 }
 
-void server_session::client_settings_changed(http2_frame_t newsettings) {
+void h2server_session::client_settings_changed(h2frame newsettings) {
   connection->settings_changed(newsettings, /*remote_is_client=*/true);
 }
 
-void server_session::client_requests_graceful_shutdown(goaway_frame f) {
+void h2server_session::client_requests_graceful_shutdown(goaway_frame f) {
   (void)f;
   HTTP2_LOG_TRACE(logctx(), "received goaway from client, laststreamid: {}, dbginfo: {}", f.last_streamid,
                   f.debug_info);
@@ -343,7 +343,7 @@ void server_session::client_requests_graceful_shutdown(goaway_frame f) {
   // drop connection)
 }
 
-void server_session::finish_server_request(h2stream& n) noexcept {
+void h2server_session::finish_server_request(h2stream& n) noexcept {
   if (n.on_data_part_fn) {
     // prevent endless waiting if client does not send anything etc
     (*n.on_data_part_fn)({}, /*last chunk*/ true);
@@ -364,7 +364,7 @@ void server_session::finish_server_request(h2stream& n) noexcept {
   }
 }
 
-void server_session::receive_headers(http2_frame_t frame) {
+void h2server_session::receive_headers(h2frame frame) {
   assert(frame.header.type == frame_e::HEADERS);
   frame.validate_streamid();
   frame.remove_padding();
@@ -377,7 +377,7 @@ void server_session::receive_headers(http2_frame_t frame) {
   start_request_assemble(frame);
 }
 
-void server_session::receive_data(http2_frame_t frame) {
+void h2server_session::receive_data(h2frame frame) {
   assert(frame.header.type == frame_e::DATA);
   frame.validate_streamid();
   frame.remove_padding();

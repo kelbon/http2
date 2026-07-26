@@ -1,8 +1,8 @@
 
 
-#include "hidi/http2_connection_establishment.hpp"
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_send_frames.hpp"
+#include "hidi/h2connection_establishment.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2send_frames.hpp"
 #include "hidi/utils/reusable_buffer.hpp"
 
 namespace hidi {
@@ -32,8 +32,7 @@ static void validate_client_magic(std::span<byte_t> magic, const log_context& lo
   }
 }
 
-dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
-                                                          http2_client_options options) {
+dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con, h2client_options options) {
   using enum frame_e;
 
   constexpr auto H2FHL = FRAME_HEADER_LEN;
@@ -128,8 +127,7 @@ dd::task<h2connection_ptr> establish_http2_session_client(h2connection_ptr con,
   co_return con;
 }
 
-dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con,
-                                                          http2_server_options options) {
+dd::task<h2connection_ptr> establish_http2_session_server(h2connection_ptr con, h2server_options options) {
   assert(con);
   io_error_code ec;
   constexpr size_t MAGIC_SZ = std::size(CONNECTION_PREFACE);

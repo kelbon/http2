@@ -1,13 +1,9 @@
 #pragma once
 
-#include <anyany/anyany.hpp>
-#include <anyany/anyany_macro.hpp>
-
 #include "hidi/any_connection.hpp"
 #include "hidi/utils/any_timer.hpp"
-#include "hidi/asio/aio_context.hpp"
-#include "hidi/utils/address.hpp"
 #include "hidi/utils/any_acceptor.hpp"
+#include "hidi/utils/address.hpp"
 
 #include <kelcoro/executor_interface.hpp>
 #include <kelcoro/task.hpp>
@@ -26,10 +22,10 @@ anyany_method2_n(stopped_m, stopped, (&self) requires(self.stopped())->bool);
 // allows call .run / poll / poll_one again
 anyany_method2_n(restart_m, restart, (&self) requires(self.restart())->void);
 
-// нужно только в mt_server. Помечает для 'run', что прекращать run нельзя
+// нужно только в h2server_mt. Помечает для 'run', что прекращать run нельзя
 anyany_method2_n(start_task_m, start_task, (&self) requires(self.start_task())->void);
 
-// нужно только в mt_server. Помечает для 'run', что работа начатая в 'start_task' окончена
+// нужно только в h2server_mt. Помечает для 'run', что работа начатая в 'start_task' окончена
 anyany_method2_n(end_task_m, end_task, (&self) requires(self.end_task())->void);
 
 anyany_method2_n(running_in_this_thread_m, running_in_this_thread,
@@ -37,7 +33,7 @@ anyany_method2_n(running_in_this_thread_m, running_in_this_thread,
 
 anyany_method2_n(create_timer_m, create_timer, (&self) requires(self.create_timer())->any_timer);
 // never invokes task immediately, pushes it into queue always
-// may be invoked from another thread (ONLY IN mt_server)
+// may be invoked from another thread (ONLY IN h2server_mt)
 // 'attach' for compatibility with dd::any_executor_ref
 anyany_method2_n(attach_task_m, attach, (&self, dd::task_node* n) requires(self.attach(n))->void);
 
@@ -76,7 +72,7 @@ using any_io_context_ref = any_io_context::ref;
 using any_io_context_ptr = any_io_context::ptr;
 
 using rebind_context_method_t = void (*)(any_connection_t&, any_io_context_ref);
-// нужно только для mt_server
+// нужно только для h2server_mt
 // static метод
 // 'con' было получено из accept/create_connection_client этого контекста
 // `other` такого же типа как и self

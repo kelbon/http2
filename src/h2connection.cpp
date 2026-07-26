@@ -1,8 +1,8 @@
 
 
-#include "hidi/http2_connection.hpp"
+#include "hidi/h2connection.hpp"
 
-#include "hidi/http2_send_frames.hpp"
+#include "hidi/h2send_frames.hpp"
 #include "hidi/logger.hpp"
 
 #include <unordered_set>
@@ -67,7 +67,7 @@ static void validate_trailer_header(std::string_view name, stream_id_t streamid)
   }
 }
 
-void h2stream::receive_trailers_headers(hpack::decoder& decoder, http2_frame_t frame) {
+void h2stream::receive_trailers_headers(hpack::decoder& decoder, h2frame frame) {
   // may handle both request trailers and response trailers
   HTTP2_LOG_TRACE(logctx(), "received HEADERS (trailers): stream: {}, len: {}", frame.header.streamid,
                   frame.header.length);
@@ -92,7 +92,7 @@ void h2stream::receive_trailers_headers(hpack::decoder& decoder, http2_frame_t f
   }
 }
 
-void h2stream::receive_request_trailers(hpack::decoder& decoder, http2_frame_t hdrs) {
+void h2stream::receive_request_trailers(hpack::decoder& decoder, h2frame hdrs) {
   assert(hdrs.header.type == frame_e::HEADERS);
   auto old_on_header = on_header_fn;
   on_scope_exit {
@@ -117,7 +117,7 @@ void h2stream::receive_request_trailers(hpack::decoder& decoder, http2_frame_t h
   }
 }
 
-void h2stream::receive_response_headers(hpack::decoder& decoder, http2_frame_t frame) {
+void h2stream::receive_response_headers(hpack::decoder& decoder, h2frame frame) {
   assert(frame.header.streamid == streamid);
   assert(frame.header.type == frame_e::HEADERS);
   HTTP2_LOG_TRACE(logctx(), "received HEADERS: stream: {}, len: {}", frame.header.streamid,
@@ -146,7 +146,7 @@ void h2stream::receive_response_headers(hpack::decoder& decoder, http2_frame_t f
   });
 }
 
-void h2stream::receive_response_data(http2_frame_t frame) {
+void h2stream::receive_response_data(h2frame frame) {
   assert(frame.header.streamid == streamid);
   assert(frame.header.type == frame_e::DATA);
   on_scope_exit {
@@ -163,7 +163,7 @@ void h2stream::receive_response_data(http2_frame_t frame) {
                   frame.header.length, std::string_view((const char*)frame.data.data(), frame.data.size()));
 }
 
-void h2stream::receive_request_headers(http2_frame_t frame) {
+void h2stream::receive_request_headers(h2frame frame) {
   assert(frame.header.streamid == streamid);
   assert(frame.header.type == frame_e::HEADERS);
   assert(frame.header.flags & flags::END_HEADERS);
@@ -183,7 +183,7 @@ void h2stream::receive_request_headers(http2_frame_t frame) {
 #endif
 }
 
-void h2stream::receive_request_data(http2_frame_t frame) {
+void h2stream::receive_request_data(h2frame frame) {
   assert(frame.header.streamid == streamid);
   assert(frame.header.type == frame_e::DATA);
 
@@ -237,7 +237,7 @@ h2connection::~h2connection() {
   free_nodes.clear_and_dispose([](h2stream* node) { delete node; });
 }
 
-void h2connection::settings_changed(http2_frame_t newsettings, bool remote_is_client) {
+void h2connection::settings_changed(h2frame newsettings, bool remote_is_client) {
   if (newsettings.header.flags & flags::ACK) {
     validate_settings_ack_frame(newsettings.header);
     // только после подтверждения настроек я действительно могу перейти на свои настройки
@@ -268,7 +268,7 @@ void h2connection::settings_changed(http2_frame_t newsettings, bool remote_is_cl
   send_settings_ack(this).start_and_detach();
 }
 
-void h2connection::server_settings_changed(http2_frame_t newsettings) {
+void h2connection::server_settings_changed(h2frame newsettings) {
   settings_changed(newsettings, /*remote_is_client=*/false);
 }
 
@@ -534,7 +534,7 @@ h2connection::response_awaiter h2connection::response_received(h2stream& node) n
   return response_awaiter{this, &node};
 }
 
-void h2connection::ignore_frame(http2_frame_t frame) {
+void h2connection::ignore_frame(h2frame frame) {
   HTTP2_LOG_TRACE(logctx, "ignoring frame, type: {}, stream: {}. len: {}", e2str(frame.header.type),
                   frame.header.streamid, frame.header.length);
   using enum frame_e;
@@ -610,9 +610,9 @@ void h2connection::adjust_window_for_all_streams(cfint_t old_window_size, cfint_
     adjust_stream(x);
 }
 
-dd::task<void> h2connection::receive_headers_with_continuation(http2_frame_t frame, io_error_code& ec,
+dd::task<void> h2connection::receive_headers_with_continuation(h2frame frame, io_error_code& ec,
                                                                move_only_fn<void()> oneachframe,
-                                                               move_only_fn<void(http2_frame_t)> whendone) {
+                                                               move_only_fn<void(h2frame)> whendone) {
   assert(frame.header.type == frame_e::HEADERS);
   assert(!(frame.header.flags & flags::END_HEADERS));
   assert(oneachframe && whendone);
@@ -677,7 +677,7 @@ dd::task<void> h2connection::receive_headers_with_continuation(http2_frame_t fra
   unreachable();
 }
 
-void h2connection::client_receive_headers(http2_frame_t frame) {
+void h2connection::client_receive_headers(h2frame frame) {
   assert(frame.header.type == frame_e::HEADERS);
   frame.validate_streamid();
   frame.remove_padding();
@@ -713,7 +713,7 @@ void h2connection::client_receive_headers(http2_frame_t frame) {
     finish_request(*node, node->status);
 }
 
-void h2connection::client_receive_data(http2_frame_t frame) {
+void h2connection::client_receive_data(h2frame frame) {
   assert(frame.header.type == frame_e::DATA);
 
   frame.validate_streamid();

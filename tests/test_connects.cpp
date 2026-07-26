@@ -8,7 +8,7 @@ using namespace std::chrono;
 CLIENT_TEST("connects") {
   REQUIRE(!client.connected() && !client.connecting());
 
-  http2_client_options opts = client.get_options();
+  h2client_options opts = client.get_options();
   // чтобы клиент ждал ответа от сервера и соединение не было успешно завершено
   opts.allow_requests_before_server_settings = false;
   client.set_options(std::move(opts));
@@ -30,7 +30,7 @@ CLIENT_TEST("connects") {
 }
 
 CLIENT_TEST("trailers") {
-  http2_client_options opts = client.get_options();
+  h2client_options opts = client.get_options();
   opts.allow_requests_before_server_settings = GENERATE(false, true);
   client.set_options(std::move(opts));
 

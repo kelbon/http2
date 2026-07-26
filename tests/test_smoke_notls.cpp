@@ -1,5 +1,5 @@
-#include "hidi/http2_client.hpp"
-#include "hidi/http2_server.hpp"
+#include "hidi/h2client.hpp"
+#include "hidi/h2server.hpp"
 #include <fuzzer.hpp>
 
 #include <iostream>
@@ -59,8 +59,8 @@ static streaming_body_t handle_connect_request(memory_queue_ptr q, request_conte
   }
 }
 
-struct test_server : http2_server {
-  using http2_server::http2_server;
+struct test_server : h2server {
+  using h2server::h2server;
 
   bool answer_before_data(const http_request& r) const noexcept override {
     return r.method == hidi::http_method_e::CONNECT;
@@ -86,7 +86,7 @@ struct test_server : http2_server {
 
 inline bool all_good = false;
 
-GCC_WORKAROUND dd::task<http_response> make_test_request(http2_client& client) {
+GCC_WORKAROUND dd::task<http_response> make_test_request(h2client& client) {
   http_request req{
       .path = std::string(REQUEST_PATH),
       .method = http_method_e::GET,
@@ -111,7 +111,7 @@ streaming_body_t makebody(http_headers_t& trailers) {
   trailers = EXPECTED_HEADERS;
 }
 
-dd::task<http_response> make_test_stream_request(http2_client& client) {
+dd::task<http_response> make_test_stream_request(h2client& client) {
   http_request req{
       .path = std::string(STREAM_REQUEST_PATH),
       .method = http_method_e::PUT,
@@ -137,7 +137,7 @@ streaming_body_t websocket_connect_test(http_response rsp, memory_queue_ptr q, r
   }
 }
 
-dd::task<void> make_test_websocket_request(http2_client& client) {
+dd::task<void> make_test_websocket_request(h2client& client) {
   http_request req;
   req.headers = EXPECTED_CONNECT_HEADERS;
   req.path = "/ada";
@@ -146,7 +146,7 @@ dd::task<void> make_test_websocket_request(http2_client& client) {
   error_if(status != 200);  // server accepted request
 }
 
-dd::task<void> main_coro(http2_client& client) {
+dd::task<void> main_coro(h2client& client) {
   http_response rsp = co_await make_test_request(client);
   check_response(rsp);
 
@@ -168,8 +168,8 @@ int main() try {
 
   namespace asio = boost::asio;
 
-  http2_client_options opts{};
-  http2_client client(endpoint("localhost", 8080), std::move(opts));
+  h2client_options opts{};
+  h2client client(endpoint("localhost", 8080), std::move(opts));
 
   test_server server(nullptr /*no https*/, {});
 

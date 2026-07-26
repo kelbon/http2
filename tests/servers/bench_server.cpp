@@ -7,7 +7,7 @@
 
 using namespace hidi;
 
-mt_server server(std::in_place_type<bench_server>);
+h2server_mt server(std::in_place_type<bench_server>);
 
 void on_ctrl_c(int) {
   server.request_stop();

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "hidi/asio/awaiters.hpp"
-#include "hidi/http2_server.hpp"
+#include "hidi/h2server.hpp"
 
 namespace hidi {
 
@@ -14,8 +14,8 @@ constexpr inline std::string_view TERMINATE_THIS_SESSION_HDR = "x-x-terminate-th
 // TODO также проверять в тестах expected SERVER settings
 // и на стороне сервера проверять что expected CLIENT settings
 //
-struct echo_server : http2_server {
-  using http2_server::http2_server;
+struct echo_server : h2server {
+  using h2server::h2server;
 
   dd::task<http_response> handle_request(http_request req, request_context ctx) override {
     // TODO interim rspns, stream response smthmth

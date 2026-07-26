@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "hidi/http2_errors.hpp"
+#include "hidi/h2errors.hpp"
 #include "hidi/logger.hpp"
 #include "hidi/utils/memory.hpp"
 #include "hidi/utils/unique_name.hpp"
@@ -183,7 +183,7 @@ struct headers_frame
       Field Block Fragment (..),
       Padding (..2040),
 
-    do not have 'parse', its in http2_client (because requires decoder, padding
+    do not have 'parse', its in h2client (because requires decoder, padding
 remove etc)
 
     client/server writer/reader form/decode this frame directly when required

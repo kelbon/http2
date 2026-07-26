@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hidi/http2_server.hpp"
+#include "hidi/h2server.hpp"
 #include "hidi/asio/awaiters.hpp"
 #include <charconv>
 
@@ -12,12 +12,12 @@ inline dd::channel<std::span<const byte_t>> streambody() {
     co_yield {(const byte_t*)&c, 1};
 }
 
-struct h2spec_server : http2_server {
-  using http2_server::http2_server;
+struct h2spec_server : h2server {
+  using h2server::h2server;
   bool answer_stream = false;
 
   explicit h2spec_server(log_context ctx = log_context{})
-      : http2_server(http2_server_options{
+      : h2server(h2server_options{
             .max_receive_frame_size = MIN_MAX_FRAME_LEN,  // enables FRAME_SIZE tests
             .max_concurrent_streams = 10,                 // enables h2spec test for it
             .logctx = std::move(ctx),

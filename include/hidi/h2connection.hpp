@@ -2,15 +2,14 @@
 #pragma once
 
 #include "hidi/any_connection.hpp"
-#include "hidi/http2_connection_fwd.hpp"
-#include "hidi/http2_protocol.hpp"
+#include "hidi/h2connection_fwd.hpp"
+#include "hidi/h2protocol.hpp"
 #include "hidi/http_base.hpp"
 #include "hidi/utils/any_io_context.hpp"
 #include "hidi/utils/boost_intrusive.hpp"
 #include "hidi/utils/deadline.hpp"
 #include "hidi/utils/unique_name.hpp"
 #include "hidi/utils/fn_ref.hpp"
-#include "hidi/utils/timer.hpp"
 #include "hidi/utils/merged_segments.hpp"
 #include "hidi/asio/aio_context.hpp"
 
@@ -29,7 +28,7 @@
 
 namespace hidi {
 
-struct http2_frame_t {
+struct h2frame {
   frame_header header;
   std::span<byte_t> data;
 
@@ -164,29 +163,29 @@ struct h2stream {
   }
 
   // client side
-  void receive_trailers_headers(hpack::decoder&, http2_frame_t /*headers frame*/);
+  void receive_trailers_headers(hpack::decoder&, h2frame /*headers frame*/);
 
   // server side
-  void receive_request_trailers(hpack::decoder&, http2_frame_t /*headers frame*/);
+  void receive_request_trailers(hpack::decoder&, h2frame /*headers frame*/);
 
   // client side
   // expects :status as first header
   // precondition: padding removed
-  void receive_response_headers(hpack::decoder& decoder, http2_frame_t frame);
+  void receive_response_headers(hpack::decoder& decoder, h2frame frame);
 
   // client side
   // precondition: padding removed
-  void receive_response_data(http2_frame_t frame);
+  void receive_response_data(h2frame frame);
 
   // server side
   // expects required pseudoheaders like :path
   // precondition: padding removed
-  void receive_request_headers(http2_frame_t frame);
+  void receive_request_headers(h2frame frame);
 
   // server side
   // adds frame data octets to request body
   // precondition: padding removed
-  void receive_request_data(http2_frame_t frame);
+  void receive_request_data(h2frame frame);
 
   struct equal_by_streamid {
     bool operator()(const stream_id_t& l, const stream_id_t& r) const noexcept {
@@ -285,7 +284,7 @@ struct h2connection {
   merged_segments closed_streams;
   log_context logctx;
   any_io_context_ref ioctx;
-  // for supporting http2_server_options::limit_requests_memory_usage_bytes
+  // for supporting h2server_options::limit_requests_memory_usage_bytes
   size_t used_bytes = 0;
   size_t used_bytes_limit = size_t(-1);
   uint32_t max_continuation_len = uint32_t(-1);
@@ -458,16 +457,16 @@ struct h2connection {
 
   void return_node(h2stream* ptr) noexcept;
 
-  void ignore_frame(http2_frame_t frame);
+  void ignore_frame(h2frame frame);
 
   // `remote_is_client` should be true on server side
-  void settings_changed(http2_frame_t newsettings, bool remote_is_client);
+  void settings_changed(h2frame newsettings, bool remote_is_client);
 
   // client side
   // used when settings changed while connection active
   // may throw protocol error
   // precondition: newsettings is SETTINGS frame
-  void server_settings_changed(http2_frame_t newsettings);
+  void server_settings_changed(h2frame newsettings);
 
   // client side
   // used when client receives GOAWAY frame with NO_ERROR (or may be second
@@ -499,7 +498,7 @@ struct h2connection {
   // and returns response status
   KELCORO_CO_AWAIT_REQUIRED response_awaiter response_received(h2stream& node) noexcept;
 
-  void validate_priority_frame_header(const http2_frame_t& h) {
+  void validate_priority_frame_header(const h2frame& h) {
     assert(h.header.type == frame_e::PRIORITY);
     assert(h.data.size() == h.header.length);
     if (h.header.length != 5 || h.header.streamid == 0)
@@ -555,13 +554,13 @@ struct h2connection {
 
   // collects HEADERS from many CONTINUATIONS and first HEADERS frame without END_HEADERS and passes it into
   // `when_done` invokes `oneachframe` when receives new frame header
-  dd::task<void> receive_headers_with_continuation(http2_frame_t frame, io_error_code& ec,
+  dd::task<void> receive_headers_with_continuation(h2frame frame, io_error_code& ec,
                                                    move_only_fn<void()> oneachframe,
-                                                   move_only_fn<void(http2_frame_t)> whendone);
+                                                   move_only_fn<void(h2frame)> whendone);
 
-  void client_receive_headers(http2_frame_t frame);
+  void client_receive_headers(h2frame frame);
 
-  void client_receive_data(http2_frame_t frame);
+  void client_receive_data(h2frame frame);
 };
 
 inline bool h2stream::use_bytes(size_t n) noexcept {

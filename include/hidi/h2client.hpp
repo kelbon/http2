@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include "hidi/http2_client_options.hpp"
-#include "hidi/http2_connection_fwd.hpp"
+#include "hidi/h2client_options.hpp"
+#include "hidi/h2connection_fwd.hpp"
 #include "hidi/http_base.hpp"
 #include "hidi/request_context.hpp"
 #include "hidi/asio/io.hpp"
@@ -22,18 +22,18 @@
 
 namespace hidi {
 
-struct http2_client;
+struct h2client;
 
 namespace noexport {
 
 struct waiter_of_connection : bi::list_base_hook<link_option_t> {
   std::coroutine_handle<> task;
-  http2_client* client = nullptr;
+  h2client* client = nullptr;
   h2connection_ptr result = nullptr;
   deadline_t deadline;
   ZAL_PIN;
 
-  explicit waiter_of_connection(http2_client* c, deadline_t dl) noexcept : client(c), deadline(dl) {
+  explicit waiter_of_connection(h2client* c, deadline_t dl) noexcept : client(c), deadline(dl) {
   }
 
   ~waiter_of_connection();
@@ -71,7 +71,7 @@ struct new_connection_guard {
 
 namespace hidi {
 
-struct http2_client {
+struct h2client {
  protected:
   friend noexport::waiter_of_connection;
 
@@ -80,7 +80,7 @@ struct http2_client {
   any_io_context m_ioctx;
   endpoint m_remote;
   std::optional<internet_address> m_local;
-  http2_client_options m_options;
+  h2client_options m_options;
   h2connection_ptr m_connection;
 
   // while connection is not ready all new streams wait for it
@@ -95,7 +95,7 @@ struct http2_client {
   dd::gate m_connectionGate;
 
   // fills requests from raw HTTP/2 frames
-  static dd::job start_reader_for(http2_client*, h2connection_ptr);
+  static dd::job start_reader_for(h2client*, h2connection_ptr);
 
   // postconditon: returns not null, !returned->dropped && returned->stream_id <= MAX_STREAM_ID
   // && !client.stop_requestedg
@@ -111,7 +111,7 @@ struct http2_client {
 
   // поддерживает инвариант: клиент либо не имеет соединения, либо оно в
   // процессе создания, либо оно создано, но не более одного
-  [[nodiscard("this handle must be resumed")]] static dd::job start_connecting(http2_client*, deadline_t);
+  [[nodiscard("this handle must be resumed")]] static dd::job start_connecting(h2client*, deadline_t);
 
   bool stop_requested() const noexcept {
     return m_stopRequested > 0;
@@ -124,12 +124,12 @@ struct http2_client {
   // by default creates localhost client
   // creates non-tls client by default
   // example of creating tls client:
-  //   http2_client myclient(host, http2_client_options{}, make_asio_tls_io_context());
-  explicit http2_client(endpoint remote = endpoint(asio::ip::address_v4::loopback()),
-                        http2_client_options opts = {}, any_io_context = make_asio_io_context());
+  //   h2client myclient(host, h2client_options{}, make_asio_tls_io_context());
+  explicit h2client(endpoint remote = endpoint(asio::ip::address_v4::loopback()), h2client_options opts = {},
+                    any_io_context = make_asio_io_context());
 
-  http2_client(http2_client&&) = delete;
-  void operator=(http2_client&&) = delete;
+  h2client(h2client&&) = delete;
+  void operator=(h2client&&) = delete;
 
   const endpoint& get_remote() const noexcept {
     return m_remote;
@@ -146,17 +146,17 @@ struct http2_client {
   void set_connection_timeout(duration_t dur) noexcept {
     m_options.connection_timeout = dur;
   }
-  const http2_client_options& get_options() const noexcept {
+  const h2client_options& get_options() const noexcept {
     return m_options;
   }
 
   // pre: client is not connected / connecting
-  void set_options(http2_client_options opts) noexcept {
+  void set_options(h2client_options opts) noexcept {
     assert(!connected() && !connecting());
     m_options = std::move(opts);
   }
 
-  ~http2_client();
+  ~h2client();
 
   // rethrows exceptions from 'on_header' and 'on_data_part' to caller
   // if 'on_header' is nullptr, all headers ignored (status parsed)
@@ -276,9 +276,6 @@ struct http2_client {
   // size_t(-1) if no connection or connecting now (e.g. after sending
   // request while there are no connection yet)
   size_t max_count_requests_allowed() const noexcept;
-
- private:
-  friend struct http2_tester;
 };
 
 }  // namespace hidi
