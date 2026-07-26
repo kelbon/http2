@@ -144,8 +144,11 @@ struct test_h2connection {
   // ignores any logic like control flow, window update, ping answer etc
   dd::task<h2test_frame> receive_frame(deadline_t, std::source_location = std::source_location::current());
 
+  // если bool answer_window_update == true, то если пришла DATA отвечает WINDOW_UPDATE чтобы не сокращать
+  // своё окно (и для соединения и для стрима)
   dd::task<h2test_frame> next_frame(deadline_t, ping_e, window_e = window_e::RETURN,
-                                    std::source_location = std::source_location::current());
+                                    std::source_location = std::source_location::current(),
+                                    bool answer_window_update = false);
 
   // handles SETTINGS_HEADER_TABLE_SIZE, sets m_encoder and m_decoder into correct state
   dd::task<void> receive_and_check_settings(std::map<setting_id_e, uint32_t> expected,
@@ -186,13 +189,21 @@ struct test_h2connection {
   dd::task<void> send_req(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
                           bool endstream = true);
   // sends HEADERS frame and if `body` present - DATA frame. Sends END_STREAM only if `endstream` == true
+  // ignores controlw flow rules, sends DATA always as one frame
   dd::task<void> send_rsp(stream_id_t streamid, std::vector<header> headers, http_body_bytes body = {},
                           bool endstream = true);
 
   // receives HEADERS frame and, if required, DATA frame.
+  // do not support many DATA frame/parallel requests etc
   // returns streamid, if marked `end_stream`, decoded headers, untouched body bytes
   dd::task<hdrs_and_data> receive_req(deadline_t deadline = deadline_after(5s),
                                       std::source_location = std::source_location::current());
+
+  // ждёт пока `count` запросов не придут и не будут полностью собраны
+  dd::task<std::unordered_map<stream_id_t, hdrs_and_data>> receive_streams(
+      size_t count, deadline_t deadline = deadline_after(5s),
+      std::source_location loc = std::source_location::current());
+
   // same as `receive_req`, name different for better code readability
   dd::task<hdrs_and_data> receive_rsp(deadline_t deadline = deadline_after(5s),
                                       std::source_location loc = std::source_location::current()) {

@@ -1,6 +1,7 @@
 
 #include "test_connection.hpp"
-#include <csignal>
+#include "fuzzing/fuzzer.hpp"
+
 #include <moko3/moko3.hpp>
 
 #include <boost/stacktrace.hpp>
@@ -161,6 +162,33 @@ SERVER_TEST("server CONTINUATION limit", test_ssl_ctx()) {
     // invalid headers block, but request accepted and parsed
     co_await client.receive_goaway(1, errc_e::COMPRESSION_ERROR, ping_e::RESPONSE);
   }
+}
+
+SERVER_TEST("big requests") {
+  auto client = co_await fake_client_connection(ioctx, addr);
+  co_await emulate_client_connection(client);
+  fuzzing::fuzzer fuz;
+  stream_id_t id = 1;
+  constexpr int COUNT = 100;
+  std::unordered_map<stream_id_t, size_t> expected_hashs;
+  for (int i = 0; i < COUNT; ++i) {
+    std::string body = fuz.rstring(fuz.rint(13, 200) * 1024 /*KB*/);
+    size_t hash = std::hash<std::string_view>{}(body);
+    std::vector<header> hdrs{
+        {":method", "GET"},
+        {":path", "/"},
+        {":scheme", "http"},
+        {":authority", addr.address().to_string()},
+        {std::string(EXPECTED_BODY_HASH_HDR), std::format("{}", hash)},
+    };
+    http_body_bytes bytes(body.begin(), body.end());
+    expected_hashs[id] = hash;
+    client.send_req(id, std::move(hdrs), std::move(bytes)).start_and_detach();
+    id += 2;
+  }
+  std::unordered_map rsps = co_await client.receive_streams(COUNT);
+  for (auto& [streamid, rsp] : rsps)
+    REQUIRE(std::hash<std::string_view>{}(rsp.body_strview()) == expected_hashs[streamid]);
 }
 
 REGISTER_TEST_LISTENER(moko3::gtest_listener);
