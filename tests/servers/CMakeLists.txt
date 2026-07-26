@@ -3,7 +3,7 @@ add_library(echoserverlib ${CMAKE_CURRENT_SOURCE_DIR}/echo_server.cpp)
 
 target_include_directories(echoserverlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-target_link_libraries(echoserverlib PUBLIC http2lib)
+target_link_libraries(echoserverlib PUBLIC hidilib)
 
 set_target_properties(echoserverlib PROPERTIES
 	CMAKE_CXX_EXTENSIONS OFF
@@ -13,7 +13,7 @@ set_target_properties(echoserverlib PROPERTIES
 
 add_executable(h2spec_server ${CMAKE_CURRENT_SOURCE_DIR}/h2spec_server.cpp)
 
-target_link_libraries(h2spec_server PUBLIC http2lib)
+target_link_libraries(h2spec_server PUBLIC hidilib)
 
 set_target_properties(h2spec_server PROPERTIES
 	CMAKE_CXX_EXTENSIONS OFF
@@ -22,7 +22,7 @@ set_target_properties(h2spec_server PROPERTIES
 	CXX_STANDARD 20)
 
 add_executable(benchmark_server ${CMAKE_CURRENT_SOURCE_DIR}/bench_server.cpp)
-target_link_libraries(benchmark_server PUBLIC http2lib)
+target_link_libraries(benchmark_server PUBLIC hidilib)
 
 set_target_properties(benchmark_server PROPERTIES
   CMAKE_CXX_EXTENSIONS OFF
@@ -31,7 +31,7 @@ set_target_properties(benchmark_server PROPERTIES
   CXX_STANDARD 20)
 
 add_executable(benchmark_server_tls ${CMAKE_CURRENT_SOURCE_DIR}/bench_server_tls.cpp)
-target_link_libraries(benchmark_server_tls PUBLIC http2lib)
+target_link_libraries(benchmark_server_tls PUBLIC hidilib)
 
 set_target_properties(benchmark_server_tls PROPERTIES
   CMAKE_CXX_EXTENSIONS OFF

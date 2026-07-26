@@ -6,7 +6,7 @@ add_library(http2_fuzzinglib   ${CMAKE_CURRENT_SOURCE_DIR}/any_request_template.
 
 
 target_include_directories(http2_fuzzinglib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(http2_fuzzinglib PUBLIC http2lib moko3lib)
+target_link_libraries(http2_fuzzinglib PUBLIC hidilib moko3lib)
 
 set_target_properties(http2_fuzzinglib PROPERTIES
 	CMAKE_CXX_EXTENSIONS OFF

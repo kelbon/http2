@@ -171,6 +171,11 @@ static size_t do_try_write(auto& self, std::span<const byte_t> buf, io_error_cod
     ec = boost::asio::error::operation_aborted;
     return 0;
   }
+  // просто напоминание, что при изменении try_write/start_write неплохо бы проверить с этим флагом что ничего
+  // не сломалось (try_write лишь оптимизация, start_write должен справляться и сам)
+#if HIDI_DISABLE_TRY_WRITE
+  return 0;
+#endif
   // нельзя писать когда есть кто-то в writersqueue, чтобы не нарушить порядок отправки
   if (!self.writedata.writersqueue.empty())
     return 0;

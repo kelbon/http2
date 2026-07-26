@@ -66,7 +66,7 @@ CPMAddPackage(
   GIT_TAG v0.8.2
 )
 
-if (KELHTTP2_ENABLE_TESTING)
+if (HIDI_ENABLE_TESTING)
   CPMAddPackage(
     NAME MOKO3
     GITHUB_REPOSITORY kelbon/moko3

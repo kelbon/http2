@@ -43,12 +43,12 @@ jobs:
           version: "v0.10.0" # Version of the sccache binary to install
       - name: Configure CMake sanitizers
         run: |
-          cmake . -DKELHTTP2_ENABLE_TESTING=ON            \
+          cmake . -DHIDI_ENABLE_TESTING=ON            \
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
             -DCMAKE_CXX_COMPILER=${{matrix.compiler}}     \
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5            \
-            -DKELHTTP2_ENABLE_SANITIZERS=ON               \
+            -DHIDI_ENABLE_SANITIZERS=ON               \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache           \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache         \
             -B build_sanitizers -G "Ninja"
@@ -66,7 +66,7 @@ jobs:
 
       - name: Configure CMake
         run: |
-          cmake . -DKELHTTP2_ENABLE_TESTING=ON               \
+          cmake . -DHIDI_ENABLE_TESTING=ON               \
             -DCMAKE_BUILD_TYPE=${{matrix.build_type}}     \
             -DCMAKE_CXX_COMPILER=${{matrix.compiler}}     \
             -DCMAKE_CXX_STANDARD=${{matrix.cpp_standard}} \
