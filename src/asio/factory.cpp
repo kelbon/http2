@@ -1,7 +1,6 @@
 #include "hidi/asio/factory.hpp"
 #include "hidi/asio/asio_executor.hpp"
 #include "hidi/asio/awaiters.hpp"
-#include "hidi/logger.hpp"
 
 #include <kelcoro/job.hpp>
 
@@ -242,18 +241,18 @@ dd::task<void> asio_connection::shutdown() noexcept {
 }
 
 any_io_context make_asio_io_context(asio::io_context& ctx, tcp_connection_options opts) {
-  return any_io_context(aa::inplaced{[&] { return asio_ref_factory(ctx, std::move(opts)); }});
+  return any_io_context(aa::inplaced{[&] { return asio_ref_io(ctx, std::move(opts)); }});
 }
 
 any_io_context make_asio_io_context(tcp_connection_options opts) {
-  return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(opts)); }});
+  return any_io_context(aa::inplaced{[&] { return asio_io(std::move(opts)); }});
 }
 
 any_io_context make_asio_tls_io_context(asio::io_context& ctx, client_ssl_context_ptr ssl,
                                         tcp_connection_options opts) {
   if (ssl) {
     return any_io_context(
-        aa::inplaced{[&] { return asio_tls_ref_factory(ctx, std::move(ssl), std::move(opts)); }});
+        aa::inplaced{[&] { return asio_tls_ref_io(ctx, std::move(ssl), std::move(opts)); }});
   } else
     return make_asio_io_context(ctx, std::move(opts));
 }
@@ -262,21 +261,21 @@ any_io_context make_asio_tls_io_context(asio::io_context& ctx, server_ssl_contex
                                         tcp_connection_options opts) {
   if (ssl) {
     return any_io_context(
-        aa::inplaced{[&] { return asio_tls_ref_factory(ctx, std::move(ssl), std::move(opts)); }});
+        aa::inplaced{[&] { return asio_tls_ref_io(ctx, std::move(ssl), std::move(opts)); }});
   } else
     return make_asio_io_context(ctx, std::move(opts));
 }
 
 any_io_context make_asio_tls_io_context(client_ssl_context_ptr ssl, tcp_connection_options opts) {
   if (ssl)
-    return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(opts)); }});
+    return any_io_context(aa::inplaced{[&] { return asio_tls_io(std::move(ssl), std::move(opts)); }});
   else
     return make_asio_io_context(std::move(opts));
 }
 
 any_io_context make_asio_tls_io_context(server_ssl_context_ptr ssl, tcp_connection_options opts) {
   if (ssl)
-    return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(opts)); }});
+    return any_io_context(aa::inplaced{[&] { return asio_tls_io(std::move(ssl), std::move(opts)); }});
   else
     return make_asio_io_context(std::move(opts));
 }
@@ -329,12 +328,11 @@ static dd::task<any_connection_t> do_create_connection_client(auto& self, local_
   co_return any_connection_t(new asio_connection(std::move(tcp_sock)));
 }
 
-asio_factory::asio_factory(tcp_connection_options opts, starter_t s)
-    : options(std::move(opts)), starter(std::move(s)) {
+asio_io::asio_io(tcp_connection_options opts, starter_t s) : options(std::move(opts)), starter(std::move(s)) {
 }
 
-dd::task<any_connection_t> asio_factory::create_connection_client(local_and_remote_endpoints ep,
-                                                                  deadline_t deadline) {
+dd::task<any_connection_t> asio_io::create_connection_client(local_and_remote_endpoints ep,
+                                                             deadline_t deadline) {
   return do_create_connection_client(*this, ep, deadline);
 }
 
@@ -363,29 +361,29 @@ struct asio_acceptor {
   }
 };
 
-any_acceptor asio_factory::create_acceptor(internet_address addr, bool reuse_address) {
+any_acceptor asio_io::create_acceptor(internet_address addr, bool reuse_address) {
   return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
 }
 
-void asio_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
-  do_rebind_context<asio_connection, asio_factory>(con, other);
+void asio_io::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_connection, asio_io>(con, other);
 }
 
-asio_ref_factory::asio_ref_factory(asio::io_context& ctx, tcp_connection_options opts, starter_t s)
-    : asio_factory_ref_base(ctx), options(std::move(opts)), starter(std::move(s)) {
+asio_ref_io::asio_ref_io(asio::io_context& ctx, tcp_connection_options opts, starter_t s)
+    : asio_io_ref_base(ctx), options(std::move(opts)), starter(std::move(s)) {
 }
 
-dd::task<any_connection_t> asio_ref_factory::create_connection_client(local_and_remote_endpoints ep,
-                                                                      deadline_t deadline) {
+dd::task<any_connection_t> asio_ref_io::create_connection_client(local_and_remote_endpoints ep,
+                                                                 deadline_t deadline) {
   return do_create_connection_client(*this, ep, deadline);
 }
 
-any_acceptor asio_ref_factory::create_acceptor(internet_address addr, bool reuse_address) {
+any_acceptor asio_ref_io::create_acceptor(internet_address addr, bool reuse_address) {
   return asio_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address}};
 }
 
-void asio_ref_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
-  do_rebind_context<asio_connection, asio_ref_factory>(con, other);
+void asio_ref_io::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_connection, asio_ref_io>(con, other);
 }
 
 // TLS
@@ -457,18 +455,18 @@ static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, lo
   co_return any_connection_t(std::move(res));
 }
 
-asio_tls_factory::asio_tls_factory(client_ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
-    : asio_factory_base(), options(std::move(opts)), client_sslctx(std::move(ctx.p)), starter(std::move(s)) {
+asio_tls_io::asio_tls_io(client_ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
+    : asio_io_base(), options(std::move(opts)), client_sslctx(std::move(ctx.p)), starter(std::move(s)) {
   assert(client_sslctx != nullptr);
 }
 
-asio_tls_factory::asio_tls_factory(server_ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
-    : asio_factory_base(), options(std::move(opts)), server_sslctx(std::move(ctx.p)), starter(std::move(s)) {
+asio_tls_io::asio_tls_io(server_ssl_context_ptr ctx, tcp_connection_options opts, starter_t s)
+    : asio_io_base(), options(std::move(opts)), server_sslctx(std::move(ctx.p)), starter(std::move(s)) {
   assert(server_sslctx != nullptr);
 }
 
-dd::task<any_connection_t> asio_tls_factory::create_connection_client(local_and_remote_endpoints endpoint,
-                                                                      deadline_t deadline) {
+dd::task<any_connection_t> asio_tls_io::create_connection_client(local_and_remote_endpoints endpoint,
+                                                                 deadline_t deadline) {
   return do_create_connection_client_tls(*this, endpoint, deadline);
 }
 
@@ -503,47 +501,47 @@ struct asio_tls_acceptor {
   }
 };
 
-any_acceptor asio_tls_factory::create_acceptor(internet_address addr, bool reuse_address) {
+any_acceptor asio_tls_io::create_acceptor(internet_address addr, bool reuse_address) {
   assert(server_sslctx);
   return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address},
                            server_sslctx};
 }
 
-void asio_tls_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
-  do_rebind_context<asio_tls_connection, asio_tls_factory>(con, other);
+void asio_tls_io::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_tls_connection, asio_tls_io>(con, other);
 }
 
-asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, client_ssl_context_ptr ssl,
-                                           tcp_connection_options opts, starter_t s)
-    : asio_factory_ref_base(ctx),
+asio_tls_ref_io::asio_tls_ref_io(asio::io_context& ctx, client_ssl_context_ptr ssl,
+                                 tcp_connection_options opts, starter_t s)
+    : asio_io_ref_base(ctx),
       options(std::move(opts)),
       client_sslctx(std::move(ssl.p)),
       starter(std::move(s)) {
   assert(client_sslctx != nullptr);
 }
 
-asio_tls_ref_factory::asio_tls_ref_factory(asio::io_context& ctx, server_ssl_context_ptr ssl,
-                                           tcp_connection_options opts, starter_t s)
-    : asio_factory_ref_base(ctx),
+asio_tls_ref_io::asio_tls_ref_io(asio::io_context& ctx, server_ssl_context_ptr ssl,
+                                 tcp_connection_options opts, starter_t s)
+    : asio_io_ref_base(ctx),
       options(std::move(opts)),
       server_sslctx(std::move(ssl.p)),
       starter(std::move(s)) {
   assert(server_sslctx != nullptr);
 }
 
-any_acceptor asio_tls_ref_factory::create_acceptor(internet_address addr, bool reuse_address) {
+any_acceptor asio_tls_ref_io::create_acceptor(internet_address addr, bool reuse_address) {
   assert(server_sslctx);
   return asio_tls_acceptor{boost::asio::ip::tcp::acceptor{ioctx, std::move(addr), reuse_address},
                            server_sslctx};
 }
 
-dd::task<any_connection_t> asio_tls_ref_factory::create_connection_client(local_and_remote_endpoints endpoint,
-                                                                          deadline_t deadline) {
+dd::task<any_connection_t> asio_tls_ref_io::create_connection_client(local_and_remote_endpoints endpoint,
+                                                                     deadline_t deadline) {
   return do_create_connection_client_tls(*this, endpoint, deadline);
 }
 
-void asio_tls_ref_factory::rebind_context(any_connection_t& con, any_io_context_ref other) {
-  do_rebind_context<asio_tls_connection, asio_tls_ref_factory>(con, other);
+void asio_tls_ref_io::rebind_context(any_connection_t& con, any_io_context_ref other) {
+  do_rebind_context<asio_tls_connection, asio_tls_ref_io>(con, other);
 }
 
 }  // namespace hidi

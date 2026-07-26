@@ -1,5 +1,4 @@
 #include "hidi/http2_client.hpp"
-#include "hidi/asio/factory.hpp"
 #include "hidi/http2_server.hpp"
 #include <fuzzer.hpp>
 
