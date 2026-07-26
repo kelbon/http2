@@ -1,7 +1,7 @@
 #pragma once
 
 #include "hidi/asio/ssl_context.hpp"
-#include "hidi/http2_server_options.hpp"
+#include "hidi/h2server_options.hpp"
 #include "hidi/http_base.hpp"
 #include "hidi/tcp_connection_options.hpp"
 #include "hidi/request_context.hpp"
@@ -17,39 +17,39 @@ struct server_endpoint {
 };
 
 // single threaded interface of server
-// user must inherit http2_server and implement virtual methods, then use http2_server itself as
-// signlethreaded or use hidi::mt_server as multithreaded
-struct http2_server {
+// user must inherit h2server and implement virtual methods, then use h2server itself as
+// signlethreaded or use hidi::h2server_mt as multithreaded
+struct h2server {
  private:
   struct impl;
   std::unique_ptr<impl> m_impl;
 
-  friend struct mt_server;
-  // used by hidi::mt_server
+  friend struct h2server_mt;
+  // used by hidi::h2server_mt
   void set_accept_callback(move_only_fn<void(any_connection_t)>);
 
  public:
   // creates non-tls server
   // uses asio_io
-  explicit http2_server(http2_server_options options = {});
+  explicit h2server(h2server_options options = {});
 
   // pre: c.has_value() == true
-  explicit http2_server(http2_server_options, any_io_context c);
+  explicit h2server(h2server_options, any_io_context c);
 
   // if ssl context ptr is nullptr, then its http server (not https)
   // uses asio_io/asio_tls_io
-  explicit http2_server(server_ssl_context_ptr, http2_server_options = {}, tcp_connection_options = {});
+  explicit h2server(server_ssl_context_ptr, h2server_options = {}, tcp_connection_options = {});
 
-  http2_server(std::filesystem::path certificate, std::filesystem::path server_private_key,
-               http2_server_options opts = {})
-      : http2_server(make_ssl_context_for_server(std::move(certificate), std::move(server_private_key)),
-                     std::move(opts)) {
+  h2server(std::filesystem::path certificate, std::filesystem::path server_private_key,
+           h2server_options opts = {})
+      : h2server(make_ssl_context_for_server(std::move(certificate), std::move(server_private_key)),
+                 std::move(opts)) {
   }
 
-  http2_server(http2_server&&) = delete;
-  void operator=(http2_server&&) = delete;
+  h2server(h2server&&) = delete;
+  void operator=(h2server&&) = delete;
 
-  virtual ~http2_server();
+  virtual ~h2server();
 
   // invoked when only headers for request received and data will be received
   // if `true` returned, `handle_request_stream` invoked instead of `handle_request`,
@@ -97,21 +97,18 @@ struct http2_server {
   // blocking wait until server stops. Must not be called from `handle_request`
   // server may be stopped only once!
   void stop();
-  // similar to ioctx().run(), for common interface with mt_server
+  // similar to ioctx().run(), for common interface with h2server_mt
   void run();
 
-  http2_server_options& get_options() noexcept;
-  const http2_server_options& get_options() const noexcept;
-
- private:
-  friend struct http2_tester;
+  h2server_options& get_options() noexcept;
+  const h2server_options& get_options() const noexcept;
 };
 
 // multithreaded version
-struct mt_server {
+struct h2server_mt {
  private:
   struct local_server_ctx {
-    std::unique_ptr<http2_server> server;
+    std::unique_ptr<h2server> server;
   };
   std::vector<local_server_ctx> servers;
   size_t last_selected_server = 0;
@@ -133,13 +130,13 @@ struct mt_server {
 
  public:
   // creates server with default thread count, constructs S(args...) on each thread
-  template <std::derived_from<http2_server> S, typename... Args>
-  explicit mt_server(std::in_place_type_t<S> t, Args&&... args)
-      : mt_server(std::thread::hardware_concurrency(), t, std::forward<Args>(args)...) {
+  template <std::derived_from<h2server> S, typename... Args>
+  explicit h2server_mt(std::in_place_type_t<S> t, Args&&... args)
+      : h2server_mt(std::thread::hardware_concurrency(), t, std::forward<Args>(args)...) {
   }
 
-  template <std::derived_from<http2_server> S>
-  explicit mt_server(size_t threadcount, std::in_place_type_t<S>, auto&&... args) {
+  template <std::derived_from<h2server> S>
+  explicit h2server_mt(size_t threadcount, std::in_place_type_t<S>, auto&&... args) {
     if (threadcount == 0) {
       threadcount = std::thread::hardware_concurrency();
       if (threadcount == 0)
@@ -149,15 +146,15 @@ struct mt_server {
       pool.emplace(threadcount - 1);
     for (; threadcount; --threadcount) {
       // Note: not perfect forward
-      servers.push_back(local_server_ctx(std::unique_ptr<http2_server>(new S(args...))));
+      servers.push_back(local_server_ctx(std::unique_ptr<h2server>(new S(args...))));
     }
     initialize();
   }
 
-  mt_server(mt_server&&) = delete;
-  void operator=(mt_server&&) = delete;
+  h2server_mt(h2server_mt&&) = delete;
+  void operator=(h2server_mt&&) = delete;
 
-  ~mt_server() = default;
+  ~h2server_mt() = default;
 
   // returns binded address (useful e.g. if port 0 was used and OS setted real port number)
   internet_address listen(server_endpoint);

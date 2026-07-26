@@ -1,8 +1,8 @@
 #pragma once
 
 #include "hidi/asio/aio_context.hpp"
-#include "hidi/http2_connection_fwd.hpp"
-#include "hidi/http2_errors.hpp"
+#include "hidi/h2connection_fwd.hpp"
+#include "hidi/h2errors.hpp"
 #include "hidi/http_base.hpp"
 #include "hidi/utils/any_io_context.hpp"
 #include "hidi/utils/memory_queue.hpp"
@@ -16,7 +16,7 @@ struct request_context {
  private:
   stream_ptr node = nullptr;
 
-  friend struct http2_client;
+  friend struct h2client;
 
  public:
   explicit request_context(h2stream& n) noexcept : node(&n) {

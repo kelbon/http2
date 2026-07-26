@@ -22,7 +22,7 @@ static void validate_echo_request(const hreq& req, http_response rsp) {
   REQUIRE(rsp.body == req.request.body.data);
 }
 
-dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
+dd::task<void> send_echo_request(fuzzer& fuz, h2client& c, hreq req) try {
   assert(req.is_valid);  // TODO not supported yet?
   if (!req.trailers.empty())
     co_return co_await send_echo_request_as_stream(fuz, c, std::move(req));
@@ -35,7 +35,7 @@ dd::task<void> send_echo_request(fuzzer& fuz, http2_client& c, hreq req) try {
 }
 
 // sends requests, but body will be splitted into random chunks
-dd::task<void> send_echo_request_as_stream(fuzzer& fuz, http2_client& c, hreq req) try {
+dd::task<void> send_echo_request_as_stream(fuzzer& fuz, h2client& c, hreq req) try {
   auto sleepcb = [&c](duration_t d, io_error_code& ec) -> dd::task<void> {
     any_timer timer = c.ioctx().create_timer();
     co_await net.sleep(timer, d, ec);
@@ -79,7 +79,7 @@ static move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_co
 }
 
 // sends request, but body will be splitted into random chunks + expects server answers stream
-dd::task<void> send_echo_request_connect(fuzzer& fuz, http2_client& c, hreq req, bool websocket) try {
+dd::task<void> send_echo_request_connect(fuzzer& fuz, h2client& c, hreq req, bool websocket) try {
   if (websocket) {
     auto& hdrs = req.request.headers;
     req.request.method = http_method_e::CONNECT;
@@ -116,7 +116,7 @@ struct incr {
   }
 };
 
-dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem tem, size_t request_count,
+dd::task<void> emulate_client_n(fuzzer& fuz, h2client& client, any_reqtem tem, size_t request_count,
                                 size_t max_active_streams, req_weights weights) {
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});
   // receive server settings before (to get correct max_count_requests_allowed)
@@ -150,7 +150,7 @@ dd::task<void> emulate_client_n(fuzzer& fuz, http2_client& client, any_reqtem te
   co_await client.graceful_stop();
 }
 
-dd::task<void> emulate_client(fuzzer& fuz, http2_client& client, any_reqtem tem, duration_t dur,
+dd::task<void> emulate_client(fuzzer& fuz, h2client& client, any_reqtem tem, duration_t dur,
                               size_t max_active_streams, req_weights weights) {
   size_t done = 0;
   std::discrete_distribution<int> dist({weights.regular, weights.stream, weights.connect});

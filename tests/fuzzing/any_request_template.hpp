@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hidi/http2_client.hpp"
+#include "hidi/h2client.hpp"
 #include "request_template.hpp"
 
 #include <anyany/anyany.hpp>

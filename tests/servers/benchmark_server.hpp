@@ -1,11 +1,11 @@
 #pragma once
 
-#include "hidi/http2_server.hpp"
+#include "hidi/h2server.hpp"
 
 namespace hidi {
 
-struct bench_server final : http2_server {
-  using http2_server::http2_server;
+struct bench_server final : h2server {
+  using h2server::h2server;
 
   dd::task<http_response> handle_request(http_request r, request_context) override {
     http_response rsp;

@@ -3,14 +3,14 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 
-#include "hidi/http2_client.hpp"
+#include "hidi/h2client.hpp"
 #include "hidi/asio/asio_executor.hpp"
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_connection_establishment.hpp"
-#include "hidi/http2_errors.hpp"
-#include "hidi/http2_protocol.hpp"
-#include "hidi/http2_send_frames.hpp"
-#include "hidi/http2_writer.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2connection_establishment.hpp"
+#include "hidi/h2errors.hpp"
+#include "hidi/h2protocol.hpp"
+#include "hidi/h2send_frames.hpp"
+#include "hidi/h2writer.hpp"
 #include "hidi/logger.hpp"
 #include "hidi/utils/macro.hpp"
 #include "hidi/utils/reusable_buffer.hpp"
@@ -21,7 +21,7 @@
 
 /*
 
-Путь каждого запроса в http2_client:
+Путь каждого запроса в h2client:
 
 1. корутина send_request захватывает соединение через borrow_connection, при этом
 может потребоваться вызвать start_connecting, на время соединения send_request
@@ -53,7 +53,7 @@ task.resume, будя корутину send_request
 
 namespace hidi {
 
-void http2_client::notify_connection_waiters(h2connection_ptr result) noexcept {
+void h2client::notify_connection_waiters(h2connection_ptr result) noexcept {
   // assume only i have access to waiters
   auto waiters = std::move(m_connectionWaiters);
   if (result)
@@ -73,10 +73,10 @@ struct ping_callback {
   h2connection_ptr con = nullptr;
   stream_id_t lastid = 0;
   duration_t pingtimeout;
-  http2_client* client = nullptr;
+  h2client* client = nullptr;
 
   // precondition: c != nullptr, client != nullptr
-  explicit ping_callback(h2connection_ptr c, http2_client* clientptr, duration_t ping_timeout) {
+  explicit ping_callback(h2connection_ptr c, h2client* clientptr, duration_t ping_timeout) {
     assert(c);
     assert(clientptr);
     con = std::move(c);
@@ -100,7 +100,7 @@ struct ping_callback {
   }
 };
 
-dd::job http2_client::start_connecting(http2_client* self, deadline_t deadline) {
+dd::job h2client::start_connecting(h2client* self, deadline_t deadline) {
   assert(self);
   co_await std::suspend_always{};  // resumed when needed by creator
 
@@ -200,7 +200,7 @@ dd::job http2_client::start_connecting(http2_client* self, deadline_t deadline) 
 }
 
 // handles only utility frames (not DATA / HEADERS)
-static void handle_utility_frame(http2_frame_t frame, h2connection& con) {
+static void handle_utility_frame(h2frame frame, h2connection& con) {
   using enum frame_e;
 
   switch (frame.header.type) {
@@ -255,7 +255,7 @@ static void handle_utility_frame(http2_frame_t frame, h2connection& con) {
 // writer works on node with reader (window_update / rst_stream possible)
 // also node may be cancelled or destroyed, so writer and reader must never
 // cache node between co_awaits
-dd::job http2_client::start_reader_for(http2_client* self, h2connection_ptr c) {
+dd::job h2client::start_reader_for(h2client* self, h2connection_ptr c) {
   using enum frame_e;
   assert(self && c);
 
@@ -268,7 +268,7 @@ dd::job http2_client::start_reader_for(http2_client* self, h2connection_ptr c) {
   h2connection& con = *c;
   io_error_code ec;
   reusable_buffer buffer;
-  http2_frame_t frame;
+  h2frame frame;
   reqerr_e::values_e reason = reqerr_e::UNKNOWN_ERR;
   protocol_error goaway_info;
 
@@ -313,7 +313,7 @@ dd::job http2_client::start_reader_for(http2_client* self, h2connection_ptr c) {
               con.client_receive_headers(frame);
             } else {
               co_await con.receive_headers_with_continuation(
-                  frame, ec, [] {}, [&](http2_frame_t frame) { con.client_receive_headers(frame); });
+                  frame, ec, [] {}, [&](h2frame frame) { con.client_receive_headers(frame); });
               if (ec)
                 goto network_error;
 
@@ -400,8 +400,8 @@ connection_dropped:
   co_return;
 }
 
-http2_client::~http2_client() {
-  HTTP2_LOG_TRACE(logctx(), "~http2_client");
+h2client::~h2client() {
+  HTTP2_LOG_TRACE(logctx(), "~h2client");
   cancel_all();
   // make sure client was closed correctly before destroy
   assert(!m_connection);
@@ -409,13 +409,13 @@ http2_client::~http2_client() {
   assert(m_requestsInProgress == 0);
 }
 
-http2_client::http2_client(endpoint remote, http2_client_options opts, any_io_context io)
+h2client::h2client(endpoint remote, h2client_options opts, any_io_context io)
     : m_remote(std::move(remote)), m_options(opts), m_ioctx(std::move(io)) {
   assert(m_ioctx);
   m_options.logctx.name.set_prefix(CLIENT_PREFIX);
   m_options.max_receive_frame_size = std::min(FRAME_LEN_MAX, m_options.max_receive_frame_size);
   m_options.max_continuation_len_bytes = std::min(m_options.max_continuation_len_bytes, MAX_CONTINUATION_LEN);
-  HTTP2_LOG_TRACE(logctx(), "http2_client created");
+  HTTP2_LOG_TRACE(logctx(), "h2client created");
 }
 
 noexport::waiter_of_connection::~waiter_of_connection() {
@@ -447,7 +447,7 @@ std::coroutine_handle<> noexport::waiter_of_connection::await_suspend(std::corou
   return std::move(result);
 }
 
-void http2_client::drop_connection(reqerr_e::values_e reason) noexcept {
+void h2client::drop_connection(reqerr_e::values_e reason) noexcept {
   h2connection_ptr con = std::move(m_connection);
   if (!con)
     return;
@@ -456,8 +456,8 @@ void http2_client::drop_connection(reqerr_e::values_e reason) noexcept {
   con->shutdown(reason);
 }
 
-dd::task<int> http2_client::send_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
-                                         http_request request, deadline_t deadline) {
+dd::task<int> h2client::send_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
+                                     http_request request, deadline_t deadline) {
   // for CONNECT send_connect_request
   assert(request.method != http_method_e::CONNECT);
   if (stop_requested()) [[unlikely]]
@@ -486,9 +486,9 @@ dd::task<int> http2_client::send_request(on_header_fn_ptr on_header, on_data_par
   co_return co_await con->response_received(*node);
 }
 
-dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
-                                                   on_data_part_fn_ptr on_data_part, http_request request,
-                                                   stream_body_maker_t makebody, deadline_t deadline) {
+dd::task<int> h2client::send_streaming_request(on_header_fn_ptr on_header, on_data_part_fn_ptr on_data_part,
+                                               http_request request, stream_body_maker_t makebody,
+                                               deadline_t deadline) {
   assert(request.body.data.empty());
   assert(makebody);
   if (stop_requested()) [[unlikely]]
@@ -543,7 +543,7 @@ dd::task<int> http2_client::send_streaming_request(on_header_fn_ptr on_header,
   }
 }
 
-dd::task<http_response> http2_client::send_request(http_request request, deadline_t deadline) {
+dd::task<http_response> h2client::send_request(http_request request, deadline_t deadline) {
   http_response rsp;
   auto on_header = [&](std::string_view name, std::string_view value) {
     rsp.headers.emplace_back(std::string(name), std::string(value));
@@ -558,9 +558,8 @@ dd::task<http_response> http2_client::send_request(http_request request, deadlin
   co_return rsp;
 }
 
-dd::task<http_response> http2_client::send_streaming_request(http_request request,
-                                                             stream_body_maker_t makebody,
-                                                             deadline_t deadline) {
+dd::task<http_response> h2client::send_streaming_request(http_request request, stream_body_maker_t makebody,
+                                                         deadline_t deadline) {
   assert(makebody);
   http_response rsp;
   auto on_header = [&](std::string_view name, std::string_view value) {
@@ -577,7 +576,7 @@ dd::task<http_response> http2_client::send_streaming_request(http_request reques
   co_return rsp;
 }
 
-dd::task<int> http2_client::send_connect_request(
+dd::task<int> h2client::send_connect_request(
     http_request request,
     move_only_fn<streaming_body_t(http_response, memory_queue_ptr, request_context)> makestream,
     deadline_t deadline) {
@@ -644,10 +643,10 @@ dd::task<int> http2_client::send_connect_request(
   co_return status;
 }
 
-dd::task<void> http2_client::graceful_stop() {
-  HTTP2_LOG_TRACE(logctx(), "http2_client::graceful_stop started");
+dd::task<void> h2client::graceful_stop() {
+  HTTP2_LOG_TRACE(logctx(), "h2client::graceful_stop started");
   on_scope_exit {
-    HTTP2_LOG_TRACE(logctx(), "http2_client::graceful_stop ended");
+    HTTP2_LOG_TRACE(logctx(), "h2client::graceful_stop ended");
   };
   io_error_code ec;
   h2connection_ptr con = m_connection;  // prevent destroy for graceful shutdown.
@@ -696,24 +695,24 @@ dd::task<void> http2_client::graceful_stop() {
   assert(m_requestsInProgress == 0);
 }
 
-bool http2_client::connected() const {
+bool h2client::connected() const {
   return !!m_connection;
 }
 
-bool http2_client::is_https() const noexcept {
+bool h2client::is_https() const noexcept {
   assert(m_connection);
   return m_connection.get()->tcpcon->is_https();
 }
 
-void http2_client::set_remote(endpoint s) noexcept {
+void h2client::set_remote(endpoint s) noexcept {
   m_remote = std::move(s);
 }
 
-void http2_client::set_local(std::optional<internet_address> a) noexcept {
+void h2client::set_local(std::optional<internet_address> a) noexcept {
   m_local = a;
 }
 
-dd::task<bool> http2_client::try_connect(deadline_t deadline) {
+dd::task<bool> h2client::try_connect(deadline_t deadline) {
   if (stop_requested() || m_connectionGate.is_closed())
     co_return false;
   auto guard = m_connectionGate.hold();
@@ -721,7 +720,7 @@ dd::task<bool> http2_client::try_connect(deadline_t deadline) {
   co_return !!con;
 }
 
-void http2_client::cancel_all() noexcept {
+void h2client::cancel_all() noexcept {
   auto all_canceled = [&] {
     return !m_notYetReadyConnection && !m_connection && m_requestsInProgress == 0 &&
            m_connectionWaiters.empty();
@@ -736,16 +735,16 @@ void http2_client::cancel_all() noexcept {
   }
 }
 
-dd::task<void> http2_client::sleep(duration_t d, io_error_code& ec) {
+dd::task<void> h2client::sleep(duration_t d, io_error_code& ec) {
   any_timer timer = ioctx().create_timer();
   co_await net.sleep(timer, d, ec);
 }
 
-size_t http2_client::count_active_requests() const noexcept {
+size_t h2client::count_active_requests() const noexcept {
   return m_requestsInProgress;
 }
 
-size_t http2_client::max_count_requests_allowed() const noexcept {
+size_t h2client::max_count_requests_allowed() const noexcept {
   return m_connection ? m_connection->remote_settings.max_concurrent_streams : size_t(-1);
 }
 

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "hidi/errors.hpp"
-#include "hidi/http2_connection_fwd.hpp"
+#include "hidi/h2connection_fwd.hpp"
 #include "hidi/utils/deadline.hpp"
 #include "hidi/utils/fn_ref.hpp"
 

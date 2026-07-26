@@ -1,11 +1,11 @@
 
 #pragma once
 
-#include "hidi/http2_connection.hpp"
-#include "hidi/http2_connection_establishment.hpp"
-#include "hidi/http2_connection_fwd.hpp"
-#include "hidi/http2_errors.hpp"
-#include "hidi/http2_protocol.hpp"
+#include "hidi/h2connection.hpp"
+#include "hidi/h2connection_establishment.hpp"
+#include "hidi/h2connection_fwd.hpp"
+#include "hidi/h2errors.hpp"
+#include "hidi/h2protocol.hpp"
 
 #include <boost/intrusive/list_hook.hpp>
 
@@ -13,20 +13,20 @@
 
 namespace hidi {
 
-struct http2_server;
-struct http2_frame_t;
+struct h2server;
+struct h2frame;
 
 // Not RAII type, must be closed (request_terminate/shutdown + wait gate) before
 // destroy
-struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
+struct h2server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   uint32_t refcount = 0;
   dd::gate responsegate;
   // for connection reader/writer
   dd::gate connection_parts_gate;
   // invariant: != nullptr
   h2connection_ptr connection;
-  http2_server_options options;
-  http2_server* server = nullptr;
+  h2server_options options;
+  h2server* server = nullptr;
   // reader increments this value for detecting client idle
   size_t framecount = 0;
   // changed only once from 'false' to 'true' when shutdown requested
@@ -37,12 +37,12 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   bool established = false;
 
   // precondition: con != nullptr
-  server_session(h2connection_ptr con, http2_server_options opts, http2_server& server KELCORO_LIFETIMEBOUND);
+  h2server_session(h2connection_ptr con, h2server_options opts, h2server& server KELCORO_LIFETIMEBOUND);
 
-  server_session(server_session&&) = delete;
-  void operator=(server_session&&) = delete;
+  h2server_session(h2server_session&&) = delete;
+  void operator=(h2server_session&&) = delete;
 
-  ~server_session();
+  ~h2server_session();
 
   [[nodiscard]] bool has_unfinished_requests() const noexcept {
     return !connection->requests.empty() || !connection->responses.empty();
@@ -76,10 +76,10 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // invoked when session completely done
   void on_session_done() noexcept;
 
-  void receive_headers(http2_frame_t frame);
+  void receive_headers(h2frame frame);
 
   // precondition: `frame` is DATA
-  void receive_data(http2_frame_t frame);
+  void receive_data(h2frame frame);
 
   // marks client as not idle
   void received_frame() {
@@ -97,10 +97,10 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // * request not assembled and canceled, `on_response_done` called by
   // rst_stream_server()
   // * server terminates session, then `on_response_done` called by
-  // server_session::request_terminate
+  // h2server_session::request_terminate
   //
   // Note: may accept trailers headers too
-  void start_request_assemble(const http2_frame_t& /*HEADERS frame*/);
+  void start_request_assemble(const h2frame& /*HEADERS frame*/);
 
   // after creation 3 hooks (requests, responses, timers) and 'task' left unused
   stream_ptr new_empty_stream_node(stream_id_t);
@@ -108,7 +108,7 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   // used when settings changed while connection active
   // may throw protocol error
   // precondition: newsettings is SETTINGS frame
-  void client_settings_changed(http2_frame_t newsettings);
+  void client_settings_changed(h2frame newsettings);
 
   // used when server receives GOAWAY frame with NO_ERROR
   void client_requests_graceful_shutdown(goaway_frame);
@@ -159,16 +159,16 @@ struct server_session : bi::list_base_hook<bi::link_mode<bi::safe_link>> {
   }
 };
 
-inline void intrusive_ptr_add_ref(server_session* p) noexcept {
+inline void intrusive_ptr_add_ref(h2server_session* p) noexcept {
   ++p->refcount;
 }
 
-inline void intrusive_ptr_release(server_session* p) noexcept {
+inline void intrusive_ptr_release(h2server_session* p) noexcept {
   --p->refcount;
   if (p->refcount == 0)
     delete p;
 }
 
-using server_session_ptr = boost::intrusive_ptr<server_session>;
+using server_session_ptr = boost::intrusive_ptr<h2server_session>;
 
 }  // namespace hidi

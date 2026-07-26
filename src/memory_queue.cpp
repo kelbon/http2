@@ -1,5 +1,5 @@
 #include "hidi/utils/memory_queue.hpp"
-#include "hidi/http2_connection.hpp"
+#include "hidi/h2connection.hpp"
 
 namespace hidi {
 

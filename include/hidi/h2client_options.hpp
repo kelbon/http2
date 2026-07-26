@@ -6,7 +6,7 @@
 
 namespace hidi {
 
-struct http2_client_options {
+struct h2client_options {
   // may be used to handle requests while sending big frames, such as files data
   // must not be 0
   uint32_t max_send_frame_size = 8 * 1024;  // 8 KB

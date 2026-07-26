@@ -27,18 +27,18 @@ if (HIDI_USE_CPM)
 endif()
 
 add_library(hidilib ${CMAKE_CURRENT_SOURCE_DIR}/src/http_base.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_client.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2client.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/request_context.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/memory_queue.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_protocol.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_connection.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_connection_establishment.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_send_frames.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_server_reader.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_writer.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_server_session.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/http2_server.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/timer.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2protocol.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2connection.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2connection_establishment.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2send_frames.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2server_reader.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2writer.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2server_session.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/h2server.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/timer.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/unique_name.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/io_impl.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/io.cpp

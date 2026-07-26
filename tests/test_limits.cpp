@@ -141,7 +141,7 @@ SERVER_TEST("server CONTINUATION limit", test_ssl_ctx()) {
   bytes_t headers(FIRST_CHUNK, 'a');  // data makes no sense here
 
   // send HEADERS without END_HEADERS
-  h2frame f;
+  h2test_frame f;
   f.hdr.length = uint32_t(headers.size());
   f.hdr.type = frame_e::HEADERS;
   f.hdr.flags = flags::EMPTY_FLAGS;  // no END_HEADERS
