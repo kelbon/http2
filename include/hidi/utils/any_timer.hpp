@@ -10,6 +10,7 @@ namespace hidi {
 // arms timer to execute callback after 'd'
 // never executes callback immediately
 // if timer was armed, its canceled first
+// implementation uses atmost one callback and one arm at one time
 anyany_method2_n(arm_m, arm, (&self, deadline_t d) requires(self.arm(d))->void);
 // arms timer after 'd' and repeats this each 'd'
 // new arm will be after executing task
