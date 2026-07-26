@@ -3,7 +3,7 @@
 #include "hidi/asio/ssl_context.hpp"
 #include "hidi/http2_server_options.hpp"
 #include "hidi/http_base.hpp"
-#include "hidi/transport_factory.hpp"
+#include "hidi/tcp_connection_options.hpp"
 #include "hidi/request_context.hpp"
 
 #include <kelcoro/task.hpp>
@@ -31,9 +31,7 @@ struct http2_server {
  public:
   // creates non-tls server
   // uses asio_io
-  explicit http2_server(http2_server_options options = {})
-      : http2_server(std::move(options), make_asio_io_context()) {
-  }
+  explicit http2_server(http2_server_options options = {});
 
   // pre: c.has_value() == true
   explicit http2_server(http2_server_options, any_io_context c);

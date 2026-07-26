@@ -1,6 +1,7 @@
-#include "hidi/asio/factory.hpp"
+#include "hidi/asio/io_impl.hpp"
 #include "hidi/asio/asio_executor.hpp"
 #include "hidi/asio/awaiters.hpp"
+#include "hidi/tcp_connection_options.hpp"
 
 #include <kelcoro/job.hpp>
 
@@ -23,6 +24,35 @@ struct work_awaiter {
   static void await_resume() noexcept {
   }
 };
+
+template <typename E>
+void apply_tcp_options(boost::asio::basic_socket<boost::asio::ip::tcp, E>& tcp_sock,
+                       hidi::tcp_connection_options opts) try {
+  using tcp = boost::asio::ip::tcp;
+
+  tcp_sock.set_option(tcp::no_delay(!opts.merge_small_requests));
+  {
+    boost::asio::socket_base::send_buffer_size send_sz_option(opts.send_buffer_size);
+    tcp_sock.set_option(send_sz_option);
+    tcp_sock.get_option(send_sz_option);
+    // if (send_sz_option.value() != send_buffer_size) {
+    //   HTTP2_LOG_WARN("tcp sendbuf size option not fully applied, requested: {}, actual: {}",
+    //                  send_buffer_size, send_sz_option.value());
+    // }
+  }
+  {
+    boost::asio::socket_base::receive_buffer_size rsv_sz_option(opts.receive_buffer_size);
+    tcp_sock.set_option(rsv_sz_option);
+    tcp_sock.get_option(rsv_sz_option);
+    // if (rsv_sz_option.value() != receive_buffer_size) {
+    //   HTTP2_LOG_WARN("tcp receive buf size option not fully applied, requested: {}, actual: {}",
+    //                  send_buffer_size, rsv_sz_option.value());
+    // }
+  }
+} catch (std::exception& /*e*/) {
+  // its not critical if options are not applied
+  // HTTP2_LOG_WARN("Cannot apply tcp settings to socket, err: {}", e.what());
+}
 
 }  // namespace
 
@@ -240,46 +270,6 @@ dd::task<void> asio_connection::shutdown() noexcept {
   return do_shutdown(writedata, sock);
 }
 
-any_io_context make_asio_io_context(asio::io_context& ctx, tcp_connection_options opts) {
-  return any_io_context(aa::inplaced{[&] { return asio_ref_io(ctx, std::move(opts)); }});
-}
-
-any_io_context make_asio_io_context(tcp_connection_options opts) {
-  return any_io_context(aa::inplaced{[&] { return asio_io(std::move(opts)); }});
-}
-
-any_io_context make_asio_tls_io_context(asio::io_context& ctx, client_ssl_context_ptr ssl,
-                                        tcp_connection_options opts) {
-  if (ssl) {
-    return any_io_context(
-        aa::inplaced{[&] { return asio_tls_ref_io(ctx, std::move(ssl), std::move(opts)); }});
-  } else
-    return make_asio_io_context(ctx, std::move(opts));
-}
-
-any_io_context make_asio_tls_io_context(asio::io_context& ctx, server_ssl_context_ptr ssl,
-                                        tcp_connection_options opts) {
-  if (ssl) {
-    return any_io_context(
-        aa::inplaced{[&] { return asio_tls_ref_io(ctx, std::move(ssl), std::move(opts)); }});
-  } else
-    return make_asio_io_context(ctx, std::move(opts));
-}
-
-any_io_context make_asio_tls_io_context(client_ssl_context_ptr ssl, tcp_connection_options opts) {
-  if (ssl)
-    return any_io_context(aa::inplaced{[&] { return asio_tls_io(std::move(ssl), std::move(opts)); }});
-  else
-    return make_asio_io_context(std::move(opts));
-}
-
-any_io_context make_asio_tls_io_context(server_ssl_context_ptr ssl, tcp_connection_options opts) {
-  if (ssl)
-    return any_io_context(aa::inplaced{[&] { return asio_tls_io(std::move(ssl), std::move(opts)); }});
-  else
-    return make_asio_io_context(std::move(opts));
-}
-
 static dd::task<any_connection_t> do_create_connection_client(auto& self, local_and_remote_endpoints ep,
                                                               deadline_t deadline) {
   using tcp = asio::ip::tcp;
@@ -324,7 +314,7 @@ static dd::task<any_connection_t> do_create_connection_client(auto& self, local_
     throw network_exception("[TCP] cannot connect to {}, err: {}", ep.remote.to_string(), ec.message());
   if (self.starter)
     co_await self.starter(tcp_sock, deadline);
-  self.options.apply(tcp_sock);
+  apply_tcp_options(tcp_sock, self.options);
   co_return any_connection_t(new asio_connection(std::move(tcp_sock)));
 }
 
@@ -434,7 +424,7 @@ static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, lo
     throw network_exception("[TCP] cannot connect to {}, err: {}", ep.remote.to_string(), ec.message());
   if (self.starter)
     co_await self.starter(tcp_sock, deadline);
-  self.options.apply(tcp_sock);
+  apply_tcp_options(tcp_sock, self.options);
   if (!self.client_sslctx)
     self.client_sslctx = make_ssl_context_for_client(self.options.additional_ssl_certificates).p;
   std::unique_ptr<asio_tls_connection> res(new asio_tls_connection(std::move(tcp_sock), self.client_sslctx));

@@ -13,3 +13,7 @@
 #undef NO_DATA
 #undef socket
 #undef DELETE
+
+namespace hidi {
+namespace asio = boost::asio;
+}
