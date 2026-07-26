@@ -78,7 +78,8 @@ struct http2_client {
   // on top bcs of destroy order
   // invariant: .has_value(), unchanged after creation
   any_io_context m_ioctx;
-  endpoint m_host;
+  endpoint m_remote;
+  std::optional<internet_address> m_local;
   http2_client_options m_options;
   h2connection_ptr m_connection;
 
@@ -119,28 +120,33 @@ struct http2_client {
   dd::task<void> sleep(duration_t, io_error_code&);
 
  public:
-  // 'host' used for connecting when required
+  // 'remote' used for connecting when required
   // by default creates localhost client
   // creates non-tls client by default
   // example of creating tls client:
   //   http2_client myclient(host, http2_client_options{}, make_asio_tls_io_context());
-  explicit http2_client(endpoint host = endpoint(asio::ip::address_v4::loopback()),
+  explicit http2_client(endpoint remote = endpoint(asio::ip::address_v4::loopback()),
                         http2_client_options opts = {}, any_io_context = make_asio_io_context());
 
   http2_client(http2_client&&) = delete;
   void operator=(http2_client&&) = delete;
 
-  endpoint const& get_host() const noexcept {
-    return m_host;
+  const endpoint& get_remote() const noexcept {
+    return m_remote;
+  }
+  const std::optional<internet_address>& get_local() const noexcept {
+    return m_local;
   }
 
-  // precondition: !connected()
-  void set_host(endpoint) noexcept;
+  // if already connected applied only to next connection
+  void set_remote(endpoint) noexcept;
+  // if nullopt - returns to default
+  void set_local(std::optional<internet_address>) noexcept;
 
   void set_connection_timeout(duration_t dur) noexcept {
     m_options.connection_timeout = dur;
   }
-  http2_client_options const& get_options() const noexcept {
+  const http2_client_options& get_options() const noexcept {
     return m_options;
   }
 
@@ -236,7 +242,7 @@ struct http2_client {
 
   // precondition: !connected()
   dd::task<bool> try_connect(endpoint e, deadline_t d) {
-    set_host(e);
+    set_remote(e);
     return try_connect(d);
   }
 
