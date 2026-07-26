@@ -50,7 +50,7 @@ static ssl_context_ptr make_ssl_context_for_http11(std::span<const std::filesyst
     std::filesystem::path ap = std::filesystem::absolute(p);
     ec = sslctx->ctx.load_verify_file(ap.string(), ec);
     if (ec)
-      HTTP2_LOG(logctx, ERROR, "error while loading ssl verify file, err: {}, path: {}", ec.what(),
+      HTTP2_LOG(logctx, ERROR, "error while loading ssl verify file, err: {}, path: {}", ec.message(),
                 p.string());
     else
       HTTP2_LOG(logctx, INFO, "additional SSL certificate loaded, path: {}", p.string());
@@ -87,17 +87,17 @@ server_ssl_context_ptr make_ssl_context_for_server(std::filesystem::path certifi
   ec = ctx->ctx.use_certificate_chain_file(std::filesystem::absolute(certificate).string(), ec);
   if (ec) {
     HTTP2_LOG(logctx, ERROR, "cannot load server certificate, path {}, err: {}", certificate.string(),
-              ec.what());
+              ec.message());
     throw network_exception("cannot load server certificate, path {}, err: {}", certificate.string(),
-                            ec.what());
+                            ec.message());
   }
   ec = ctx->ctx.use_private_key_file(std::filesystem::absolute(server_private_key).string(),
                                      asio::ssl::context::pem, ec);
   if (ec) {
     HTTP2_LOG(logctx, ERROR, "cannot load server private key file, path {}, err: {}",
-              server_private_key.string(), ec.what());
+              server_private_key.string(), ec.message());
     throw network_exception("cannot load server private key file, path {}, err: {}",
-                            server_private_key.string(), ec.what());
+                            server_private_key.string(), ec.message());
   }
   return server_ssl_context_ptr{std::move(ctx)};
 }

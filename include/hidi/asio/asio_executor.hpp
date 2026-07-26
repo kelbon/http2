@@ -20,8 +20,8 @@ struct jump_on_ioctx : dd::task_node {
   jump_on_ioctx(any_io_context_ref ref) noexcept : ctx(ref) {
   }
 
-  static bool await_ready() noexcept {
-    return false;
+  bool await_ready() noexcept {
+    return ctx.running_in_this_thread();
   }
 
   void await_suspend(std::coroutine_handle<> h) {
@@ -35,13 +35,26 @@ struct jump_on_ioctx : dd::task_node {
 
 // schedules coroutine to be executed on `ctx`
 // работает для любого boost::asio executor / io_context
-inline jump_on_ioctx yield_on_ioctx(any_io_context_ref ctx) {
-  return jump_on_ioctx(ctx);
-}
+struct yield_on_ioctx : dd::task_node {
+  any_io_context_ref ctx;
 
-inline jump_on_ioctx yield_on_ioctx(any_io_context& ctx) {
-  return jump_on_ioctx(*&ctx);
-}
+  yield_on_ioctx(any_io_context_ref ref) noexcept : ctx(ref) {
+  }
+  yield_on_ioctx(any_io_context& ctx) noexcept : ctx(*&ctx) {
+  }
+
+  bool await_ready() noexcept {
+    return false;
+  }
+
+  void await_suspend(std::coroutine_handle<> h) {
+    this->task = h;
+    ctx.attach(this);
+  }
+
+  static void await_resume() noexcept {
+  }
+};
 
 inline auto yield_on_asio_ioctx(auto& ctx) {
   return dd::suspend_and_t([&](std::coroutine_handle<> h) { boost::asio::post(ctx, h); });

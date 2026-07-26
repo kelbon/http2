@@ -275,7 +275,7 @@ dd::task<void> asio_connection::shutdown() noexcept {
   return do_shutdown(writedata, sock);
 }
 
-static dd::task<any_connection_t> do_create_connection_client(auto& self, local_and_remote_endpoints ep,
+static dd::task<any_connection_t> do_create_connection_client(auto& self, remote_and_local_endpoints ep,
                                                               deadline_t deadline) {
   using tcp = asio::ip::tcp;
 
@@ -326,7 +326,7 @@ static dd::task<any_connection_t> do_create_connection_client(auto& self, local_
 asio_io::asio_io(tcp_connection_options opts, starter_t s) : options(std::move(opts)), starter(std::move(s)) {
 }
 
-dd::task<any_connection_t> asio_io::create_connection_client(local_and_remote_endpoints ep,
+dd::task<any_connection_t> asio_io::create_connection_client(remote_and_local_endpoints ep,
                                                              deadline_t deadline) {
   return do_create_connection_client(*this, ep, deadline);
 }
@@ -368,7 +368,7 @@ asio_ref_io::asio_ref_io(asio::io_context& ctx, tcp_connection_options opts, sta
     : asio_io_ref_base(ctx), options(std::move(opts)), starter(std::move(s)) {
 }
 
-dd::task<any_connection_t> asio_ref_io::create_connection_client(local_and_remote_endpoints ep,
+dd::task<any_connection_t> asio_ref_io::create_connection_client(remote_and_local_endpoints ep,
                                                                  deadline_t deadline) {
   return do_create_connection_client(*this, ep, deadline);
 }
@@ -383,7 +383,7 @@ void asio_ref_io::rebind_context(any_connection_t& con, any_io_context_ref other
 
 // TLS
 
-static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, local_and_remote_endpoints ep,
+static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, remote_and_local_endpoints ep,
                                                                   deadline_t deadline) {
   namespace ssl = asio::ssl;
   using tcp = asio::ip::tcp;
@@ -406,7 +406,7 @@ static dd::task<any_connection_t> do_create_connection_client_tls(auto& self, lo
   if (timeoutflag)
     throw timeout_exception();
   if (results.empty() || ec)
-    throw network_exception("[TCP] cannot resolve host: {}, err: {}", ep.remote.to_string(), ec.what());
+    throw network_exception("[TCP] cannot resolve host: {}, err: {}", ep.remote.to_string(), ec.message());
   asio::ip::tcp::socket tcp_sock(self.ioctx);
 
   timer.cancel();
@@ -460,7 +460,7 @@ asio_tls_io::asio_tls_io(server_ssl_context_ptr ctx, tcp_connection_options opts
   assert(server_sslctx != nullptr);
 }
 
-dd::task<any_connection_t> asio_tls_io::create_connection_client(local_and_remote_endpoints endpoint,
+dd::task<any_connection_t> asio_tls_io::create_connection_client(remote_and_local_endpoints endpoint,
                                                                  deadline_t deadline) {
   return do_create_connection_client_tls(*this, endpoint, deadline);
 }
@@ -530,7 +530,7 @@ any_acceptor asio_tls_ref_io::create_acceptor(internet_address addr, bool reuse_
                            server_sslctx};
 }
 
-dd::task<any_connection_t> asio_tls_ref_io::create_connection_client(local_and_remote_endpoints endpoint,
+dd::task<any_connection_t> asio_tls_ref_io::create_connection_client(remote_and_local_endpoints endpoint,
                                                                      deadline_t deadline) {
   return do_create_connection_client_tls(*this, endpoint, deadline);
 }
