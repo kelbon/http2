@@ -1,8 +1,7 @@
 #pragma once
 
-#include "hidi/asio/factory.hpp"
 #include "hidi/asio/ssl_context.hpp"
-#include "hidi/http2_connection_establishment.hpp"
+#include "hidi/http2_server_options.hpp"
 #include "hidi/http_base.hpp"
 #include "hidi/transport_factory.hpp"
 #include "hidi/request_context.hpp"
@@ -31,7 +30,7 @@ struct http2_server {
 
  public:
   // creates non-tls server
-  // uses asio_factory
+  // uses asio_io
   explicit http2_server(http2_server_options options = {})
       : http2_server(std::move(options), make_asio_io_context()) {
   }
@@ -40,7 +39,7 @@ struct http2_server {
   explicit http2_server(http2_server_options, any_io_context c);
 
   // if ssl context ptr is nullptr, then its http server (not https)
-  // uses asio_factory/asio_tls_factory
+  // uses asio_io/asio_tls_io
   explicit http2_server(server_ssl_context_ptr, http2_server_options = {}, tcp_connection_options = {});
 
   http2_server(std::filesystem::path certificate, std::filesystem::path server_private_key,

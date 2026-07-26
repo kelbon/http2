@@ -1,7 +1,6 @@
 #include <thread>
 
 #include "hidi/http2_client.hpp"
-#include "hidi/asio/factory.hpp"
 #include "servers/echo_server.hpp"
 #include "any_request_template.hpp"
 #include "emulated_client.hpp"

@@ -2,17 +2,13 @@
 #include "hidi/http2_server.hpp"
 
 #include "hidi/asio/asio_executor.hpp"
-#include "hidi/asio/factory.hpp"
 #include "hidi/http2_send_frames.hpp"
 #include "hidi/http2_server_session.hpp"
-#include "hidi/asio/aio_context.hpp"
 #include "hidi/http2_connection.hpp"
 #include "hidi/http2_connection_establishment.hpp"
-#include "hidi/http2_protocol.hpp"
 #include "hidi/http2_server_reader.hpp"
 #include "hidi/http2_writer.hpp"
 #include "hidi/logger.hpp"
-#include "hidi/utils/reusable_buffer.hpp"
 #include "hidi/asio/awaiters.hpp"
 
 #include <exception>
@@ -306,15 +302,9 @@ http2_server::http2_server(http2_server_options options, any_io_context io)
     : m_impl(std::make_unique<http2_server::impl>(std::move(io), std::move(options), *this)) {
 }
 
-static any_io_context make_server_io_ctx(server_ssl_context_ptr ssl, tcp_connection_options tcpopts) {
-  if (ssl)
-    return any_io_context(aa::inplaced{[&] { return asio_tls_factory(std::move(ssl), std::move(tcpopts)); }});
-  else
-    return any_io_context(aa::inplaced{[&] { return asio_factory(std::move(tcpopts)); }});
-}
 http2_server::http2_server(server_ssl_context_ptr ctx, http2_server_options options,
                            tcp_connection_options tcpopts)
-    : http2_server(std::move(options), make_server_io_ctx(std::move(ctx), std::move(tcpopts))) {
+    : http2_server(std::move(options), make_asio_tls_io_context(std::move(ctx), std::move(tcpopts))) {
 }
 
 http2_server::~http2_server() {
